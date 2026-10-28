@@ -1,0 +1,46 @@
+# Fly.io config. Deploy: flyctl launch --from-file deploy/fly.toml   (set a unique `app`)
+# Then: flyctl secrets set DATABASE_URL=... OWNER_MFA_KEY=... PUBLIC_ORIGIN=https://<app>.fly.dev
+#
+# primary_region "fra" (Frankfurt) matches the Supabase eu-central-1 region.
+# min_machines_running = 1 keeps exactly ONE warm instance (required by the
+# advisory lease). Do not raise machine count or enable autoscaling > 1.
+
+app = "tambola-REPLACE-ME"
+primary_region = "fra"
+kill_signal = "SIGTERM"     # app drains on SIGTERM (verified ~0.4s clean exit)
+kill_timeout = "20s"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "4000"
+  TRUST_PROXY = "1"
+  TAMBOLA_COOKIE_SECURE = "1"
+  # PUBLIC_ORIGIN, DATABASE_URL (with ?sslmode=require), OWNER_MFA_KEY -> secrets.
+
+[[services]]
+  internal_port = 4000
+  protocol = "tcp"
+  min_machines_running = 1
+  processes = ["app"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 60000
+    soft_limit = 50000
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "30s"
+
+  # Readiness gate: /readyz fails closed on DB / migrations / lease / drain.
+  [[services.http_checks]]
+    interval = "20s"
+    timeout = "5s"
+    grace_period = "30s"
+    method = "get"
+    path = "/readyz"
+    protocol = "http"

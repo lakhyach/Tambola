@@ -1,0 +1,35 @@
+# Render blueprint (Infrastructure as Code).
+# Apply in the Render dashboard: "New" -> "Blueprint", connect the GitHub repo.
+# The repo-root Dockerfile is used automatically.
+#
+# SECRET VALUES ARE INTENTIONALLY NOT HERE. After the first deploy, set
+# DATABASE_URL (with ?sslmode=require), OWNER_MFA_KEY and PUBLIC_ORIGIN in
+# Render's encrypted "Environment Values" and mark DATABASE_URL/OWNER_MFA_KEY as
+# secrets. `sync: false` means Render will not try to source them from anywhere
+# but the dashboard, so they are never committed.
+
+services:
+  - type: web
+    name: tambola
+    region: frankfurt          # AWS eu-central-1 - same region as the Supabase DB
+    runtime: docker            # builds the repo-root Dockerfile
+    plan: starter              # 0.5 CPU / 512 MB, ~$7/month, always-on (does NOT sleep)
+    healthCheckPath: /readyz   # readiness fails closed on DB / migrations / lease / drain
+    autoDeploy: true
+    # Hobby has no horizontal autoscaling, so this stays exactly ONE instance -
+    # which is required by the single-instance advisory lease. Do not add
+    # scaling / replica settings.
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TRUST_PROXY
+        value: "1"             # Render is a real TLS-terminating reverse proxy
+      - key: TAMBOLA_COOKIE_SECURE
+        value: "1"
+      - key: PUBLIC_ORIGIN
+        value: https://REPLACE-ME.onrender.com   # or your custom https domain
+      # --- secrets: create as Environment Values in the dashboard, never here ---
+      - key: DATABASE_URL      # postgres://...sslmode=require  (see README)
+        sync: false
+      - key: OWNER_MFA_KEY
+        sync: false
