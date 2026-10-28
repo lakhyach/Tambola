@@ -105,9 +105,15 @@ The project's production `DATABASE_URL` is a Supabase **session pooler**
   path (connection string only) reaches Supabase and holds the lease.
 - **Enable TLS in production.** The URL as shipped connects without `sslmode`,
   which the Supabase pooler accepts but leaves game data and credentials in
-  plaintext. Append `?sslmode=require` to `DATABASE_URL` (Supabase ships a valid
-  certificate) so `pg` negotiates TLS; verify the connection still succeeds in
-  the target environment before cutover.
+  plaintext. Supabase's pooler is signed by its **own private CA**, not a
+  publicly-trusted one, so on current `pg`/`pg-connection-string` a plain
+  `?sslmode=require` (now an alias for `verify-full`) FAILS with "self-signed
+  certificate in certificate chain". Use the safest supported form:
+  `?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem` (the public
+  CA bundle is committed at `deploy/supabase-root-ca.pem` and baked into the image
+  by the `Dockerfile`). If you cannot ship the CA, fall back to `?sslmode=no-verify`
+  (encrypted, identity unverified). Verify the connection still succeeds in the
+  target environment before cutover.
 - **Backups**: `db:restore-check` needs a role that can `CREATE/DROP DATABASE`
   and real `pg_dump`/`pg_restore` binaries on the host (`PG_BIN`). The pooler role
   has `createdb`, but run the client tools from the host against a maintenance

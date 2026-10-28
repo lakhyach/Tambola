@@ -18,7 +18,7 @@ kill_timeout = "20s"
   PORT = "4000"
   TRUST_PROXY = "1"
   TAMBOLA_COOKIE_SECURE = "1"
-  # PUBLIC_ORIGIN, DATABASE_URL (with ?sslmode=require), OWNER_MFA_KEY -> secrets.
+  # PUBLIC_ORIGIN, DATABASE_URL (with ?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem), OWNER_MFA_KEY -> secrets.
 
 [[services]]
   internal_port = 4000

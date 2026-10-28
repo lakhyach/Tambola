@@ -36,6 +36,11 @@ COPY --from=client-build /build/dist ./client/dist
 # Migration SQL and the owner/backup CLIs live under server/ and scripts/; the
 # server applies migrations itself on boot, scripts/ is for operator tooling.
 COPY scripts/ ./scripts/
+# Pinned Supabase root/intermediate CA so DATABASE_URL can use the safest TLS
+# mode (?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem). It is
+# a public certificate, not a secret. Re-download from the Supabase dashboard if
+# Supabase ever rotates it.
+COPY deploy/supabase-root-ca.pem ./deploy/supabase-root-ca.pem
 EXPOSE 4000
 # Container-level liveness/readiness probe. /readyz fails closed if the DB, a
 # migration, or the single-instance lease is unavailable, which is exactly the

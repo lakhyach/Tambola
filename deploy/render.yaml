@@ -10,10 +10,20 @@
 #
 # DATABASE_URL (production) MUST be the Supabase SESSION pooler on port 5432
 # (NOT the 6543 transaction pooler) because the single-instance lease uses a
-# session-scoped pg_try_advisory_lock. Append ?sslmode=require for TLS; the app
-# passes the connection string to node-postgres without an ssl option, so the
-# mode is controlled solely by the query string. URL-encode any special chars in
-# the password (e.g. a leading @ becomes %40) so the host parses correctly.
+# session-scoped pg_try_advisory_lock. The app passes the connection string to
+# node-postgres with no ssl option, so TLS is controlled solely by the query
+# string. URL-encode any special chars in the password (e.g. a leading @ becomes
+# %40) so the host parses correctly.
+#
+# TLS: Supabase's pooler is signed by its OWN private CA ("Supabase Root 2021
+# CA"), which is NOT in the OS trust store, so a plain ?sslmode=require FAILS on
+# pg >= 8.11 / pg-connection-string >= 2.6 (require now means verify-full) with
+# "self-signed certificate in certificate chain". Use the safest supported form:
+#   ?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem
+# which encrypts AND verifies the certificate + hostname against the pinned CA
+# that the Dockerfile bakes into the image (deploy/supabase-root-ca.pem). If you
+# cannot ship the CA file, the acceptable fallback is ?sslmode=no-verify (TLS
+# encrypted, identity NOT verified) - never omit sslmode, which sends plaintext.
 
 services:
   - type: web
@@ -40,7 +50,7 @@ services:
       - key: PUBLIC_ORIGIN
         value: https://REPLACE-ME.onrender.com   # or your custom https domain
       # --- secrets: create as Environment Values in the dashboard, never here ---
-      - key: DATABASE_URL      # postgres://...sslmode=require  (see README)
+      - key: DATABASE_URL      # postgres://...?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem  (see README)
         sync: false
       - key: OWNER_MFA_KEY
         sync: false

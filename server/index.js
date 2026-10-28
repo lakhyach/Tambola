@@ -131,7 +131,7 @@ export async function createApp(options = {}) {
   // One structured logger for the whole process; `log(...)` stays the legacy
   // positional adapter every existing module already calls.
   const logger = options.logger || createLogger({ level: options.logLevel || process.env.LOG_LEVEL || "info", service: "tambola" });
-  const log = options.log || logger.shim();
+  const log = options.log || logger.shim;
   const app = express();
   const server = http.createServer(app);
   // Behind a real proxy (nginx, a PaaS) TRUST_PROXY=1 makes req.ip / req.protocol

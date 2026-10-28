@@ -45,30 +45,46 @@ the repo, never in `.env` committed**:
 | `TRUST_PROXY` | `1` (all three are real TLS-terminating proxies) | no |
 | `TAMBOLA_COOKIE_SECURE` | `1` (Secure cookies over HTTPS) | no |
 | `PUBLIC_ORIGIN` | exact https origin (`https://<domain>`) | no |
-| `DATABASE_URL` | your Supabase URL **+ `?sslmode=require`** (see TLS below) | **yes** |
+| `DATABASE_URL` | your Supabase URL **+ `?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem`** (see TLS below) | **yes** |
 | `OWNER_MFA_KEY` | your existing base64/hex key, set ONCE and backed up separately | **yes** |
 
 Health check path: **`/readyz`** (fails closed on DB / migrations / lease / drain).
 `/livez` is liveness-only; `/healthz` is the full snapshot. Shutdown grace: the app
 drains on SIGTERM in well under a second, so a 15-30s grace is ample.
 
-### Enabling TLS on the Supabase connection (without touching your local `.env`)
+### Enabling TLS on the Supabase connection (verified against pg 8.23.1 / pg-connection-string 2.14.1)
 
 `server/db/pool.js` passes `connectionString` straight to `pg` with no `ssl` option,
-so `pg` only uses TLS if the URL itself says so. The current URL has no `sslmode`,
-and the Supabase session pooler accepts plaintext - so traffic is currently
-**unencrypted**. To secure it you do NOT edit the repo `.env`; you set the value in
-the provider's secret manager:
+so `pg` only uses TLS if the URL says so. Omitting `sslmode` sends traffic in
+**plaintext**, so a mode is mandatory.
 
-- Append `?sslmode=require` to the `DATABASE_URL` **stored as the provider secret**
-  (encryption in transit; the pooler/Supabase cert is valid). This is the only
-  change needed - it is a connection-string query param, not a code change.
-- For strict certificate verification use `?sslmode=verify-full` and provide the
-  Supabase/root CA (`fullchain.pem`) to the container; for a hobby game `require`
-  is the standard, low-footprint choice.
-- Because the DB password itself contains a `@`, keep the whole value quoted when
-  pasting into the dashboard, and verify TLS with a one-off connection check that
-  prints only `current_database()`/success - never the URL/password.
+**Important:** Supabase's pooler certificate is signed by Supabase's **own private
+CA** (`Supabase Root 2021 CA` -> `Supabase Intermediate 2021 CA` -> `*.pooler.supabase.com`),
+which is **not** in the OS trust store. On current `pg`/`pg-connection-string`,
+`?sslmode=require` is an alias for `verify-full`, so it **fails** with
+`self-signed certificate in certificate chain`. The old `?sslmode=require` advice
+in this file was wrong for the supported runtime.
+
+The safest supported configuration - and Supabase's own recommendation - is to
+**verify the certificate and hostname against the pinned CA**:
+
+```
+?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem
+```
+
+- `deploy/supabase-root-ca.pem` is the public Supabase root+intermediate CA bundle
+  (not a secret). The repo-root `Dockerfile` copies it to `/app/deploy/supabase-root-ca.pem`,
+  so the path resolves inside the container and on Render/Fly (same image).
+- Verified working: a `verify-full` connection with this CA returns
+  `authorized=true` and `select 1` succeeds against the session pooler.
+- **Fallback** when you cannot ship the CA file: `?sslmode=no-verify` (TLS is
+  encrypted but the server identity is NOT verified - vulnerable to MITM). Prefer
+  `verify-full`; use `no-verify` only if pinning is impossible.
+- Re-download the CA from the Supabase dashboard (Database settings -> SSL ->
+  Download certificate) if Supabase rotates it, and re-commit the file.
+- Keep the whole value quoted when pasting into a dashboard (the password has a
+  `@`), and verify with a one-off check that prints only `current_database()` /
+  success - never the URL or password.
 - Confirm you are on the **session pooler (port 5432)**, not the transaction pooler
   (6543): the lease uses a session-scoped advisory lock and pins `search_path` per
   connection, both of which break under transaction pooling.
@@ -108,8 +124,9 @@ the provider's secret manager:
 1. Create a Render account (card required for the $7 paid instance; Hobby workspace is free).
 2. New -> Blueprint -> connect `lakhyach/Tambola`. It reads `deploy/render.yaml`.
 3. Confirm **region = Frankfurt**; instance **Starter (0.5c/512MB)**.
-4. Set `DATABASE_URL` (with `?sslmode=require`) and `OWNER_MFA_KEY` as **secret
-   Environment Values**; set `PUBLIC_ORIGIN` to the assigned `https://*.onrender.com`.
+4. Set `DATABASE_URL` (with `?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem`)
+   and `OWNER_MFA_KEY` as **secret Environment Values**; set `PUBLIC_ORIGIN` to the
+   assigned `https://*.onrender.com`.
 5. Deploy. Check `/readyz` returns `ready:true, lease.held:true`. Then run the Owner/MFA
    steps above. Custom domain + TLS: add in Render, set `PUBLIC_ORIGIN` to it.
 
@@ -117,12 +134,12 @@ the provider's secret manager:
 1. `flyctl auth login` (card on file; no free tier).
 2. Edit `deploy/fly.toml` `app=` to a unique name; `flyctl launch --from-file deploy/fly.toml`.
 3. `flyctl secrets set DATABASE_URL=... OWNER_MFA_KEY=... PUBLIC_ORIGIN=https://<app>.fly.dev`
-   (keep `DATABASE_URL` with `?sslmode=require`; primary region `fra`).
+   (keep `DATABASE_URL` with `?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem`; primary region `fra`).
 4. `flyctl deploy`; verify `/readyz` and one running machine (`min_machines_running=1`).
 
 ### Railway (verify region first)
 1. Confirm an EU/Frankfurt region is offered for your project before committing;
    otherwise latency to the DB is a concern (see comparison).
 2. New project from GitHub; it uses `deploy/railway.json` (Dockerfile build).
-3. Add `DATABASE_URL` (+`?sslmode=require`), `OWNER_MFA_KEY`, `PUBLIC_ORIGIN` in Variables.
+3. Add `DATABASE_URL` (+`?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem`), `OWNER_MFA_KEY`, `PUBLIC_ORIGIN` in Variables.
 4. Deploy; verify `/readyz`. Keep `numReplicas: 1`.
