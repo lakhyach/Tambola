@@ -3,10 +3,17 @@
 # The repo-root Dockerfile is used automatically.
 #
 # SECRET VALUES ARE INTENTIONALLY NOT HERE. After the first deploy, set
-# DATABASE_URL (with ?sslmode=require), OWNER_MFA_KEY and PUBLIC_ORIGIN in
-# Render's encrypted "Environment Values" and mark DATABASE_URL/OWNER_MFA_KEY as
-# secrets. `sync: false` means Render will not try to source them from anywhere
-# but the dashboard, so they are never committed.
+# DATABASE_URL, OWNER_MFA_KEY and PUBLIC_ORIGIN in Render's encrypted
+# "Environment Values" and mark DATABASE_URL/OWNER_MFA_KEY as secrets. `sync: false`
+# means Render will not try to source them from anywhere but the dashboard, so they
+# are never committed.
+#
+# DATABASE_URL (production) MUST be the Supabase SESSION pooler on port 5432
+# (NOT the 6543 transaction pooler) because the single-instance lease uses a
+# session-scoped pg_try_advisory_lock. Append ?sslmode=require for TLS; the app
+# passes the connection string to node-postgres without an ssl option, so the
+# mode is controlled solely by the query string. URL-encode any special chars in
+# the password (e.g. a leading @ becomes %40) so the host parses correctly.
 
 services:
   - type: web
@@ -22,6 +29,10 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DB_SCHEMA
+        value: public           # matches the Supabase default schema the app pins to
+      - key: MFA_ISSUER
+        value: Tambola          # label shown in authenticator apps (cosmetic)
       - key: TRUST_PROXY
         value: "1"             # Render is a real TLS-terminating reverse proxy
       - key: TAMBOLA_COOKIE_SECURE
