@@ -1,0 +1,42 @@
+{
+  "name": "tambola",
+  "version": "1.0.0",
+  "description": "online multiplayer tambola game",
+  "main": "server/index.js",
+  "type": "module",
+  "scripts": {
+    "server": "nodemon --env-file-if-exists=.env server/index.js",
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "test": "node --env-file-if-exists=.env --test \"tests/*.test.js\"",
+    "test:watch": "node --env-file-if-exists=.env --test --watch \"tests/*.test.js\"",
+    "migrate": "node --env-file-if-exists=.env server/db/migrate.js",
+    "owner:create": "node --env-file-if-exists=.env scripts/owner.js create",
+    "owner:list": "node --env-file-if-exists=.env scripts/owner.js list",
+    "owner:reset": "node --env-file-if-exists=.env scripts/owner.js reset",
+    "owner:mfa-reset": "node --env-file-if-exists=.env scripts/owner.js mfa-reset",
+    "owner:remove": "node --env-file-if-exists=.env scripts/owner.js remove",
+    "db:backup": "node --env-file-if-exists=.env scripts/backup.js",
+    "db:restore-check": "node --env-file-if-exists=.env scripts/restore-check.js",
+    "build": "npm install && npm install --prefix client && npm run build --prefix client"
+  },
+  "keywords": [
+    "tambola",
+    "game",
+    "website"
+  ],
+  "author": "sumeet umbalkar",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "nodemon": "^3.1.3",
+    "otpauth": "^9.5.2",
+    "path": "^0.12.7",
+    "pg": "^8.23.1",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.7.5"
+  },
+  "devDependencies": {
+    "socket.io-client": "^4.7.5"
+  }
+}

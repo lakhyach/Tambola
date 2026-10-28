@@ -1,0 +1,325 @@
+/*
+ * OBSIDIAN HALL — component styles
+ * --------------------------------
+ * Signature elements (surfaces, buttons, number tiles, ticket cells, the
+ * current-number reveal, toasts) are hand-authored here because Tailwind
+ * utilities alone read as a generic dashboard. Layout/spacing still uses
+ * Tailwind in the JSX; this file owns the *identity*.
+ *
+ * These are plain (unlayered) rules on purpose: this file is imported as its
+ * own stylesheet, so it cannot reference Tailwind's @layer API. Unlayered CSS
+ * wins over Tailwind's layered utilities, which is exactly what we want for the
+ * signature components; the few utility overrides we need use inline styles.
+ */
+
+/* ---------------------------------------------------------------- surfaces */
+.oh-app-shell {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+  padding: clamp(12px, 3vw, 28px);
+}
+
+.oh-panel {
+  position: relative;
+  background: linear-gradient(180deg, var(--oh-panel), var(--oh-graphite));
+  border: 1px solid var(--oh-line);
+  border-radius: var(--oh-r-lg);
+  box-shadow: var(--oh-shadow), var(--oh-inner-glow);
+}
+
+.oh-panel--flush {
+  border-radius: var(--oh-r-md);
+}
+
+.oh-eyebrow {
+  font-family: var(--oh-font-ui);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--oh-text-faint);
+}
+
+.oh-display {
+  font-family: var(--oh-font-display);
+}
+
+.oh-num {
+  font-family: var(--oh-font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: 0.02em;
+}
+
+.oh-rule {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--oh-line-gold), transparent);
+  border: 0;
+}
+
+/* --------------------------------------------------------------- buttons */
+.oh-btn {
+  --_pad-y: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--oh-font-ui);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  padding: var(--_pad-y) 18px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  user-select: none;
+  transition: transform var(--oh-fast) var(--oh-ease),
+    background var(--oh-med) var(--oh-ease), box-shadow var(--oh-med) var(--oh-ease),
+    opacity var(--oh-fast) linear;
+}
+.oh-btn:active {
+  transform: translateY(1px) scale(0.985);
+}
+.oh-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.oh-btn--gold {
+  color: #1a1408;
+  background: linear-gradient(180deg, var(--oh-gold-bright), var(--oh-gold) 55%, var(--oh-gold-deep));
+  box-shadow: 0 10px 24px -14px rgba(207, 171, 99, 0.9), var(--oh-inner-glow);
+}
+.oh-btn--gold:hover:not(:disabled) {
+  box-shadow: 0 14px 30px -12px rgba(207, 171, 99, 0.95), var(--oh-inner-glow);
+}
+
+.oh-btn--ghost {
+  color: var(--oh-text);
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--oh-line);
+}
+.oh-btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: var(--oh-silver-dim);
+}
+
+.oh-btn--danger {
+  color: #f6dede;
+  background: rgba(208, 106, 106, 0.14);
+  border-color: rgba(208, 106, 106, 0.4);
+}
+.oh-btn--danger:hover:not(:disabled) {
+  background: rgba(208, 106, 106, 0.24);
+}
+
+.oh-btn--sm {
+  --_pad-y: 6px;
+  font-size: 12px;
+  padding-inline: 14px;
+}
+.oh-btn--block {
+  width: 100%;
+}
+
+/* ------------------------------------------------------------- fields */
+.oh-field {
+  width: 100%;
+  font-family: var(--oh-font-ui);
+  font-size: 16px;
+  color: var(--oh-text);
+  background: var(--oh-inset);
+  border: 1px solid var(--oh-line);
+  border-radius: var(--oh-r-md);
+  padding: 14px 16px;
+  transition: border-color var(--oh-med) var(--oh-ease), background var(--oh-med) var(--oh-ease);
+}
+.oh-field::placeholder {
+  color: var(--oh-text-faint);
+}
+.oh-field:focus {
+  outline: none;
+  border-color: var(--oh-gold);
+  background: #0a0c11;
+  box-shadow: 0 0 0 3px rgba(207, 171, 99, 0.16);
+}
+
+/* ------------------------------------------------------------------- tiles */
+.oh-tile {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--oh-r-tile);
+  font-family: var(--oh-font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 600;
+  user-select: none;
+  background: var(--oh-inset);
+  border: 1px solid var(--oh-line);
+  color: var(--oh-text-faint);
+  transition: background var(--oh-med) var(--oh-ease),
+    color var(--oh-med) var(--oh-ease), border-color var(--oh-med) var(--oh-ease),
+    transform var(--oh-fast) var(--oh-ease);
+}
+
+.oh-tile[data-called="true"] {
+  color: #14100a;
+  border-color: transparent;
+  background: radial-gradient(120% 120% at 30% 20%, var(--oh-gold-bright), var(--oh-gold) 60%, var(--oh-gold-deep));
+  box-shadow: var(--oh-inner-glow), 0 6px 16px -10px rgba(207, 171, 99, 0.8);
+}
+.oh-tile[data-called="true"]::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(20, 16, 10, 0.55);
+}
+
+.oh-tile[data-current="true"] {
+  animation: oh-tile-pop var(--oh-slow) var(--oh-ease-out);
+  box-shadow: 0 0 0 2px var(--oh-ivory), 0 8px 22px -8px rgba(239, 212, 154, 0.9);
+}
+
+.oh-ticket-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--oh-r-sm);
+  font-family: var(--oh-font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 600;
+  font-size: clamp(13px, 3.4vw, 20px);
+  user-select: none;
+  background: linear-gradient(180deg, #20242f, #171b23);
+  border: 1px solid var(--oh-line);
+  color: var(--oh-ivory);
+  transition: background var(--oh-med) var(--oh-ease), color var(--oh-med) var(--oh-ease),
+    border-color var(--oh-med) var(--oh-ease), transform var(--oh-fast) var(--oh-ease);
+}
+.oh-ticket-cell[data-empty="true"] {
+  background: repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.025) 0 5px,
+      transparent 5px 10px
+    ),
+    var(--oh-void);
+  border-style: dashed;
+  border-color: var(--oh-line);
+}
+.oh-ticket-cell[data-empty="true"]::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+}
+.oh-ticket-cell[data-called="true"] {
+  background: radial-gradient(120% 120% at 30% 18%, var(--oh-gold-bright), var(--oh-gold) 58%, var(--oh-gold-deep));
+  color: #14100a;
+  border-color: transparent;
+}
+.oh-ticket-cell[data-current="true"] {
+  animation: oh-mark var(--oh-slow) var(--oh-ease-out);
+  box-shadow: 0 0 0 2px var(--oh-ivory);
+}
+
+/* ---------------------------------------------------------------- reveal */
+.oh-reveal {
+  display: grid;
+  place-items: center;
+  width: clamp(120px, 42vw, 220px);
+  aspect-ratio: 1 / 1;
+  border-radius: 28px;
+  background: radial-gradient(120% 120% at 50% 0%, rgba(239, 212, 154, 0.16), transparent 60%),
+    linear-gradient(180deg, var(--oh-panel-raised), var(--oh-graphite));
+  border: 1px solid var(--oh-line-gold);
+  box-shadow: var(--oh-shadow-lift), var(--oh-inner-glow);
+  position: relative;
+  overflow: hidden;
+}
+.oh-reveal__num {
+  font-family: var(--oh-font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 700;
+  font-size: clamp(64px, 22vw, 128px);
+  line-height: 1;
+  color: var(--oh-gold-bright);
+  text-shadow: 0 8px 30px rgba(207, 171, 99, 0.35);
+}
+.oh-reveal__num[data-anim="true"] {
+  animation: oh-reveal var(--oh-slow) var(--oh-ease-out);
+}
+
+/* ---------------------------------------------------------------- toast */
+.oh-toast {
+  background: linear-gradient(180deg, var(--oh-panel-raised), var(--oh-graphite));
+  border: 1px solid var(--oh-line-gold);
+  border-radius: var(--oh-r-md);
+  box-shadow: var(--oh-shadow-lift);
+  animation: oh-toast-in var(--oh-med) var(--oh-ease-out);
+}
+
+@keyframes oh-tile-pop {
+  0% {
+    transform: scale(0.82);
+  }
+  60% {
+    transform: scale(1.06);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes oh-mark {
+  0% {
+    transform: scale(0.85) rotate(-3deg);
+  }
+  55% {
+    transform: scale(1.08) rotate(1deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+@keyframes oh-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(14px) scale(0.7);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+@keyframes oh-toast-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

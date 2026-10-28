@@ -1,0 +1,40 @@
+# dependencies
+node_modules/
+
+# builds
+client/build/
+client/dist/
+dist/
+build/
+
+# environment - never commit a real .env, only the .env.example template
+.env
+.env.*
+!.env.example
+
+# database backups (pg_dump archives + manifests) - never commit dump data
+backups/
+*.dump
+*.manifest.json
+
+# local PostgreSQL data directory - the whole cluster (data, WAL, pg_hba, pid);
+# never belongs in version control
+.pgdata/
+
+# local tooling / caches / runtime artifacts
+.npm-cache/
+.vercel/
+.preflight/
+.tmp-*
+.cache/
+
+# logs
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# editors / os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * OBSIDIAN HALL — design tokens
+ * --------------------------------
+ * A single source of truth for colour, type, spacing, borders, elevation and
+ * motion. Every component reads these custom properties instead of hard-coded
+ * Tailwind colours, so the identity stays coherent and re-themable. Values are
+ * intentionally restrained: near-black layered surfaces, one champagne-gold
+ * accent, brushed silver and warm ivory. No rainbow, no neon.
+ */
+:root {
+  /* surfaces, darkest to lightest */
+  --oh-void: #06070a;
+  --oh-obsidian: #0b0d12;
+  --oh-graphite: #12151d;
+  --oh-panel: #171b25;
+  --oh-panel-raised: #1d222d;
+  --oh-inset: #0e1117;
+
+  /* hairlines */
+  --oh-line: #262c39;
+  --oh-line-soft: rgba(255, 255, 255, 0.06);
+  --oh-line-gold: rgba(208, 170, 100, 0.35);
+
+  /* metal accents */
+  --oh-gold: #cfab63;
+  --oh-gold-bright: #efd49a;
+  --oh-gold-deep: #9a7a34;
+  --oh-silver: #b7bcc7;
+  --oh-silver-dim: #878d99;
+  --oh-ivory: #f3eee1;
+
+  /* text */
+  --oh-text: #e9e4d8;
+  --oh-text-muted: #9aa0ad;
+  --oh-text-faint: #6b717e;
+
+  /* semantics */
+  --oh-ok: #64b78f;
+  --oh-warn: #d8a24a;
+  --oh-danger: #d06a6a;
+  --oh-info: #7aa0c7;
+
+  /* elevation */
+  --oh-shadow: 0 18px 40px -22px rgba(0, 0, 0, 0.85), 0 2px 8px -4px rgba(0, 0, 0, 0.6);
+  --oh-shadow-lift: 0 26px 60px -26px rgba(0, 0, 0, 0.9);
+  --oh-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  /* radii */
+  --oh-r-sm: 8px;
+  --oh-r-md: 14px;
+  --oh-r-lg: 22px;
+  --oh-r-tile: 12px;
+
+  /* motion */
+  --oh-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --oh-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --oh-fast: 140ms;
+  --oh-med: 260ms;
+  --oh-slow: 420ms;
+
+  /* typography: system stacks only, no web-font dependency */
+  --oh-font-display: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+    ui-serif, "Times New Roman", serif;
+  --oh-font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --oh-font-num: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+/*
+ * Base reset. We avoid the previous blanket `* { user-select: none }` because
+ * it blocked selecting the room code and chat text; selection is off only on
+ * interactive game tiles where it would hurt a tap.
+ */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  body {
+    margin: 0;
+    font-family: var(--oh-font-ui);
+    color: var(--oh-text);
+    background: var(--oh-void);
+    background-image:
+      radial-gradient(1100px 600px at 50% -12%, rgba(207, 171, 99, 0.1), transparent 60%),
+      radial-gradient(900px 500px at 85% 120%, rgba(122, 160, 199, 0.06), transparent 55%),
+      linear-gradient(180deg, var(--oh-obsidian), var(--oh-void) 70%);
+    background-attachment: fixed;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--oh-font-display);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+
+  /* one consistent, visible focus treatment across the app */
+  :where(button, a, input, select, [tabindex]):focus-visible {
+    outline: 2px solid var(--oh-gold-bright);
+    outline-offset: 2px;
+    border-radius: var(--oh-r-sm);
+  }
+
+  ::selection {
+    background: rgba(207, 171, 99, 0.28);
+  }
+}

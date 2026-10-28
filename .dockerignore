@@ -1,0 +1,36 @@
+# Keep the Docker build context small and, critically, keep secrets and local
+# runtime state out of it entirely. The Dockerfile COPYs only what it needs,
+# but this guards against accidentally widening a COPY.
+.git
+.gitignore
+
+# secrets and local config - never belong in an image or its build context
+.env
+.env.*
+!.env.example
+
+# dependencies (installed inside the image via npm ci)
+node_modules
+client/node_modules
+
+# build output regenerated inside the image
+client/dist
+client/build
+dist
+build
+
+# local database cluster, backups, caches, logs, test artifacts
+.pgdata
+backups
+*.dump
+*.manifest.json
+.npm-cache
+.preflight
+.vercel
+*.log
+tmp
+
+# not needed at runtime
+tests
+.playwright-mcp
+.playwright-profile

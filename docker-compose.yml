@@ -1,0 +1,72 @@
+# Self-contained single-host deployment for Tambola: exactly ONE app instance
+# plus PostgreSQL. The app deliberately holds a database-wide advisory lease, so
+# do NOT scale `app` above one replica - a second instance will fail closed on
+# /readyz by design (see server/RUNBOOK.md sections 4 and 11).
+#
+# Secrets (DATABASE_URL, OWNER_MFA_KEY, ...) are read from a local .env that
+# Compose picks up automatically. Never commit that .env.
+#
+#   docker compose up -d --build
+#   docker compose logs -f app
+#
+# Put TLS/HTTPS in front of this with a reverse proxy (Caddy/Traefik/nginx) or a
+# managed load balancer; set TRUST_PROXY=1 and TAMBOLA_COOKIE_SECURE=1 there.
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tambola}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-tambola}
+    volumes:
+      - tambola-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tambola} -d ${POSTGRES_DB:-tambola}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Exposed only to the app network. Add a `ports:` mapping temporarily if
+    # you need to run the backup CLI from the host, then remove it.
+    networks: [tambola]
+
+  app:
+    build: .
+    image: tambola:latest
+    restart: unless-stopped
+    # Exactly one instance. The advisory lease makes extra replicas refuse work.
+    deploy:
+      replicas: 1
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      # Migrations 001/002/003 apply automatically on boot.
+      DATABASE_URL: postgres://${POSTGRES_USER:-tambola}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-tambola}
+      DB_SCHEMA: public
+      # Secrets come from .env / the host secret store, never hard-coded here.
+      OWNER_USERNAME: ${OWNER_USERNAME:-}
+      OWNER_EMAIL: ${OWNER_EMAIL:-}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-}
+      OWNER_MFA_KEY: ${OWNER_MFA_KEY:-}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      TAMBOLA_COOKIE_SECURE: ${TAMBOLA_COOKIE_SECURE:-1}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FILE: ${LOG_FILE:-}
+    volumes:
+      # Backups land on a volume separate from the live DB data directory.
+      - tambola-backups:/app/backups
+    ports:
+      - "4000:4000"
+    networks: [tambola]
+
+volumes:
+  tambola-pgdata:
+  tambola-backups:
+
+networks:
+  tambola:
