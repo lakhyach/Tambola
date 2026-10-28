@@ -93,6 +93,30 @@ separate durable object storage (the `backups/` volume in `docker-compose.yml` i
 a local example only). `OWNER_MFA_KEY` is backed up separately from the database.
 Details: `server/RUNBOOK.md` §7.
 
+## Managed Postgres (e.g. Supabase) notes
+
+The project's production `DATABASE_URL` is a Supabase **session pooler**
+(`…pooler.supabase.com:5432`). Two things matter for this app specifically:
+
+- **Use the session pooler (port 5432), never the transaction pooler (6543).**
+  The single-instance lease uses a session-scoped `pg_try_advisory_lock` and the
+  pool pins `search_path` per connection (`server/db/pool.js`); transaction
+  pooling multiplexes sessions and breaks both. Verified: the app's connection
+  path (connection string only) reaches Supabase and holds the lease.
+- **Enable TLS in production.** The URL as shipped connects without `sslmode`,
+  which the Supabase pooler accepts but leaves game data and credentials in
+  plaintext. Append `?sslmode=require` to `DATABASE_URL` (Supabase ships a valid
+  certificate) so `pg` negotiates TLS; verify the connection still succeeds in
+  the target environment before cutover.
+- **Backups**: `db:restore-check` needs a role that can `CREATE/DROP DATABASE`
+  and real `pg_dump`/`pg_restore` binaries on the host (`PG_BIN`). The pooler role
+  has `createdb`, but run the client tools from the host against a maintenance
+  connection, and treat the provider's own daily backup as the primary safety net.
+- **Never run the automated test suite against the production database.** It
+  creates and drops `tambola_test_*` / `tambola_harden_*` schemas; point
+  `DATABASE_URL` at a scratch database when testing (as done here on a local
+  container), not at the live `postgres` database.
+
 ## Post-deploy verification
 
 Confirm the public URL, not just the build: landing page, room creation, an
