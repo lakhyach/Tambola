@@ -64,12 +64,22 @@ behaviour in [`docs/PLAYER-GAMEPLAY.md`](docs/PLAYER-GAMEPLAY.md); numbers in
   successful pick instead of announcing the new count.
 - Claim buttons were 32px tall — under the 44px minimum — and ticket tabs were
   40px; both are now 44px.
+- **GitHub CI was red on every run since the workflow was written** while all six
+  local gates were green, because the suite ran before the environment it assumes
+  existed: `npm test` ran before the client build (the smoke suite asks a live
+  server for `client/dist`, and `/` answers 503 without it) and against a service
+  database that had never been migrated (the backup suite dumps that database and
+  asserts the manifest records its migration ledger, and an unmigrated database
+  reports an empty one). `ci.yml` now migrates and builds before it tests, and
+  `npm run verify` runs `lint → build → test → secret-scan` for the same reason.
+  Both causes were reproduced against a scratch database before either line was
+  changed; no assertion was relaxed and no test was skipped.
 
 ### Verified
 
 `npm test` printed **516 tests / 516 pass / 0 fail** (18 suites); `npm run lint`
 clean at `--max-warnings 0`; production build 132 modules, CSS 46.53 kB (gzip
-9.75), JS 385.05 kB (gzip 116.07); `secret-scan` clean over 220 files;
+9.75), JS 385.05 kB (gzip 116.07); `secret-scan` clean over 221 files;
 `security-probe` **51 of 51**; `e2e` and `e2e:durable` each played a full game to
 `COMPLETED` with valid, premature, invented and duplicate claims; the browser
 harness held **78 of 78** checks with **0** console errors across 360, 390, 430,

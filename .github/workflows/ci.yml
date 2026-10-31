@@ -62,14 +62,32 @@ jobs:
           pg_dump --version
           echo "PG_BIN=$(dirname "$(command -v pg_dump)")" >> "$GITHUB_ENV"
 
+      # Two things the suite legitimately needs before it can mean anything.
+      # Both were missing until Phase 18, which is why CI was red while every
+      # local gate was green:
+      #
+      #  - the migration ledger on the root database. tests/hardening.test.js
+      #    backs this database up and asserts the manifest records the ledger it
+      #    just dumped. A service container that was never migrated has no
+      #    schema_migrations table, and scripts/pg-cli.js reads a missing ledger
+      #    as an empty one - so the promise the test checks was false here and
+      #    true on a developer machine that had run `npm run migrate` once.
+      #  - the built client. tests/smoke-deploy.test.js asks a real listening
+      #    server for `/` and requires the SPA, and server/index.js answers 503
+      #    "the web client has not been built yet" when client/dist is absent.
+      #    A deployment is only ready when both are true, so the build belongs
+      #    before the suite rather than after it.
+      - name: database migrations (the backup suite asserts against them)
+        run: npm run migrate
+
+      - name: client production build (the smoke suite serves it)
+        run: npm run build --prefix client
+
       - name: unit and integration tests (durable suites included)
         run: npm test
 
       - name: client lint
         run: npm run lint
-
-      - name: client production build
-        run: npm run build --prefix client
 
       - name: secret scan
         run: npm run secret-scan

@@ -185,6 +185,7 @@ Compose reads secrets from your local `.env`. Put TLS in front of it and set
 
 ```bash
 npm test                 # the whole suite (Node's built-in runner)
+npm run migrate          # apply the schema to DATABASE_URL (the backup suite asserts against it)
 npm run lint             # client ESLint, zero warnings allowed
 npm run e2e              # a complete game through the real engine, in memory
 npm run e2e:durable      # the identical game against real Postgres persistence
@@ -194,7 +195,7 @@ npm run secret-scan      # no credential in shipped content or in the built bund
 npm run security-probe   # 51 live checks of the HTTP and socket surface, in-process
 npm run env:check        # validate this environment before a deploy (no values printed)
 npm run smoke -- --url http://127.0.0.1:4000 --full   # prove a running server, board and socket
-npm run verify           # test + lint + build + secret-scan, in one command
+npm run verify           # lint + build + test + secret-scan, in one command
 ```
 
 The caller console and the player's screens each have their own driveable browser
@@ -215,8 +216,13 @@ results), and the audit checks roles, accessible names, heading order, 44px touc
 targets and computed WCAG contrast rather than trusting the CSS.
 
 `npm test` needs a reachable PostgreSQL for the durable and backup tests; without
-one those tests skip and say so instead of passing quietly. The results of the most
-recent full run are in [`TEST-REPORT.md`](TEST-REPORT.md).
+one those tests skip and say so instead of passing quietly. Two suites also assert
+things a bare checkout does not have yet: the smoke suite asks a live server for the
+built client, so `client/dist` must exist, and the backup suite dumps the database
+`DATABASE_URL` points at and requires the migration ledger in it, so `npm run
+migrate` must have run. `npm run verify` therefore builds before it tests, and CI
+migrates and builds before it runs the suite. The results of the most recent full
+run are in [`TEST-REPORT.md`](TEST-REPORT.md).
 
 ## Re-branding it
 

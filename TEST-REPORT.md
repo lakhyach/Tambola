@@ -65,7 +65,7 @@ npm run lint             # client ESLint, --max-warnings 0
 npm run build            # installs both workspaces, builds client/dist
 npm run secret-scan      # no credential in shipped content or in the built bundle
 npm run security-probe   # 51 live checks of the HTTP and socket surface, in-process
-npm run verify           # test + lint + build + secret-scan, one command
+npm run verify           # lint + build + test + secret-scan, one command
 npm run e2e              # a complete game through the real engine, in memory
 npm run e2e:durable      # the identical game against real Postgres persistence
 npm run db:backup        # pg_dump + manifest
@@ -77,6 +77,14 @@ node .preflight/tools/p17-caller.mjs   # the caller console in a real browser (s
 tests. Without a database those tests **skip and say so** rather than passing
 quietly. The run recorded below had a live database and reported `skipped 0`, so
 all 408 of them actually executed.
+
+Two suites also need artefacts a bare checkout does not have: the smoke suite asks a
+live server for the built client, so `client/dist` must exist, and the backup suite
+dumps the database `DATABASE_URL` points at and requires its migration ledger, so
+`npm run migrate` must have run. Phase 18 found GitHub CI failing on exactly that
+(defect 7 in §11.5) and fixed the ordering in `.github/workflows/ci.yml` and in
+`npm run verify`. Neither assertion was weakened; the environment was made to match
+the promise the test makes.
 
 ---
 
@@ -775,13 +783,14 @@ same process.
 
 | Gate | Command | Result |
 |---|---|---|
-| Unit + integration | `npm test` | `tests 516 / suites 18 / pass 516 / fail 0 / skipped 0 / todo 0`, 11 599 ms |
+| Unit + integration | `npm test` | `tests 516 / suites 18 / pass 516 / fail 0 / skipped 0 / todo 0` — 11 599 ms, re-run against the shipped commit at 16 380 ms |
 | Lint | `npm run lint` | clean, `--max-warnings 0` |
 | Production build | `npm run build --prefix client` | 132 modules, `index.css` 46.53 kB (gzip 9.75), `index.js` 385.05 kB (gzip 116.07), 1.68 s |
-| Secret scan | `npm run secret-scan` | 220 files inspected, 2 `.env` values and 7 credential shapes checked, `SECRET SCAN PASSED` |
+| Secret scan | `npm run secret-scan` | 221 files inspected, 2 `.env` values and 7 credential shapes checked, `SECRET SCAN PASSED` |
 | Security probe | `npm run security-probe` | `RESULT: PASS — 51 of 51 checks held` |
 | Full game, in memory | `npm run e2e` | `PASS`, 77 calls, 6 awards, 6 rejected claims, engine integrity assertion passed |
 | Full game, durable | `npm run e2e:durable` | `PASS`, 74 calls, 6 awards, 6 rejected claims, throwaway schema dropped |
+| GitHub CI on the pushed commit | `.github/workflows/ci.yml`, run 41201303689 | **FAILED first, then fixed** — `tests 516 / pass 514 / fail 2`, both failures CI-environment ordering (defect 7), not Phase 18 behaviour. Every CI run on this repository since the workflow was written had been red for the same two reasons |
 
 The suite grew from 447 to 516 with four files that did not exist before Phase 18:
 
@@ -929,6 +938,29 @@ and 12 tickets — the hard ceiling, because the room was configured with
    round set `draw: [1..90]` while claiming `TOP_LINE` had been called, and the
    engine refused it (`call 1 does not match the stored draw plan`) — the new
    integrity check working as designed.
+7. **GitHub CI had been red since the workflow existed** — and every local gate was
+   green, which is exactly the gap this defect hides. Run 41201303689 (the Phase 18
+   push) printed `tests 516 / pass 514 / fail 2`; run 41188587224 (the Phase 17 push)
+   printed `tests 447 / pass 445 / fail 2`, the same two tests both times:
+   - `tests/smoke-deploy.test.js` starts a real server and asks `/` for the built
+     SPA, but CI ran `npm test` **before** the client build step, and
+     `server/index.js` answers 503 "the web client has not been built yet" with no
+     `client/dist`. On a developer machine the directory is left over from the last
+     build, so the test passes locally and lies about a clean checkout.
+   - `tests/hardening.test.js` dumps the `DATABASE_URL` database and asserts the
+     manifest records the migration ledger. CI's `postgres:16-alpine` service
+     container had never been migrated, so it has no `schema_migrations` table, and
+     `scripts/pg-cli.js` reads a missing ledger as `[]`. Again the local database
+     *was* migrated, so the assertion only held at the desk.
+
+   Both were reproduced before being fixed: an empty scratch database was created
+   locally and `scripts/backup.js` run against it wrote `migrationLedger: []`
+   (the assertion fails); `npm run migrate` on that same database then produced a
+   ledger of 4 entries over 18 tables (it passes). The fix is ordering, not the
+   assertions: `ci.yml` now migrates and builds before `npm test`, and
+   `npm run verify` runs `lint → build → test → secret-scan` so the local gate has
+   the same honest dependency order. No assertion was relaxed and no test was
+   skipped.
 
 ### 11.6 What this pass does not prove
 

@@ -41,10 +41,11 @@ Read [`README.md`](README.md) first, then the document that matches your change:
 ## Before you open a pull request
 
 ```bash
-npm test          # the whole suite; durable tests skip (and say so) without a database
+npm run migrate   # once per database: the backup suite asserts against the migration ledger
 npm run lint      # client ESLint, zero warnings allowed
-npm run build     # the client bundle
-npm run verify    # test + lint + build + secret-scan, in one command
+npm run build     # the client bundle (the smoke suite serves client/dist)
+npm test          # the whole suite; durable tests skip (and say so) without a database
+npm run verify    # lint + build + test + secret-scan, in one command
 ```
 
 `npm run verify` passing is the bar. Add a test for what you changed: the suite runs
