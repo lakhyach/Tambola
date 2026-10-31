@@ -73,7 +73,8 @@ behaviour in [`docs/PLAYER-GAMEPLAY.md`](docs/PLAYER-GAMEPLAY.md); numbers in
   reports an empty one). `ci.yml` now migrates and builds before it tests, and
   `npm run verify` runs `lint → build → test → secret-scan` for the same reason.
   Both causes were reproduced against a scratch database before either line was
-  changed; no assertion was relaxed and no test was skipped.
+  changed; no assertion was relaxed and no test was skipped. Run 41202342043 is
+  green — the first CI run this repository has ever passed.
 
 ### Verified
 
@@ -86,7 +87,10 @@ harness held **78 of 78** checks with **0** console errors across 360, 390, 430,
 768 and 1440 pixel viewports; the accessibility and call-cost audit held **35 of
 35** (123 of 123 measurable text samples pass WCAG AA, 27/27 grid cells carry
 direction, 0 long tasks, 4 tickets settle 9 ms at p95 against 14 ms for one);
-and 12 durable calls wrote **2 rows each** with **0** ticket-row updates.
+and 12 durable calls wrote **2 rows each** with **0** ticket-row updates. GitHub
+CI — red on every run since the workflow was written — is now green: run
+41202342043 printed `tests 516 / pass 516 / fail 0`, both e2e games `COMPLETED`,
+`RESTORE CHECK PASSED`, the backup artifact uploaded and the docker job up.
 
 ### Not done
 

@@ -263,15 +263,21 @@ capacity claim.
 ## 10. Checking it yourself
 
 ```
+npm run migrate          # once per database: the backup suite asserts the migration ledger
+npm run build --prefix client   # the smoke suite asks a live server for client/dist
 npm test                 # 516 tests, including the ticket property and lifecycle suits
 npm run lint
-npm run build --prefix client
 npm run secret-scan
 npm run security-probe   # 51 checks against a real listening server
 npm run e2e              # a full game in memory, to COMPLETED
 npm run e2e:durable      # the same game through PostgreSQL
 npm start                # then play it at http://127.0.0.1:4000
 ```
+
+`npm run verify` runs those gates in exactly that order — lint, build, test, secret
+scan — because the suite legitimately needs a built client and a migrated database.
+On 31 October 2026 GitHub CI was reordered the same way and passed for the first
+time (run 41202342043, `tests 516 / pass 516 / fail 0`).
 
 The browser harness used for the Phase 18 evidence lives in
 `.preflight/tools/` (ignored by git, because it is a working tool, not a shipped

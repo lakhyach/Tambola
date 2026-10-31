@@ -791,6 +791,8 @@ same process.
 | Full game, in memory | `npm run e2e` | `PASS`, 77 calls, 6 awards, 6 rejected claims, engine integrity assertion passed |
 | Full game, durable | `npm run e2e:durable` | `PASS`, 74 calls, 6 awards, 6 rejected claims, throwaway schema dropped |
 | GitHub CI on the pushed commit | `.github/workflows/ci.yml`, run 41201303689 | **FAILED first, then fixed** — `tests 516 / pass 514 / fail 2`, both failures CI-environment ordering (defect 7), not Phase 18 behaviour. Every CI run on this repository since the workflow was written had been red for the same two reasons |
+| GitHub CI after the fix | run 41202342043 on `d04f347` | **SUCCESS** — 22/22 steps green: migrations, client build, `tests 516 / pass 516 / fail 0`, lint, secret scan, security probe 51/51, in-memory e2e `COMPLETED` on call 83, durable e2e `COMPLETED` on call 85, `npm run db:backup` (51 035-byte dump), `RESTORE CHECK PASSED`, production env gate, backup artifact uploaded; the `docker` job built and started the image |
+| L3 deep security review | before each push | `findings_count: 0` on both Phase 18 commits (`672e153`, `d04f347`) |
 
 The suite grew from 447 to 516 with four files that did not exist before Phase 18:
 
@@ -960,7 +962,10 @@ and 12 tickets — the hard ceiling, because the room was configured with
    assertions: `ci.yml` now migrates and builds before `npm test`, and
    `npm run verify` runs `lint → build → test → secret-scan` so the local gate has
    the same honest dependency order. No assertion was relaxed and no test was
-   skipped.
+   skipped. **Verified on GitHub:** run 41202342043 on `d04f347` finished SUCCESS —
+   `tests 516 / pass 516 / fail 0`, both e2e games `COMPLETED`, `RESTORE CHECK
+   PASSED`, backup artifact uploaded, docker job green. This was the first CI run
+   ever to pass on this repository.
 
 ### 11.6 What this pass does not prove
 
