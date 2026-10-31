@@ -26,7 +26,7 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 | **Chat** | Room chat, EN + HI content, rate-limited, not persisted; sits in a panel, never over the hero number | Profanity filter, report flow, host broadcast banner, kick/ban | P1 (public rooms) / P2 (banner) | Partly |
 | **Administration** | Owner sign-in with TOTP MFA, room audit, health snapshot, durable history, backup/restore verification | No in-room host moderation (kick/ban); no player approval or ticket approval | P1 | **Yes** — admission policy |
 | **Branding** | A complete, working default identity ("Tambola" / "Obsidian Hall", Champagne-gold accent, generated icon set), every part overridable through `VITE_*` build vars — but it is an example, not the client's brand | All of §1 of `docs/CLIENT-REQUIREMENTS.md`: real name, logo, icon set, colours, tagline. Now asked for on one page in `docs/CLIENT-SIGNOFF.md` | P0 | **Yes** |
-| **Security** | 51/51 live probe (headers, CORS origin echo, CSRF, body limits, socket contract, rate budgets); secret scan clean and now run in CI; admin boundary tested; production dependency audit **0 vulnerabilities** after the `socket.io`/`ws` patch upgrades | No L3 deep review was run for this push (user choice). No third-party pentest. Client bundle still carries **2 moderate `react-router-dom` 6.x advisories** whose fix is the 7.x major (SSR-only paths this app does not use) | P1 (before public launch) | No |
+| **Security** | 51/51 live probe (headers, CORS origin echo, CSRF, body limits, socket contract, rate budgets); secret scan clean and now run in CI; admin boundary tested; production dependency audit **0 vulnerabilities** after the `socket.io`/`ws` patch upgrades; **L3 deep security review run before the 16B push, `findings_count: 0`** | No third-party pentest and no review by anyone outside this project. Client bundle still carries **2 moderate `react-router-dom` 6.x advisories** whose fix is the 7.x major (SSR-only paths this app does not use) | P1 (before public launch) | No |
 | **Performance** | 400 concurrent joins, 0 failures; call-to-screen p95 53 ms; call ack p95 70 ms; event-loop p99 32 ms; 800 room lifecycles, 0 errors. **Phase 16B, durable PostgreSQL, 50 rooms × 250 players**: 250 joins, 0 failures, 750 acks, ack p50 44.6 / p95 84.8 ms with the default pool, p95 65.0 ms at `DB_POOL_MAX=16`, 150/150 room syncs, 50/50 reconnects, **0 duplicate calls**, RSS 143 MB, and a database profiler proving the queue was pool checkout (peak 7 active, longest query 23 ms, cache hit 100%, 0 deadlocks) | No hours-long soak, no test above 250 concurrent players, no slow-phone profiling | P1 | No |
 | **Deployment** | Docker image, compose, Render/Fly/Railway manifests, Supabase TLS pinning verified, runbook complete. **Phase 16B adds**: `npm run env:check` (production gate), `npm run smoke -- --full` (live proof, 11/11 against a running server), a CI workflow that runs every gate and builds the image, rollback and pool-sizing procedures, and `docs/DEPLOYMENT-READINESS.md` | **Nothing is deployed.** A host, a domain and the account owner must be chosen; the zero-cost options are a workstation behind a Quick Tunnel (URL changes on restart) or Oracle Always Free (card required) | P0 | **Yes** |
 | **Mobile** | 390×844 verified: `scrollWidth 390`, zero overflow, tabbed tickets, header wrap fixed; mid-round join explained on screen | No real hardware, no iOS Safari, no touch-gesture testing; no PWA install | P1 | No |
@@ -61,10 +61,11 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
    multiple winners above ~10 seats.
 5. **One real handset pass** — the mobile evidence is Chrome emulation at 390×844, not iOS Safari on
    glass.
-6. **An L3 deep security review** (was offered and skipped for this push) and a dependency audit.
-   *(Phase 16B ran the audit and patched the production dependencies to 0 vulnerabilities; the client
-   bundle still carries 2 moderate `react-router-dom` advisories that need a 7.x major. The L3 review
-   is still not run.)*
+6. **An independent security review** and a dependency audit. *(Phase 16B ran the audit,
+   patched the production dependencies to 0 vulnerabilities and ran the L3 deep review
+   before the push — `findings_count: 0`. The client bundle still carries 2 moderate
+   `react-router-dom` advisories that need a 7.x major. What is still missing is a review
+   by someone who is not the author.)*
 
 ## 4. Optional future enhancements (P2)
 

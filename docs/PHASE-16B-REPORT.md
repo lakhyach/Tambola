@@ -251,7 +251,7 @@ something only the client can decide.
 | 7 | **Monitoring accounts** (A3–A5, A7): Sentry, UptimeRobot, the `DEPLOY_URL` secret, and a named person on call | the client | "we would know within 20 minutes" instead of "we would find out from a player" |
 | 8 | **A scheduled backup** (A6): a cron entry or provider cron running `db:backup` | the host owner | daily dumps instead of dumps when someone remembers |
 | 9 | **One real handset pass** — iOS Safari on glass, on a cellular network | whoever holds the phone | the remaining mobile claim; the emulated 390×844 pass is in §8 |
-| 10 | **An L3 deep security review** — offered for this push, not run by choice | the repository owner | the deepest security gate the toolchain has |
+| 10 | **An L3 deep security review** — ran on `2f93352` before the push and returned `findings_count: 0`. What remains is a review by someone other than the author, or a third-party penetration test | the repository owner | independent assurance, not a gate that is currently red |
 | 11 | **A capacity expectation** — the durable evidence stops at 250 concurrent players | the client | the right host size the first time |
 
 Nothing on this list is an engineering gap. Every one is an approval, an account, a
@@ -267,7 +267,7 @@ patch. "PASS" means the command exited 0 and printed what is quoted.
 | Gate | Result |
 | --- | --- |
 | `npm run verify` (tests + lint + build + secret scan) | **exit 0**; `tests 408 / pass 408 / fail 0 / skipped 0`; lint clean; client build succeeded |
-| `npm run secret-scan` | **PASSED** — 204 files inspected (4 from `client/dist`), 2 `.env` values checked for leakage, 7 credential shapes checked |
+| `npm run secret-scan` | **PASSED** — 203 files inspected on the final tree (4 from `client/dist`), 2 `.env` values checked for leakage, 7 credential shapes checked |
 | `npm run security-probe` | **RESULT: PASS — 51 of 51 checks held** |
 | `npm run e2e` (in-memory, real engine to COMPLETED) | **PASS** — Full House on call 69 (John, ticket #1); Meena top of the leaderboard with 50 points |
 | `npm run e2e:durable` (PostgreSQL, throwaway schema) | **PASS** — Full House on call 75 (Asha, ticket #3), throwaway schema `tambola_e2e_84d339` dropped afterwards |
@@ -280,6 +280,7 @@ patch. "PASS" means the command exited 0 and printed what is quoted.
 | Browser pass (headless Chrome over CDP, production build) | landing 1440×900 `scrollWidth 1440`; host created room `7BXX8KDA` through the real form; 390×844 on the waiting room and the join page, `scrollWidth 390`; guest joined through the real form; host then read `2 seated` with both names; **zero console errors** |
 | `npm audit --omit=dev` (root) | **0 vulnerabilities** after the patch |
 | `npm audit --omit=dev` (client) | 2 moderate `react-router-dom` 6.x advisories; fix is the 7.x major, not taken |
+| L3 deep security review (pre-push, `2f93352`) | `{"layer":"l3","findings_count":0,"findings":[]}` |
 
 ### 8.1 Durable performance — 50 rooms × 250 players
 
@@ -346,7 +347,7 @@ the dependency advisories — are in §1 and `TEST-REPORT.md` §5).
 | --- | --- | --- |
 | `2063f0b` | Phase 15, commercial readiness | pushed to `origin/main` in the previous phase |
 | `0a4de55` | Phase 16 documentation release | **pushed and verified**: local `HEAD` and `origin/main` both read `0a4de553fa9cbad6db484797b7198bfde83c9757` before this phase began |
-| this phase's commit | the ten items in §1 plus this document | committed and pushed at the end of Phase 16B; the exact hash is recorded in the session report and in `git log -1` |
+| `2f93352` | the ten items in §1 plus this document — 28 files, 4523 insertions, 1195 deletions | **pushed**: `0a4de55..2f93352  main -> main`; `git ls-remote origin refs/heads/main` reads `2f933528958cbded308c79e65bb5f4ad1df297c9`, identical to local `HEAD`; working tree clean afterwards |
 
 Each `e2e` run draws a fresh sequence, so the winning call numbers differ between runs;
 what does not differ is the set of invariants asserted at the end of each game (six
@@ -379,11 +380,11 @@ database was touched, no history was rewritten, and no force-push was used.
 ### 10.2 Product decisions (from `CLIENT-SIGNOFF.md`)
 
 Eighteen decisions, fourteen product and four legal. The five that change behaviour if
-answered differently: tickets per player (default 1–4, cap 12, market default 3);
-which winning patterns are live and their points; the claim-window policy (default:
-claims stay open until the round ends, `CLAIM_WINDOW_CALLS=0`); multiple winners per
-pattern; and whether Early Seven is switched on — **not live, and a complete tested
-rule is waiting for a points value and a yes**.
+answered differently: tickets per player (room default 1–4, hard cap 12, market default
+3); which winning patterns are live and their points; the claim window (room setting
+`claimWindowCalls`, default `0` — a claim must beat the next call; up to 10 calls of
+grace is allowed); multiple winners per pattern; and whether Early Seven is switched on
+— **not live, and a complete tested rule is waiting for a points value and a yes**.
 
 ### 10.3 Legal (from `CLIENT-SIGNOFF.md` L1–L4)
 
@@ -426,6 +427,9 @@ database, schema, table or row of client data was deleted; the load and e2e harn
 create **throwaway** schemas and the restore check creates and drops a **throwaway**
 database, never the live one. No repository history was rewritten and no force-push was
 used. No C-drive cleanup was performed.
+
+The L3 deep review was run **before** the push, on the committed tree, and reported no
+findings; it is not a substitute for an independent review, and §7 item 10 says so.
 
 The next phase's first decision is not technical: it is A1/A2 plus the eighteen
 sign-offs, in that order, because everything else on the deployment path is already

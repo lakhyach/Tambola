@@ -447,7 +447,7 @@ testing on 29–31 October produced.
   after F15: `186 file(s) inspected` → **PASSED**. The count grew by eight as
   work-in-progress entered the scan scope between the two runs — one of them the
   moved probe itself, which is exactly how F15 surfaced. Phase 16B re-run on the
-  final tree: `204 file(s) inspected (4 from client/dist, the rest
+  final tree: `203 file(s) inspected (4 from client/dist, the rest
   version-controlled); 2 .env value(s) checked for leakage; 7 credential shape(s)
   checked` → **PASSED**, this time after the gate had caught F19 in the new tests.
 - `npm run security-probe` boots two in-memory instances on ephemeral ports and
@@ -480,6 +480,12 @@ testing on 29–31 October produced.
   seated, a round actually started, the same number actually delivered to both, and the
   room actually closed. `tests/smoke-deploy.test.js` (4 tests) pins the harness itself,
   including that it fails every probe against an unreachable URL.
+- **L3 deep security review, pre-push, 31 October** — run against the committed tree
+  before `2f93352` went to `origin/main`, and it answered exactly this and nothing
+  more: `{"layer":"l3","findings_count":0,"findings":[]}`. A clean agent review of
+  one commit range is not a penetration test and is not treated as one — §9 keeps
+  that caveat — but the gap this report used to record as "offered and skipped" is
+  now closed for this release.
 - `realtime.test.js` proves over real sockets: a room code is 8 characters from
   the server alphabet; no raw engine credential (`hostToken`/`playerToken`) ever
   crosses the wire; a forged 48-hex session token cannot take another seat
@@ -612,6 +618,9 @@ in the table above is an artificial burst, not an operating target.
   against the built bundle (§4.4) — and both reported `scrollWidth 390` with zero
   offending elements. It is still not a handset: no iOS Safari, no touch gestures,
   no cellular network, no keyboard obscuring the viewport.
+- **No independent security review.** The L3 deep review ran and found nothing, and the
+  51-check probe holds, but both were produced inside this project. Nobody outside it has
+  tried to break this build.
 - **No soak, no chaos.** Nothing ran for hours; no database failover, no
   network-partition simulation, no killed-process recovery beyond the boot
   recovery tests in `persistence.test.js`.

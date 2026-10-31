@@ -75,7 +75,11 @@ exactly which free infrastructure is genuinely free. Full evidence in
 
 ### Security
 
-- `socket.io`, `ws`, `engine.io` and `socket.io-parser` updated within their
+- **L3 deep security review** run against the committed tree before the push, per the
+  repository's pre-push gate: `{"layer":"l3","findings_count":0,"findings":[]}`. A
+  clean review of one commit range is not a penetration test; the remaining gap is an
+  independent review, recorded in `docs/GAP-REPORT.md`.
+- `socket.io`, `ws`, `engine.io` and `socket.io-parser` updated within their    
   majors to clear the reported denial-of-service advisories. Production dependency
   audit is now **0 vulnerabilities** at the repository root.
 - The client's production audit still reports **2 moderate advisories in
