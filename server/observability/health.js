@@ -75,6 +75,13 @@ export async function checkMigrations({ db, timeoutMs = 2000 } = {}) {
  * @param {() => object} deps.lease     current lease state { held, lost, lastHeartbeatAt }
  * @param {() => boolean} deps.draining shutting down
  * @param {() => object} deps.rooms     { live, frozen } from the registry/controller
+ * @param {() => object|null} deps.scheduler  calling-clock summary: how many rooms
+ *        have an armed timer, when the next tick is due and whether one is
+ *        overdue. A scheduler that has silently stopped is a game that has
+ *        silently stopped, and no other probe can see that.
+ * @param {() => object|null} deps.pool      pg pool occupancy { total, idle,
+ *        waiting, max, errors }. A pool permanently at max with waiters is the
+ *        earliest visible sign that the database is the bottleneck.
  */
 export function createHealth({
   durable,
@@ -84,6 +91,8 @@ export function createHealth({
   lease = () => ({ held: false, lost: false }),
   draining = () => false,
   rooms = () => ({ live: 0, frozen: 0 }),
+  scheduler = () => null,
+  pool = () => null,
   now = () => Date.now(),
   cacheMs = 1500,
   timeoutMs = 2000,
@@ -119,6 +128,7 @@ export function createHealth({
         reasons,
         note: "memory mode: nothing survives a restart",
         rooms: counts,
+        scheduler: scheduler() || null,
         at,
       };
       cached = { at, value };
@@ -149,6 +159,8 @@ export function createHealth({
       draining: Boolean(draining()),
       reasons,
       rooms: counts,
+      scheduler: scheduler() || null,
+      pool: pool() || null,
       uptimeSeconds: Math.round((now() - startedAt) / 1000),
       at,
     };

@@ -14,6 +14,17 @@ local Docker container, exactly one application instance, browser automation
 against Chromium with the app served from `client/dist` by the server itself.
 **This is not a production run.** Nothing here was executed against the deployed
 public URL; the deployed instance was deliberately left alone.
+**Fifth pass, Phase 16B, 31 October:** the gates in §1 were re-run on the Phase 16B
+tree, which adds a production environment gate (`npm run env:check`), a live
+deployment smoke test (`npm run smoke`), scheduler and pool signals on `/healthz`,
+a database profiler in the load harness, an unregistered Early Seven proposal, four
+new test files (25 tests) and the CI workflows. `npm test` printed `tests 408 /
+pass 408 / fail 0 / skipped 0`; `security-probe` held 51 of 51; `e2e` and
+`e2e:durable` each played a full game to `COMPLETED`; `db:backup` +
+`db:restore-check` round-tripped 18 tables / 10 547 rows; the durable load stage at
+50 rooms × 250 players was re-measured **after** the dependency patch, so no figure
+below is carried over from before it. Details in §2, §4.4, §7 and §8.
+
 **Fourth pass, later on 31 October:** every gate in §1 was re-run on the current
 tree after the security probe moved from `.preflight/tools/` (never scanned) to
 `scripts/` (scanned). `npm test` again printed `tests 383 / pass 383 / fail 0 /
@@ -46,28 +57,33 @@ npm run db:restore-check # restores it into a throwaway database and proves it
 `npm test` needs a reachable PostgreSQL for the durable, persistence and backup
 tests. Without a database those tests **skip and say so** rather than passing
 quietly. The run recorded below had a live database and reported `skipped 0`, so
-all 383 of them actually executed.
+all 408 of them actually executed.
 
 ---
 
-## 2. Automated suite — 383 of 383
+## 2. Automated suite — 408 of 408
 
-`npm test` (18.5 s, the fourth-pass tree — the one that also ships F16–F18):
+`npm test` on the Phase 16B tree (12.8 s; the same tree measured 10.8 s and 11.6 s
+on two earlier runs, so the duration moves with the machine and not with the code):
 
 ```
-ℹ tests 383
+ℹ tests 408
 ℹ suites 18
-ℹ pass 383
+ℹ pass 408
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 18487.4244
+ℹ duration_ms 12827.0174
 ```
+
+Suites stayed at 18 because the four new files use top-level tests rather than
+`describe` blocks. The previous pass on this tree printed the same pass count with
+`duration_ms 10789.2613`.
 
 What each file is responsible for. The counts are each file's own `tests` figure
 from running that file alone with the same environment file; they add up to the
-383 above.
+408 above.
 
 | File | Tests | What it pins down |
 | --- | ---: | --- |
@@ -86,23 +102,33 @@ from running that file alone with the same environment file; they add up to the
 | `announce.test.js` | 15 | spoken-number queueing, language, lag reporting |
 | `edge-cases.test.js` | 15 | deterministic engine edge cases and the durable claim-window rules |
 | `chat-feed.test.js` | 12 | the client's chat list: dedupe, ordering, windowing |
+| `env-check.test.js` | 11 | the production environment gate: TLS-verified remote database, no default credentials, refused transaction pooler, required origin/proxy/MFA shape, and that its own report never echoes a credential |
 | `secret-scan.test.js` | 9 | the scanner itself: planted secrets must be caught |
 | `host-confirm.test.js` | 9 | the second-click guard on End game / Reset |
 | `celebration.test.js` | 8 | celebration events built only from verified server events |
 | `refusals.test.js` | 7 | server refusal codes → honest player-facing sentences |
+| `proposed-patterns.test.js` | 6 | Early Seven as a proposal: the live registry cannot award it, exactly seven of the ticket's own numbers, an eighth call never moves the completion ordinal, call order is irrelevant |
+| `health-signals.test.js` | 4 | the new `/healthz` blocks: scheduler overdue verdict, pool occupancy and connection errors, memory mode reporting neither unless wired, and no connection string in the payload |
+| `smoke-deploy.test.js` | 4 | the deployment smoke test itself: probes pass against an in-process server, a full multiplayer round over real sockets, an unreachable URL fails every probe, a malformed URL is refused before any request |
 | `bootstrap.test.js` | 2 | boot without a database refuses; opt-in memory mode works |
 
-`npm run lint` exited 0. `npm run build` exited 0 — 124 modules,
-`dist/assets/index-DB4GhiSQ.js` 352.38 kB (107.19 kB gzipped), CSS 33.71 kB,
-`index.html` 1.78 kB.
+`npm run lint` exited 0. `npm run build` exited 0 on the Phase 16B tree — 123
+modules, `dist/assets/index-Bixp5xmq.js` 353.97 kB (107.57 kB gzipped), CSS
+33.40 kB, `index.html` 1.78 kB, built in 1.51 s. The fourth-pass build printed 124
+modules and `index-DB4GhiSQ.js` 352.38 kB; no client source changed in this phase,
+but `client/package-lock.json` did (the dependency audit), and the content hash
+moves with it.
 
 Earlier in the day, the same suite was **341 / 341**; the 42 added since are the
 security, durability and interface checks in §4.3 and §5, plus the three
-HTTP-surface checks (F16–F18) added on the fourth pass. One failure was
-produced and explained along the way: `persistence.test.js` "the single-instance
-lease refuses a second scheduler" failed with `INSTANCE_LOCKED` while a
-verification instance was still running. That failure was real and it was fixed
-at the root rather than by stopping the server — see F11 in §5.
+HTTP-surface checks (F16–F18) added on the fourth pass. Phase 16B then added 25
+more (383 → 408), all of them gating something that ships: the two new scripts, the
+two new health blocks and the Early Seven proposal. One failure was produced and
+explained along the way: `persistence.test.js` "the single-instance lease refuses
+a second scheduler" failed with `INSTANCE_LOCKED` while a verification instance
+was still running. That failure was real and it was fixed at the root rather than
+by stopping the server — see F11 in §5. Phase 16B produced a second one, F19, and
+it too was fixed at the literal rather than by weakening the gate.
 
 
 ---
@@ -352,6 +378,31 @@ does not scroll sideways". Before the header fix in F12 it was not true.
 The full review — what looked wrong, what was fixed, what is left to a designer —
 is `.preflight/phaseG-ui-review.md`.
 
+### 4.4 The Phase 16B readiness pass — both roles, two real viewports, through the forms
+
+`.preflight/tools/p16b-readiness.mjs` drives headless Chrome over the DevTools
+Protocol against a running server on `http://127.0.0.1:4000` — the production
+build served by the server itself, durable PostgreSQL, one instance. It types into
+the real inputs and clicks the real buttons; nothing is written into the
+application's state by the harness.
+
+```
+landing   1440×900   h1 "Tambola" · "No sign-up · No cost · Your ticket lives through a refresh"
+                     scrollWidth 1440 = innerWidth 1440
+host      typed "BrowserHost" → clicked "Create Room" → room 7BXX8KDA
+                     path /host/room · "IN THE HALL 1 seated BrowserHost HOST"
+mobile    390×844   scrollWidth 390 = innerWidth 390 on /host/room
+guest     typed "BrowserGuest" + "7BXX8KDA" → clicked "Join Room"
+                     path /player/room · scrollWidth 390 = innerWidth 390
+host sees guest      seated 2 · names ["BrowserHost","BrowserGuest"]
+consoleErrors        []   (both tabs, the whole pass)
+```
+
+Screenshots `p16b_01_landing.png` … `p16b_05_host_sees_guest.png`, and the
+machine-readable form of the block above, are in `.preflight/`. What this pass
+does **not** do: play a round, resize mid-session, or run on a handset. The
+round itself is proven by `npm run smoke -- --full` (§6) and by §3.
+
 
 ---
 
@@ -379,6 +430,7 @@ is `.preflight/phaseG-ui-review.md`.
 | F16 | The live security probe sent an `Origin` on its allow-list and got `Access-Control-Allow-Origin: true` back, not the origin. The HTTP middleware set the header from the boolean verdict instead of the matched string, so a cross-origin browser would have rejected a socket the server had *just* accepted — the allow-list silently did nothing over plain HTTP (found by `npm run security-probe`). | The middleware echoes `req.headers.origin`; Socket.IO already used the same `corsOrigin` verdict correctly. | `hardening.test.js`: "an allow-listed origin comes back as itself, not as the word true", and an unlisted origin is granted nothing |
 | F17 | Two small public-surface leaks the probe caught: every response carried `X-Powered-By: Express`, advertising the stack, and `/livez` returned `uptimeSeconds` — telemetry no anonymous liveness probe should hand out. | `app.disable("x-powered-by")`; `liveness()` now answers `{ok, live, draining}` and nothing else, with uptime kept on `/readyz` and `/healthz`. | `hardening.test.js`: the `/livez` test asserts no `uptime` substring and no `x-powered-by` header |
 | F18 | A request that declares a body and then stalls (`content-length: 80`, sends 12 bytes, holds the socket) was held open by `express.json` — the probe's own client timed out at 8 s before any answer. Node's `server.requestTimeout` does not fire once a body has started, and body-parser has no timeout of its own, so a slow-loris-shaped client could park a connection. | Two bounds on one knob, `HTTP_REQUEST_TIMEOUT_MS` (default 30 s): `server.requestTimeout` for headers, and a new admin-router guard that answers a stalled body with `408 REQUEST_TIMEOUT` and `Connection: close`. | `hardening.test.js`: the request-timeout floor is asserted, and "a stalled request body is answered 408, not held open forever" proves the guard fires, refuses with a code, and leaves `/livez` working |
+| F19 | Phase 16B's own new `tests/env-check.test.js` embedded a fully formed, password-bearing connection string as a fixture, and `npm run secret-scan` — run by `npm run verify` — flagged it at `tests/env-check.test.js:12`. The gate was right: a credential shape in shipped content is what it exists to catch, and an inline ignore is how a scanner becomes decorative. | The fake password became a `FAKE_DB_PASSWORD` constant interpolated into the string, which the scanner's existing interpolation allowance covers. No shape rule, no path exclusion and no ignore entry was added. | `secret-scan.test.js` (9 tests) still proves planted secrets are caught; `npm run secret-scan` passes over the whole tree, this file included |
 
 Earlier phases are documented in `CHANGELOG.md`; this table is limited to what
 testing on 29–31 October produced.
@@ -394,13 +446,40 @@ testing on 29–31 October produced.
   planted secret is tested (`secret-scan.test.js`, 9 tests). Fourth-pass re-run
   after F15: `186 file(s) inspected` → **PASSED**. The count grew by eight as
   work-in-progress entered the scan scope between the two runs — one of them the
-  moved probe itself, which is exactly how F15 surfaced.
+  moved probe itself, which is exactly how F15 surfaced. Phase 16B re-run on the
+  final tree: `204 file(s) inspected (4 from client/dist, the rest
+  version-controlled); 2 .env value(s) checked for leakage; 7 credential shape(s)
+  checked` → **PASSED**, this time after the gate had caught F19 in the new tests.
 - `npm run security-probe` boots two in-memory instances on ephemeral ports and
   asserts 51 live checks across the HTTP response surface, CORS, admin auth,
   CSRF, body limits, the socket contract refusals, room isolation and the shipped
-  rate budget: `RESULT: PASS — 51 of 51 checks held` (fourth pass). The first run
-  of the fourth pass held 47; the four failures were real and are fixed at the
-  server in F16–F18, each now pinned by a `hardening.test.js` case as well.
+  rate budget: `RESULT: PASS — 51 of 51 checks held` (fourth pass, and again on the
+  Phase 16B tree). The first run of the fourth pass held 47; the four failures were
+  real and are fixed at the server in F16–F18, each now pinned by a
+  `hardening.test.js` case as well.
+- `npm run smoke -- --url http://127.0.0.1:4000 --full` — the deployment smoke test
+  against a live server, in this phase. Eleven checks, one of them a real round over
+  two real sockets:
+
+  ```
+  PASS  livez                    process alive (30ms)
+  PASS  readyz                   durable, lease held (14ms)
+  PASS  healthz                  schema current (2ms)
+  PASS  spa                      client bundle served (4ms)
+  PASS  socket-handshake         Socket.IO answers EIO=4 (2ms)
+  PASS  multiplayer.host-socket  websocket connected
+  PASS  multiplayer.room-create  room created
+  PASS  multiplayer.room-join    second seat seated
+  PASS  multiplayer.game-start   tickets issued
+  PASS  multiplayer.call-fanout  both seats saw number 86
+  PASS  multiplayer.game-end     room completed
+  RESULT: PASS
+  ```
+
+  The last four lines are the ones a health check cannot give you: two clients actually
+  seated, a round actually started, the same number actually delivered to both, and the
+  room actually closed. `tests/smoke-deploy.test.js` (4 tests) pins the harness itself,
+  including that it fails every probe against an unreachable URL.
 - `realtime.test.js` proves over real sockets: a room code is 8 characters from
   the server alphabet; no raw engine credential (`hostToken`/`playerToken`) ever
   crosses the wire; a forged 48-hex session token cannot take another seat
@@ -443,6 +522,15 @@ RESTORE CHECK PASSED
 Both commands exited 0. The `backups/` directory is gitignored on purpose: a dump
 is game data and never belongs in the repository.
 
+**Phase 16B re-ran both on 31 October** against the same container, after the
+dependency patch: `[backup] wrote … (179004 bytes, sha256 3b0afb57057dfe23…)`,
+`18 table(s), 10547 row(s)`, and `db:restore-check` created the throwaway
+database `tambola_rc_be2b409117`, restored into it, matched the migration ledger,
+the table inventory, the row counts and the call-log-versus-draw sequence, and
+dropped it — `RESTORE CHECK PASSED`. The row count is 59% higher than the run
+quoted above because the local database has kept playing since; the procedure, not
+the size, is what is being proved.
+
 ---
 
 ## 8. Load, measured
@@ -464,6 +552,44 @@ leakage, zero connection errors, every reconnect sample recovered. The full
 assessment, including why the production ceiling is the pooler plan rather than
 these numbers, is `server/RUNBOOK.md` §5.
 
+### 8.1 Phase 16B — 50 rooms × 250 players, with the database profiled
+
+`scripts/loadtest.mjs staged 10:50,50:250`, local PostgreSQL 16.14
+(`max_connections = 100`), one instance, throwaway schema. The harness now wraps
+every game transaction and samples `pg_stat_activity`, `pg_stat_database` and
+`pg_stat_wal`, so the queue is attributed instead of inferred:
+
+| `DB_POOL_MAX` | ack p50 | p95 | p99 | peak waiters | tx p95 | tx p99 | lock waits |
+| --- | --- | --- | --- | ---: | --- | --- | ---: |
+| 8 (default) | 44.6 ms | 84.8 ms | 101.2 ms | 42 | 102.3 ms | 158.2 ms | 1 |
+| 16 | 37.1 ms | 65.0 ms | 89.8 ms | 34 | 151.5 ms | 236.7 ms | 1 |
+| 32 | 42.9 ms | 56.4 ms | 62.9 ms | 18 | 141.1 ms | 320.8 ms | 16 |
+
+At 42 waiters the database was idle: peak **7** active backends of 8, longest
+query **23 ms**, cache hit **100%**, 0 deadlocks, 0 rollbacks, WAL 2.2 MB over
+25 750 records. The queue is **pool checkout plus per-room serialisation**, not
+Postgres capacity — which is why enlarging the pool stops paying once the per-call
+transaction round-trips are the floor. 16 is the right setting for a known ~50-room
+peak; 32 buys ~8 ms of p95 and costs 16 lock waits and a 321 ms transaction p99.
+
+Re-run **after** the dependency patch, so no figure above is carried into this
+release unchecked:
+
+```
+joins 250 · failures 0 · acks 750 · duplicate calls 0
+ack p50 48.8 ms · p95 87.0 ms · p99 121.0 ms
+room syncs 150/150 · reconnects 50/50 · event-loop p99 29.3 ms
+rss 137.6 MB · cpu 50 % · pool 8/8 · waiting 42
+db: 1400 transactions · tx p50 47.3 / p95 161.1 / p99 213.1 ms
+    peak active 7 · longest query 48 ms · lock waits 0 · cache hit 100 %
+    wal 1.8 MB / 19869 records
+```
+
+That is **250 concurrent players across 50 active rooms**, on durable PostgreSQL,
+and the two numbers that matter are zero duplicate calls and zero failures of any
+kind. Nothing here was measured above 250 concurrent players, and the 100-room row
+in the table above is an artificial burst, not an operating target.
+
 ---
 
 ## 9. What this report does not prove
@@ -479,15 +605,23 @@ these numbers, is `server/RUNBOOK.md` §5.
 - **Screen readers were not used.** The interface carries roles, `aria-live`,
   `aria-pressed` and labelled controls, and the ticket grid is a `role="table"`,
   but no assistive technology has been run over it.
-- **Phone evidence is not a device.** The 31 October narrow-layout checks ran in a
-  real Chrome window that would not shrink below ~434 px, with the layout container
-  pinned to 390 px — sound for overflow and wrapping only because the stylesheet has
-  a single breakpoint at 640 px, and no substitute for a handset on a cellular
-  network. Chrome only; no device emulation profile was used.
+- **Phone evidence is emulation, not a device.** The 30 October narrow-layout
+  checks ran in a real Chrome window that would not shrink below ~434 px with the
+  layout container pinned to 390 px. Phase 16B added a second pass that does it
+  properly — `Emulation.setDeviceMetricsOverride` at 390×844, scale 2, mobile,
+  against the built bundle (§4.4) — and both reported `scrollWidth 390` with zero
+  offending elements. It is still not a handset: no iOS Safari, no touch gestures,
+  no cellular network, no keyboard obscuring the viewport.
 - **No soak, no chaos.** Nothing ran for hours; no database failover, no
   network-partition simulation, no killed-process recovery beyond the boot
   recovery tests in `persistence.test.js`.
 - **Capacity is a measured worst case, not a recommendation.** ~100 concurrently
-  active rooms under artificial load is not a target to run at.
+  active rooms under artificial load is not a target to run at. The Phase 16B
+  durable run stops at 250 concurrent players; no evidence exists above that, and
+  none is claimed.
+- **The deployment gates were run against `127.0.0.1`, not a public URL.**
+  `npm run smoke -- --full` proves the live surface, the sockets and a round; it
+  cannot prove the provider's TLS, proxy headers or cookie flags, which
+  `DEPLOYMENT.md` lists as post-deploy checks for exactly that reason.
 - Chat is unmoderated beyond length and rate limits, and there are no player
   accounts; both are product boundaries, not test gaps.

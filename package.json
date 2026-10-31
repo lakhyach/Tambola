@@ -19,6 +19,8 @@
     "db:restore-check": "node --env-file-if-exists=.env scripts/restore-check.js",
     "secret-scan": "node scripts/secret-scan.mjs",
     "security-probe": "node scripts/security-probe.mjs",
+    "env:check": "node --env-file-if-exists=.env scripts/env-check.mjs",
+    "smoke": "node --env-file-if-exists=.env scripts/smoke-deploy.mjs",
     "lint": "npm run lint --prefix client",
     "e2e": "node --env-file-if-exists=.env scripts/e2e-game.mjs",
     "e2e:durable": "node --env-file-if-exists=.env scripts/e2e-game.mjs --durable",
@@ -35,7 +37,6 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.19.2",
-    "nodemon": "^3.1.3",
     "otpauth": "^9.5.2",
     "path": "^0.12.7",
     "pg": "^8.23.1",
@@ -43,6 +44,7 @@
     "socket.io": "^4.7.5"
   },
   "devDependencies": {
+    "nodemon": "^3.1.3",
     "socket.io-client": "^4.7.5"
   }
 }

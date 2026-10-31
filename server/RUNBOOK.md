@@ -198,6 +198,31 @@ What the data shows:
   lighter, so this is a conservative worst case, not a recommended operating
   point.
 
+**Phase 16B re-measurement, with the database profiler.** `loadtest.mjs` now also
+wraps `withTransaction` and samples `pg_stat_activity`, `pg_stat_database` and
+`pg_stat_wal`, so the queue can be attributed instead of guessed at. Run
+`staged 10:50,50:250` (50 rooms × 5 players, three calls per room fired
+back-to-back):
+
+| `DB_POOL_MAX` | ack p50 | p95 | p99 | peak waiters | tx p95 | tx p99 | lock waits |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 8 (default) | 44.6 ms | 84.8 ms | 101.2 ms | 42 | 102.3 ms | 158.2 ms | 1 |
+| 16 | 37.1 ms | 65.0 ms | 89.8 ms | 34 | 151.5 ms | 236.7 ms | 1 |
+| 32 | 42.9 ms | 56.4 ms | 62.9 ms | 18 | 141.1 ms | 320.8 ms | 16 |
+
+At 42 waiters the database itself was idle: peak **7** active backends of 8,
+longest query **23 ms**, cache hit **100%**, **0** deadlocks and 0 rollbacks, WAL
+2.2 MB over 25 750 records, buffers-full 0. The queue is therefore **pool
+checkout plus per-room serialisation**, not Postgres capacity — which is why a
+bigger pool stops helping once the per-call transaction's round-trips become the
+floor. 16 is the recommended setting for a known ~50-room peak; 32 buys ~8 ms of
+p95 and costs 16 lock waits and a 321 ms transaction p99, the wrong trade for a
+game whose worst failure is a frozen room. Correctness held at every size: 750
+acks, zero duplicate calls, 150/150 room syncs, 50/50 reconnects. Re-running the
+same stage after the dependency patch reproduced the shape: ack p50 48.8 / p95
+87.0 / p99 121.0 ms, pool 8/8 with 42 waiting, peak 7 active, longest query 48 ms,
+0 lock waits.
+
 **Sizing `DB_POOL_MAX` honestly:** do **not** copy the local `max_connections =
 100`. Production runs against a **Supabase session pooler**, whose *client*
 concurrency limit is set by the plan and is typically far below the raw server

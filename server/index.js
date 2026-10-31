@@ -405,6 +405,40 @@ export async function createApp(options = {}) {
     lease: () => runtime.lease,
     draining: () => runtime.draining,
     rooms: () => ({ live: registry.size(), frozen: controller.summary().frozen.length }),
+    /**
+     * The calling clock, as a probe can see it. The scheduler holds one timer
+     * per RUNNING room; `overdue` means a deadline passed by more than a minute
+     * without a tick. It is reported, never used to fail readiness: a single
+     * slow query can delay a tick, while a lost lease or a drain already has
+     * its own reason code.
+     */
+    scheduler: () => {
+      if (!scheduler) return null;
+      const armed = scheduler.armed();
+      let next = null;
+      for (const entry of armed) {
+        const at = entry.nextDueAt instanceof Date ? entry.nextDueAt.getTime() : Date.parse(entry.nextDueAt || "");
+        if (Number.isFinite(at) && (next === null || at < next)) next = at;
+      }
+      const now = Date.now();
+      return {
+        armed: armed.length,
+        nextDueInMs: next === null ? null : Math.max(0, next - now),
+        overdue: next !== null && next < now - 60000,
+        ticking: !runtime.draining && !runtime.lease.lost,
+      };
+    },
+    pool: () => {
+      const handle = persistence.db;
+      if (!handle || !handle.pool) return null;
+      return {
+        total: handle.pool.totalCount || 0,
+        idle: handle.pool.idleCount || 0,
+        waiting: handle.pool.waitingCount || 0,
+        max: (handle.pool.options && handle.pool.options.max) || null,
+        errors: handle.connectionErrors(),
+      };
+    },
   });
 
   app.get("/livez", (req, res) => {

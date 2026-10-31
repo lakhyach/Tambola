@@ -106,6 +106,130 @@ function percentile(values, p) {
   return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length * p) / 100))];
 }
 
+/**
+ * Phase 16B: durable-database profiler.
+ *
+ * The staged harness could already show a slow ack, but not WHY it was slow.
+ * This separates the four answers an operator actually needs:
+ *   - pool pressure      (total/waiting, sampled by the harness itself)
+ *   - transaction time   (measured around withTransaction, no SQL overhead)
+ *   - server-side load   (active/waiting backends, sampled on a dedicated
+ *                         connection so the sampler cannot starve the pool it
+ *                         is measuring)
+ *   - write amplification(WAL bytes and database counters before/after)
+ *
+ * Everything is read-only except the counter snapshot. Returns null without a
+ * database, so memory-mode runs are unchanged.
+ */
+async function createDbProfiler(instance) {
+  const handle = instance && instance.db;
+  if (!handle || !handle.pool) return null;
+  const pg = (await import("pg")).default;
+  const client = new pg.Client({ connectionString: handle.pool.options.connectionString });
+  await client.connect();
+
+  const durations = [];
+  const original = handle.withTransaction.bind(handle);
+  handle.withTransaction = async (fn) => {
+    const t0 = performance.now();
+    try {
+      return await original(fn);
+    } finally {
+      durations.push(performance.now() - t0);
+    }
+  };
+
+  const snapshot = async () => {
+    const one = async (sql) => (await client.query(sql)).rows[0] || {};
+    return {
+      database: await one(
+        "SELECT xact_commit, xact_rollback, blks_hit, blks_read, tup_inserted, tup_updated, deadlocks, conflicts FROM pg_stat_database WHERE datname = current_database()"
+      ),
+      wal: await one("SELECT wal_records, wal_fpi, wal_bytes, wal_buffers_full FROM pg_stat_wal"),
+      settings: await one("SELECT setting::int AS max_connections FROM pg_settings WHERE name = 'max_connections'"),
+    };
+  };
+
+  const peaks = { active: 0, waiting: 0, idleInTransaction: 0, longestMs: 0, samples: 0, samplerErrors: 0 };
+  let sampling = true;
+  const sampler = (async () => {
+    while (sampling) {
+      try {
+        const { rows } = await client.query(
+          `SELECT count(*) FILTER (WHERE state = 'active')::int AS active,
+                  count(*) FILTER (WHERE wait_event_type = 'Lock')::int AS waiting,
+                  count(*) FILTER (WHERE state = 'idle in transaction')::int AS idle_in_tx,
+                  coalesce(max(extract(epoch FROM now() - query_start) * 1000) FILTER (WHERE state = 'active'), 0) AS longest_ms
+             FROM pg_stat_activity
+            WHERE datname = current_database() AND pid <> pg_backend_pid()`
+        );
+        const row = rows[0] || {};
+        peaks.active = Math.max(peaks.active, row.active || 0);
+        peaks.waiting = Math.max(peaks.waiting, row.waiting || 0);
+        peaks.idleInTransaction = Math.max(peaks.idleInTransaction, row.idle_in_tx || 0);
+        peaks.longestMs = Math.max(peaks.longestMs, Math.round(Number(row.longest_ms) || 0));
+        peaks.samples += 1;
+      } catch {
+        peaks.samplerErrors += 1;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  })();
+
+  const before = await snapshot();
+  const startedAt = performance.now();
+
+  return {
+    async stop() {
+      sampling = false;
+      await sampler.catch(() => {});
+      const after = await snapshot();
+      const seconds = (performance.now() - startedAt) / 1000;
+      const delta = (key, section = "database") => Number(after[section][key] || 0) - Number(before[section][key] || 0);
+      const hits = delta("blks_hit");
+      const reads = delta("blks_read");
+      const result = {
+        seconds: Math.round(seconds * 10) / 10,
+        transactions: durations.length,
+        txPerSecond: Math.round((durations.length / Math.max(seconds, 0.001)) * 10) / 10,
+        txP50: Math.round(percentile(durations, 50) * 10) / 10,
+        txP95: Math.round(percentile(durations, 95) * 10) / 10,
+        txP99: Math.round(percentile(durations, 99) * 10) / 10,
+        txMax: Math.round((durations.length ? Math.max(...durations) : 0) * 10) / 10,
+        commits: delta("xact_commit"),
+        rollbacks: delta("xact_rollback"),
+        deadlocks: delta("deadlocks"),
+        walBytes: Number(after.wal.wal_bytes || 0) - Number(before.wal.wal_bytes || 0),
+        walRecords: Number(after.wal.wal_records || 0) - Number(before.wal.wal_records || 0),
+        walBuffersFull: Number(after.wal.wal_buffers_full || 0) - Number(before.wal.wal_buffers_full || 0),
+        cacheHitRatio: hits + reads === 0 ? null : Math.round((hits / (hits + reads)) * 1000) / 10,
+        tupInserted: delta("tup_inserted"),
+        tupUpdated: delta("tup_updated"),
+        maxConnections: Number(after.settings.max_connections || 0),
+        peaks,
+      };
+      await client.end().catch(() => {});
+      handle.withTransaction = original;
+      return result;
+    },
+  };
+}
+
+function formatDbProfile(profile) {
+  if (!profile) return null;
+  const mb = (bytes) => Math.round((bytes / 1048576) * 10) / 10;
+  return (
+    "[db profile] " + profile.seconds + "s, " + profile.transactions + " transactions (" + profile.txPerSecond + "/s) | " +
+    "tx p50 " + profile.txP50 + "ms p95 " + profile.txP95 + "ms p99 " + profile.txP99 + "ms max " + profile.txMax + "ms | " +
+    "commits " + profile.commits + " rollbacks " + profile.rollbacks + " deadlocks " + profile.deadlocks + " | " +
+    "WAL " + mb(profile.walBytes) + "MB in " + profile.walRecords + " records (buffers full " + profile.walBuffersFull + ") | " +
+    "cache hit " + (profile.cacheHitRatio === null ? "n/a" : profile.cacheHitRatio + "%") + " | " +
+    "peak active " + profile.peaks.active + ", lock waits " + profile.peaks.waiting + ", idle-in-tx " + profile.peaks.idleInTransaction +
+    ", longest query " + profile.peaks.longestMs + "ms, samples " + profile.peaks.samples + " (errors " + profile.peaks.samplerErrors + ") | " +
+    "max_connections " + profile.maxConnections
+  );
+}
+
 function report(title, lines) {
   console.log("\n== " + title + " " + "=".repeat(Math.max(0, 58 - title.length)));
   for (const line of lines) console.log("   " + line);
@@ -254,6 +378,7 @@ async function staged() {
   });
   const port = await instance.listen(0);
   const endpoint = "http://127.0.0.1:" + port;
+  const profiler = url ? await createDbProfiler(instance) : null;
 
   const delayHistogram = monitorEventLoopDelay({ resolution: 20 });
   delayHistogram.enable();
@@ -458,6 +583,11 @@ async function staged() {
   }
 
   delayHistogram.disable();
+  if (profiler) {
+    const profile = await profiler.stop();
+    console.log("\n== database profile (staged run) " + "=".repeat(30));
+    console.log("   " + formatDbProfile(profile));
+  }
   if (url) await instance.db.query("DROP SCHEMA IF EXISTS " + schema + " CASCADE").catch(() => {});
   await instance.closeServer();
 }

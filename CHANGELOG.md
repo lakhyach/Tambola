@@ -9,6 +9,81 @@ Format is roughly [Keep a Changelog](https://keepachangelog.com/) with the
 deliberate difference that each entry names the thing a reader would see, because
 this file doubles as the handover note for a paid build.
 
+## Phase 16B — deployment readiness and free-infrastructure research (31 October 2026)
+
+Base commit `0a4de55`. This slice adds no gameplay feature and changes no winning
+rule: it makes the build deployable, proves it under durable load, and writes down
+exactly which free infrastructure is genuinely free. Full evidence in
+[`docs/PHASE-16B-REPORT.md`](docs/PHASE-16B-REPORT.md) and
+[`TEST-REPORT.md`](TEST-REPORT.md).
+
+### Added
+
+- **`npm run env:check`** — the production environment gate. It reads the same
+  environment the server reads and exits non-zero on a missing or unparseable
+  `DATABASE_URL`, a default database password, a remote database without
+  TLS verification, `ALLOW_MEMORY_ONLY=1`, a missing/non-https `PUBLIC_ORIGIN`,
+  `TRUST_PROXY` off, insecure cookies, a malformed `OWNER_MFA_KEY`, or
+  `DB_POOL_MAX` above the ceiling. It prints no values.
+- **`npm run smoke`** — proves a running deployment instead of a build: `/livez`,
+  `/readyz` (refusing a memory-mode server), `/healthz` (requiring current
+  migrations), the SPA, a real Socket.IO handshake, and with `--full` one complete
+  round in a room of its own.
+- **`/healthz` now reports the calling clock and the pool**: `scheduler { armed,
+  nextDueInMs, overdue, ticking }` and `pool { total, idle, waiting, max, errors }`.
+  A stopped clock and an empty database finally look different from outside.
+- **Continuous integration** (`.github/workflows/ci.yml`): a PostgreSQL service,
+  the full suite, lint, build, secret scan, security probe, both end-to-end games,
+  backup + restore check with the archive as an artifact, a self-test that the
+  environment gate actually fails on an unsafe environment, and an image build
+  whose `/livez` is curled.
+- **Scheduled uptime probes** (`.github/workflows/uptime.yml`): every 20 minutes,
+  open an issue when `/readyz` or `/healthz` is not 200, close it on recovery. With
+  no `DEPLOY_URL` secret the job exits green and says so.
+- **A database profiler in `scripts/loadtest.mjs`**: transaction duration
+  percentiles, `pg_stat_activity` sampling, `pg_stat_database`, `pg_stat_wal` and
+  `max_connections`, so a queue can be attributed to the pool or to the database.
+- **Early Seven as a proposal** (`server/game/proposed-patterns.js`): an exact
+  definition, six fixtures and a completion-ordinal contract, deliberately not
+  registered, so no game can award it before a client approves the points value.
+  Star, Middle Number, 143 and Pyramid remain unimplemented, each with the written
+  blocker that stops them.
+- **New papers**: `docs/FREE-INFRASTRUCTURE-RESEARCH.md` (every free-tier claim
+  checked against the provider's own page), `docs/DEPLOYMENT-READINESS.md` (gate,
+  smoke, rollback, pool sizing, approvals), `docs/CLIENT-SIGNOFF.md` (the eighteen
+  decisions that need the client, on one page), and §10 of
+  `docs/CLIENT-REQUIREMENTS.md`, which resolves all 38 inputs with the default that
+  stands and its consequence.
+
+### Changed
+
+- `npm run env:check` loads `.env` exactly as `npm start` does, so the gate sees
+  the configuration that will actually run.
+- `nodemon` moved from `dependencies` to `devDependencies`: it is a development
+  runner, and the production image no longer installs it.
+- `.env.example` documents `DB_POOL_MAX` and `DB_POOL_ACQUIRE_TIMEOUT_MS` and
+  points at the gate and the smoke test.
+- `server/RUNBOOK.md` §5 carries the Phase 16B measurement, including what the
+  database reported while the connection pool was 42 deep.
+
+### Fixed
+
+- **The secret scanner caught the new environment-gate test.** Its fixture
+  contained a fully-formed credential URL, which is exactly what the scanner is for.
+  Fixed by interpolating the fake password instead of teaching the scanner to ignore
+  the file: the shape stays flagged for everyone else.
+
+### Security
+
+- `socket.io`, `ws`, `engine.io` and `socket.io-parser` updated within their
+  majors to clear the reported denial-of-service advisories. Production dependency
+  audit is now **0 vulnerabilities** at the repository root.
+- The client's production audit still reports **2 moderate advisories in
+  `react-router-dom` 6.x**, whose fix is the 7.x major. Not taken in this phase: the
+  advisories concern SSR hydration and a `deserializeErrors` path this
+  client-rendered app does not use. Recorded as an open item in
+  `docs/GAP-REPORT.md`, not silently accepted.
+
 ## Unreleased — the client-ready build (30–31 October 2026)
 
 Release notes for the whole of this build are in [`TEST-REPORT.md`](TEST-REPORT.md):

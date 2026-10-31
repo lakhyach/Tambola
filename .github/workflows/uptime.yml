@@ -1,0 +1,93 @@
+name: uptime
+
+# Free uptime monitoring without a monitoring vendor.
+#
+# GitHub scheduled workflows are the only always-on free runner this project
+# uses, and they are a poor fit for minute-level probing (cron runs are queued
+# and can be delayed by tens of minutes). That is why this is the BACKUP layer:
+# an external monitor (UptimeRobot free: 50 monitors, 5-minute interval) should
+# hold the primary alert. When both exist, this layer catches the case where the
+# external monitor was never configured or its account lapsed.
+#
+# Configure one repository secret, DEPLOY_URL (for example
+# https://games.example.com). With no secret the job exits green and says so,
+# so a fresh clone is never red because it has not been deployed yet.
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: probe /readyz and /healthz
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: skip when no deployment is configured
+        id: gate
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+        run: |
+          if [ -z "$DEPLOY_URL" ]; then
+            echo "DEPLOY_URL is not set: no deployment to probe yet."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: read the probes
+        id: probe
+        if: steps.gate.outputs.configured == 'true'
+        env:
+          DEPLOY_URL: ${{ secrets.DEPLOY_URL }}
+        run: |
+          set +e
+          READY=$(curl -sS --max-time 15 -o /tmp/ready.json -w "%{http_code}" "$DEPLOY_URL/readyz")
+          HEALTH=$(curl -sS --max-time 15 -o /tmp/health.json -w "%{http_code}" "$DEPLOY_URL/healthz")
+          set -e
+          echo "ready_status=$READY" >> "$GITHUB_OUTPUT"
+          echo "health_status=$HEALTH" >> "$GITHUB_OUTPUT"
+          echo "--- /readyz ($READY)"
+          cat /tmp/ready.json || true
+          echo
+          echo "--- /healthz ($HEALTH)"
+          cat /tmp/health.json || true
+          echo
+          if [ "$READY" = "200" ] && [ "$HEALTH" = "200" ]; then
+            echo "state=up" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=down" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: open an issue when the deployment is not ready
+        if: steps.gate.outputs.configured == 'true' && steps.probe.outputs.state == 'down'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          READY: ${{ steps.probe.outputs.ready_status }}
+          HEALTH: ${{ steps.probe.outputs.health_status }}
+        run: |
+          TITLE="Deployment not ready (readyz=$READY healthz=$HEALTH)"
+          EXISTING=$(gh issue list --state open --search "Deployment not ready in:title" --json number --jq '.[0].number // empty')
+          BODY=$(printf 'Automated probe at %s UTC\n\n/readyz -> %s\n/healthz -> %s\n\nThe body of each answer is in the job log. Check the scheduler and pool sections of /healthz first: they name the difference between "the database is gone" and "the calling clock stopped".\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$READY" "$HEALTH")
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY"
+          fi
+
+      - name: close the issue when it recovers
+        if: steps.gate.outputs.configured == 'true' && steps.probe.outputs.state == 'up'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for number in $(gh issue list --state open --search "Deployment not ready in:title" --json number --jq '.[].number'); do
+            gh issue close "$number" --comment "Recovered: /readyz and /healthz answer 200 again."
+          done

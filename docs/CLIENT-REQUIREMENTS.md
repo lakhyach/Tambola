@@ -1,10 +1,15 @@
 # Client requirements — inputs needed for the final release
 
-Phase 16 · prepared 31 October 2026 · build `2063f0b`
+Phase 16 · prepared 31 October 2026 · build `2063f0b` · resolved in Phase 16B (base `0a4de55`)
 
-This is an input checklist, not a design. Every value below is **blank on purpose**: the build must
-not ship fictional branding, a guessed language default, or an invented domain. Each row names where
-the answer plugs into the code or configuration, so a one-line reply is enough to start.
+This is an input checklist, not a design. The client's own values are **blank on purpose**: the build
+must not ship fictional branding, a guessed language default, or an invented domain. Each row names
+where the answer plugs into the code or configuration, so a one-line reply is enough to start.
+
+**§10 resolves all 38 inputs** without inventing anything: for each one it names the default that is
+already in the build, what happens if that default stands, whether the client must decide, and whether
+the item blocks deployment. The fourteen decisions that genuinely need the client are extracted, with
+a sign-off block, in [`CLIENT-SIGNOFF.md`](CLIENT-SIGNOFF.md).
 
 Legend: **E** = essential, the release cannot be accepted without it · **O** = optional, a
 configuration choice with a safe default already in place.
@@ -109,3 +114,71 @@ Nothing in this list requires touching the game engine except an approved new pa
 If the client sends only six things, these are the six: **product name + logo, brand colours,
 domain, default language, tickets/patterns/prize values, and scale expectations (rooms + players).**
 Everything else has a documented default and can follow.
+
+---
+
+## 10. Resolution — every input, the default that stands, and what it costs
+
+Legend: **Dflt** = the value already in the build, usable as-is · **Prop** = proposed, not yet applied ·
+**None** = no value exists and none was invented. "Needs client" is **Y** only where the answer changes
+what the product is, what it awards, or who is legally responsible.
+
+| # | Input | Resolution | If nobody answers | Needs client | Blocks deployment |
+| --- | --- | --- | --- | --- | --- |
+| 1 | Product name | Dflt `Tambola` (`VITE_APP_NAME`) | Ships a generic dictionary word as the brand | **Y** | Yes (acceptance) |
+| 2 | Logo / wordmark | Dflt generated mark | Placeholder mark stays | **Y** | Yes (acceptance) |
+| 3 | Favicon / app icon | Dflt generated icon set, 192 + 512 px | Placeholder icons stay | **Y** | Yes (acceptance) |
+| 4 | Brand colours | Dflt gold `#cfab63` on "Obsidian Hall" | Placeholder palette stays | **Y** | Yes (acceptance) |
+| 5 | Fonts | Dflt system font stack; loaded only if licensed | No webfont, no licence risk | N | No |
+| 6 | Tagline / preview text | Dflt "The Obsidian Hall of Ninety Numbers" | A placeholder phrase appears in link previews | N (Prop supplied) | No |
+| 7 | Celebration style | Dflt festive overlay, no sound on load | Slightly loud for a restrained brand | N | No |
+| 8 | Production domain | None | No public URL; invites are temporary tunnel links | **Y** | **Yes** |
+| 9 | Default language | Dflt `en` (UI + voice), `hi` selectable | English-first; Hindi is one tap away | **Y** | No |
+| 10 | Extra languages at launch | None | English + Hindi only; each extra is a word list, not a promise | N | No |
+| 11 | Hindi voice when the UI is English | Dflt per-device voice language, independent of UI | A player can hear Hindi while reading English — intended | N | No |
+| 12 | Tickets per player | Dflt 4 (cap 12); Prop 3 to match the market | Four tickets per seat; more scrolling on a phone | **Y** | No |
+| 13 | Supported patterns | Dflt the six live patterns; Prop keep | Six patterns; the five deferred ones stay absent | **Y** | No (acceptance) |
+| 14 | Points per pattern | Dflt 20/10/10/10/20/30 | Our numbers, not the client's prizes | **Y** | No (acceptance) |
+| 15 | Late-joining policy | Dflt spectator for the round, ticketed next round | Late joiners cannot claim, explained on screen | **Y** (confirm) | No |
+| 16 | Multiple winners per pattern | Dflt off — first valid claim wins | One winner per pattern | **Y** | No |
+| 17 | Late-claim window | Dflt 0 calls | A claim after the next call is refused | **Y** | No |
+| 18 | Default calling interval | Dflt 8000 ms (range 500–120000) | 8 s per number; ~12 min for 90 numbers | N | No |
+| 19 | Host may hold tickets | Dflt yes | Host can play and call; a fairness judgement | N | No |
+| 20 | Max players per room | Dflt 100 (`MAX_PLAYERS`) | 100 seats; a setting, not a code change | N | No |
+| 21 | Admission control | Dflt open by code; approval **not built** | Anyone with the code joins; no kick/ban | **Y** | Public launch |
+| 22 | Max concurrent rooms | Prop 50 (measured), ceiling 50 with `DB_POOL_MAX=16` | Hosting is sized for a guess | **Y** | No |
+| 23 | Max concurrent players | Prop 250 (measured: p95 ack 85 ms, 0 duplicate calls) | Same | **Y** | No |
+| 24 | Peak window | Prop Saturday 19:00–22:00 local | Capacity watch is best-effort | N | No |
+| 25 | Public or invite-only rooms | Dflt invite-by-code | Rooms are unlisted; the code is the only key | N | No |
+| 26 | Hosting owner and payer | None | Nobody can be billed, so nothing is hosted | **Y** | **Yes** |
+| 27 | Client administrator identity | None (created with `npm run owner:create`) | No owner console in production | **Y** | **Yes** |
+| 28 | Who is on call | None | Alerts have no recipient; email-only at best | **Y** | Public launch |
+| 29 | Monthly budget | Prop $0 for demo/UAT; ~$3.69/mo reliable paid | Stays on the $0 demo path | **Y** | **Yes** (chooses size) |
+| 30 | Backup retention | Prop 14 daily dumps + monthly restore proof | Dumps exist but retention is undefined | N | No |
+| 31 | Staging required | Prop no; review against a throwaway database | Changes are reviewed on UAT instead | N | No |
+| 32 | Support contact shown to players | None — footer link hidden when unset | No in-app way to reach a human | **Y** | Public launch |
+| 33 | Privacy policy | None | Collecting names, seat tokens and chat without a policy | **Y** | **Yes** (public) |
+| 34 | Terms of use | None | No written "free to play, no cash prizes" statement | **Y** | **Yes** (public) |
+| 35 | Retention / deletion policy | Dflt behaviour: rooms, tickets, calls, awards, audit persist; **chat is never persisted**; sessions idle out at 7 days; abandoned rooms are closed by the owner | Retention happens but is unwritten | **Y** | **Yes** (public) |
+| 36 | May minors play | None — not stated anywhere | No age wording; a legal position, not ours to pick | **Y** | No (wording) |
+| 37 | Cookie / consent notice | Dflt: session cookie only; no analytics, no third-party scripts | Arguably unnecessary today; becomes necessary the day analytics are added | N | No |
+| 38 | Free to play, or entry fees / cash prizes | Dflt free to play; nothing processes a payment | Stays free to play — the only mode the build supports | **Y** (in writing) | **Yes** (public) |
+
+### What this resolution does not do
+
+- It does not set any of the **Y** rows. They are the client's, and `CLIENT-SIGNOFF.md` asks for them
+  on one page.
+- It does not turn an approval question into a build item. Row 21 is the only row where a client answer
+  ("we want host approval") would create real work.
+- It does not claim a domain, a brand, a legal entity or a jurisdiction. None was invented anywhere in
+  this phase.
+
+### Deployment blockers, in the order they bite
+
+1. **Row 8, 26, 29** — no address and no account owner: there is nowhere to deploy to, and no $0 option
+   in `FREE-INFRASTRUCTURE-RESEARCH.md` §5 leaves a stable URL without a human accepting terms.
+2. **Rows 33, 34, 35, 38** — legal surface and a written free-to-play confirmation. A public URL without
+   these is a product launch, not a client delivery.
+3. **Rows 1–4** — the brand. The build is usable, and unmistakably not the client's.
+4. **Rows 12–17** — the rules. The defaults are playable; they are not necessarily *their* game.
+

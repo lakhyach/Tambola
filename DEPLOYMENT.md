@@ -130,3 +130,98 @@ invitation link + QR opened from another device, multiple players in one room,
 room isolation, synchronised calls, reconnect/recovery, owner sign-in
 (password + MFA), and `/livez` `/readyz` `/healthz` over HTTPS. No real money is
 involved at any point.
+
+`npm run smoke -- --url https://your-domain --full` performs the mechanical part of
+that list and exits non-zero on the first failure: /livez, /readyz (refusing a
+memory-mode server), /healthz (requiring current migrations), the SPA, a real
+Socket.IO handshake, and — with `--full` — one complete round in a room of its
+own. The human part is still the human part: a second device, a real handset, and
+the owner console.
+
+## Appendix A — the pre-start gate
+
+```bash
+npm run env:check -- --production     # exits non-zero on any unsafe value
+```
+
+It re-reads the same environment the server will read and prints a report that
+never contains a value. It refuses, in production: a missing or unparseable
+`DATABASE_URL`; a default or empty database password; a remote host with no
+`sslmode` or with `disable`/`prefer`; `ALLOW_MEMORY_ONLY=1`; a missing, non-https
+or path-bearing `PUBLIC_ORIGIN`; `TRUST_PROXY` other than `1`;
+`TAMBOLA_COOKIE_SECURE` false; a malformed `OWNER_MFA_KEY`; `DB_POOL_MAX` above the
+ceiling of 50. It warns on a localhost database, port `6543` (the transaction
+pooler, which breaks the session-scoped lease) and gameplay values outside their
+ranges. Run it in the pipeline, before the container, so a misconfiguration is a
+failed deploy rather than a bad first hour. Full reference:
+`docs/DEPLOYMENT-READINESS.md` §1.
+
+## Appendix B — pool sizing, measured
+
+`DB_POOL_MAX` (default 8, ceiling 50) is the one capacity dial. The instance lease
+holds one connection outside the pool, so keep `DB_POOL_MAX + 1` under the plan's
+client-concurrency limit. Measured with `scripts/loadtest.mjs` at 50 rooms × 250
+players, calls fired back-to-back (harsher than real play) against local
+PostgreSQL 16:
+
+| `DB_POOL_MAX` | ack p95 | ack p99 | peak waiters | tx p99 | lock waits |
+| --- | --- | --- | --- | --- | --- |
+| 8 | 84.8 ms | 101.2 ms | 42 | 158.2 ms | 1 |
+| 16 | 65.0 ms | 89.8 ms | 34 | 236.7 ms | 1 |
+| 32 | 56.4 ms | 62.9 ms | 18 | 320.8 ms | 16 |
+
+At a 42-deep queue the database was idle (peak 7 active of 8, longest query 23 ms,
+cache hit 100%, zero deadlocks), so the queue is pool checkout, not database
+capacity. **Use 8 for real play, 16 for a known ~50-room peak, and never size the
+pool to "make the queue go away".** Zero duplicate calls, zero cross-room leakage
+and 50/50 reconnects held at every size.
+
+## Appendix C — continuous integration
+
+`.github/workflows/ci.yml` (free on a public repository): a `postgres:16-alpine`
+service; `npm test`, lint, client build, `secret-scan`, `security-probe`;
+`e2e` and `e2e:durable`; `db:backup` + `db:restore-check` with the archive
+uploaded as an artifact; a self-test that `env:check --production` fails on an
+unsafe environment; and a second job that builds the image and curls `/livez`
+inside the container. `.github/workflows/uptime.yml` probes `/readyz` and
+`/healthz` every 20 minutes at `secrets.DEPLOY_URL` and opens (then closes) an
+issue. With no secret it exits green and says so.
+
+## Appendix D — rollback
+
+1. `docker stop` (SIGTERM) — drains, freezes rooms with a reason, releases the
+   lease. Never `kill -9`; the lease would have to time out instead.
+2. Start the previous image tag with the same `DATABASE_URL`. Boot recovery
+   rebuilds open rooms from the database, not from memory.
+3. A bad migration is not rolled back by hand: restore the pre-deploy dump into a
+   fresh database, prove it, then repoint `DATABASE_URL`.
+4. A rollback freezes every room in play. That is the correct trade against
+   double-calling numbers.
+
+## Appendix E — monitoring with no vendor account
+
+`/healthz` reports `scheduler { armed, nextDueInMs, overdue, ticking }` and
+`pool { total, idle, waiting, max, errors }` next to the lease and migration
+state. `scheduler.ticking === false` with `armed > 0` is "the calling clock
+stopped"; `overdue` is "a timer is more than a minute late"; `pool.waiting`
+persistently above zero is "requests are queueing". `overdue` is deliberately not
+a readiness failure — one late timer during a deploy is not a reason to drain the
+instance that is catching up. The practical arrangement, all $0: UptimeRobot
+(50 monitors, 5-minute interval) as the primary alert, `uptime.yml` as the backup
+layer, and the platform's log stream for the JSON lines. Sentry, R2 and Resend are
+documented in `docs/FREE-INFRASTRUCTURE-RESEARCH.md` and deliberately not
+activated: they need an account.
+
+## Appendix F — the $0 deployment, precisely
+
+`docs/FREE-INFRASTRUCTURE-RESEARCH.md` holds the research; the short version is
+that a genuinely free 24/7 host with a stable hostname does not exist at this
+scale. The zero-cost options are this machine behind a Cloudflare Quick Tunnel
+(URL changes on restart, no uptime guarantee, 200 in-flight requests) or Oracle
+Cloud Always Free (card required for identity verification, and an idle 30-day
+account may be reclaimed). Render Free and Railway Free are **not** options: Render
+suspends after 15 minutes without HTTP *or WebSocket* traffic and deletes its free
+database after 30 days; Railway's free plan grants $1 of usage per month and no
+custom domains. `docs/DEPLOYMENT-READINESS.md` §3 has the provisioning commands
+and §10 lists every approval that remains.
+

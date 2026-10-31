@@ -1,0 +1,129 @@
+name: ci
+
+# Every gate that Phase 15/16 ran by hand, run again on every push and pull
+# request against a real PostgreSQL 16 service. The repository is public, so
+# standard GitHub-hosted runners cost nothing here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify (tests, lint, build, security, e2e, backup)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: tambola
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+          POSTGRES_DB: tambola
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tambola -d tambola"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      # A throwaway service container, never a real deployment. Tests create and
+      # drop their own schemas, so this database never accumulates state.
+      DATABASE_URL: postgres://tambola:ci-only-not-a-secret@127.0.0.1:5432/tambola
+      TEST_DATABASE_URL: postgres://tambola:ci-only-not-a-secret@127.0.0.1:5432/tambola
+      PG_BIN: /usr/lib/postgresql/16/bin
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: install
+        run: |
+          npm ci
+          npm ci --prefix client
+
+      - name: postgres client tools (backup + restore-check)
+        run: |
+          if ! command -v pg_dump >/dev/null 2>&1; then sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client; fi
+          pg_dump --version
+          echo "PG_BIN=$(dirname "$(command -v pg_dump)")" >> "$GITHUB_ENV"
+
+      - name: unit and integration tests (durable suites included)
+        run: npm test
+
+      - name: client lint
+        run: npm run lint
+
+      - name: client production build
+        run: npm run build --prefix client
+
+      - name: secret scan
+        run: npm run secret-scan
+
+      - name: security probe
+        run: npm run security-probe
+
+      - name: in-memory game e2e
+        run: npm run e2e
+
+      - name: durable PostgreSQL game e2e
+        run: npm run e2e:durable
+
+      - name: database backup
+        run: npm run db:backup
+
+      - name: database restore check
+        run: npm run db:restore-check
+
+      - name: production environment gate (self-test)
+        env:
+          NODE_ENV: production
+          PUBLIC_ORIGIN: https://tambola.example.com
+          TRUST_PROXY: "1"
+          OWNER_MFA_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+        run: node scripts/env-check.mjs --production
+
+      - name: upload backup artifact (proves the dump is a real archive)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tambola-backup
+          path: backups/**
+          retention-days: 3
+          if-no-files-found: error
+
+  docker:
+    name: docker image builds and starts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build production image
+        run: docker build --tag tambola:ci .
+
+      - name: image starts and serves /livez (memory mode is allowed for this check)
+        run: |
+          docker run --detach --name tambola-ci -p 4000:4000 \
+            -e ALLOW_MEMORY_ONLY=1 -e PORT=4000 tambola:ci
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4000/livez > /dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4000/livez
+          docker logs tambola-ci
+          docker rm --force tambola-ci

@@ -83,7 +83,10 @@ predicate.
 
 A room is for one game night, not for ten thousand concurrent players: the design
 holds exactly **one** app instance (see [Operations](#operations)). Measured
-capacity is in [`server/RUNBOOK.md`](server/RUNBOOK.md) §5.
+capacity is in [`server/RUNBOOK.md`](server/RUNBOOK.md) §5 — the newest durable
+run held **50 rooms × 250 players**, 750 back-to-back calls, p95 acknowledgement
+85 ms with the default pool, zero duplicate calls and 50/50 reconnects
+(`docs/DEPLOYMENT-READINESS.md` §7).
 
 ## Architecture in one paragraph
 
@@ -137,6 +140,8 @@ npm run db:backup        # pg_dump + a manifest describing exactly what was save
 npm run db:restore-check # restores that archive into a throwaway database and proves it
 npm run secret-scan      # no credential in shipped content or in the built bundle
 npm run security-probe   # 51 live checks of the HTTP and socket surface, in-process
+npm run env:check        # validate this environment before a deploy (no values printed)
+npm run smoke -- --url http://127.0.0.1:4000 --full   # prove a running server, board and socket
 npm run verify           # test + lint + build + secret-scan, in one command
 ```
 
@@ -159,6 +164,9 @@ setting.
 ## Operations
 
 - [`DEPLOYMENT.md`](DEPLOYMENT.md) — what to provision and why serverless does not work here.
+- [`docs/PHASE-16B-REPORT.md`](docs/PHASE-16B-REPORT.md) — the deployment-readiness report: what is deployable now, what blocks a public launch, the measured numbers and every approval that remains.
+- [`docs/DEPLOYMENT-READINESS.md`](docs/DEPLOYMENT-READINESS.md) — the deploy gate, the smoke test, rollback, pool sizing and the exact approvals that remain.
+- [`docs/FREE-INFRASTRUCTURE-RESEARCH.md`](docs/FREE-INFRASTRUCTURE-RESEARCH.md) — every free-tier claim checked against the provider's own page, and the two architectures that actually cost $0.
 - [`deploy/README.md`](deploy/README.md) — Render / Fly.io / Railway steps, with the safety controls to preserve.
 - [`server/RUNBOOK.md`](server/RUNBOOK.md) — configuration, boot, recovery, backups, shutdown, load.
 - [`server/DATABASE.md`](server/DATABASE.md) — schema, the durability contract, how a room is rebuilt.
@@ -172,6 +180,7 @@ setting.
 - [`docs/RULES-DECISIONS.md`](docs/RULES-DECISIONS.md) — the five deferred patterns and the configuration values a client must sign off.
 - [`docs/CLIENT-REQUIREMENTS.md`](docs/CLIENT-REQUIREMENTS.md) — the inputs (brand, domain, language, rules, scale, legal) needed for the final release.
 - [`docs/HOSTING-OPTIONS.md`](docs/HOSTING-OPTIONS.md) — the four hosting architectures, their monthly cost, and why nothing has been purchased yet.
+- [`docs/CLIENT-SIGNOFF.md`](docs/CLIENT-SIGNOFF.md) — the eighteen decisions that need the client (fourteen product, four legal), on one page, with proposed defaults.
 - [`docs/GAP-REPORT.md`](docs/GAP-REPORT.md) — every remaining gap, ranked P0/P1/P2 with the client decision attached to it.
 
 One instance, always. A second process pointed at the same database fails closed
