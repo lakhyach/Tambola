@@ -102,6 +102,30 @@ do and do not back each change.
 - A host tab visiting the player join page was bounced into a player lobby by the
   new seat logic; a host seat is never auto-resumed there.
 
+## Phase 16 — release review and client papers (31 October 2026, `2063f0b`)
+
+- **Pushed to GitHub.** `b62bdd9..2063f0b main -> main` on
+  `github.com/lakhyach/Tambola`; the remote and local `main` both resolve to
+  `2063f0b6ec217f74cdb6fcd3a29b14af9d7b54ad`. Nothing was deployed, no production
+  database was connected to, and no provider account or paid resource was created.
+- **Every gate re-run on the committed tree, not remembered:** `npm run verify`
+  (383/383, lint, build, secret scan) exit 0, `npm run security-probe` 51/51,
+  `npm run e2e` and `npm run e2e:durable` both COMPLETED, `npm run db:backup` plus
+  `db:restore-check` PASSED (18 tables, 10 498 rows).
+- **The market research was re-checked against the live sources** rather than
+  trusted from the previous note: all four full sources re-read, every competitor
+  claim still present. Three dimensions the first pass lacked — number-calling
+  conventions, mobile gameplay conventions, administrative capability — are now
+  sections 3a–3c of the benchmark, with §4a as the rules decision matrix.
+- **The five deferred patterns are written down, not just deferred:**
+  `docs/RULES-DECISIONS.md` states what each pattern means, what the market
+  publishes about it, why the old marked-count check was wrong, how it would be
+  validated, and whether it can change who wins. The engine is untouched.
+- **Client-facing papers added:** the benchmark (`docs/MARKET-BENCHMARK.md`), the
+  rules decisions, the inputs still needed (`docs/CLIENT-REQUIREMENTS.md`), the
+  hosting architectures and their monthly cost (`docs/HOSTING-OPTIONS.md`) and the
+  ranked gap report (`docs/GAP-REPORT.md`).
+
 ## 28 October 2026 — production hardening (`d54c98d` … `b62bdd9`)
 
 - Server-authoritative engine with durable-before-authoritative writes, boot-time
@@ -140,14 +164,16 @@ are recorded in `DEFERRED_PATTERNS` in `server/game/patterns.js` with the reason
   URL.
 - **No production deployment has been verified.** The public URL was deliberately
   left untouched, so provider TLS, proxy headers and cookie flags remain post-deploy
-  checks rather than confirmed facts.
+  checks rather than confirmed facts. The hosting options and their cost are in
+  [`docs/HOSTING-OPTIONS.md`](docs/HOSTING-OPTIONS.md); none has been purchased.
 - **One browser engine tested** (Chromium). No Safari or Firefox run; no screen-reader
   pass; narrow-layout evidence comes from a 434 px Chrome window with its layout
   container pinned to 390 px, not from a handset on a network.
 - **Single instance by design.** Horizontal scaling needs per-room ownership, which
   is a redesign, not a configuration.
 - **Five patterns remain deferred** (Early Seven, Star, Middle Number, 1 2 3 / 143,
-  Pyramid) — each needs a rules decision, and none has a button.
+  Pyramid) — each needs a rules decision, and none has a button. What each one means
+  and what it would take is in [`docs/RULES-DECISIONS.md`](docs/RULES-DECISIONS.md).
 - **Rooms do not age out on their own.** A clean stop closes them durably; abandoned
   rooms are closed by the owner from the control centre.
 - **Chat is unmoderated** beyond length and rate limits, and there are no player

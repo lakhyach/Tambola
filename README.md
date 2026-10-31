@@ -166,6 +166,14 @@ setting.
 - [`TEST-REPORT.md`](TEST-REPORT.md) — end-to-end evidence for a complete game.
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed and what is still open.
 
+## Client-facing papers
+
+- [`docs/MARKET-BENCHMARK.md`](docs/MARKET-BENCHMARK.md) — how this compares with three shipped Indian Tambola products, with sources and the rules decision matrix.
+- [`docs/RULES-DECISIONS.md`](docs/RULES-DECISIONS.md) — the five deferred patterns and the configuration values a client must sign off.
+- [`docs/CLIENT-REQUIREMENTS.md`](docs/CLIENT-REQUIREMENTS.md) — the inputs (brand, domain, language, rules, scale, legal) needed for the final release.
+- [`docs/HOSTING-OPTIONS.md`](docs/HOSTING-OPTIONS.md) — the four hosting architectures, their monthly cost, and why nothing has been purchased yet.
+- [`docs/GAP-REPORT.md`](docs/GAP-REPORT.md) — every remaining gap, ranked P0/P1/P2 with the client decision attached to it.
+
 One instance, always. A second process pointed at the same database fails closed
 on an advisory lease rather than double-calling numbers — that is intended
 behaviour, not a fault to work around.
