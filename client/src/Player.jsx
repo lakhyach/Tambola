@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate, Outlet, useSearchParams } from "react-router-dom";
-import { call, clearSession, loadSession, saveSession, socket } from "./net.js";
+import { call, clearSession, loadOwnSession, loadPendingSession, saveSession, socket } from "./net.js";
+import { offeredSeatLabel, planJoinEntry } from "./lib/joinSeat.js";
 import Header from "./Header";
 import Panel from "./components/Panel.jsx";
 import Button from "./components/Button.jsx";
@@ -16,18 +17,39 @@ const Player = () => {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // A seat this browser remembers while this tab holds none. Not taken silently:
+  // see lib/joinSeat.js for why a new tab must ask before becoming that player.
+  const [offer, setOffer] = useState(null);
 
   useEffect(() => {
-    if (searchTerm) setCode(searchTerm.toUpperCase());
-    // A saved seat auto-resumes from the join page only. This component is the
-    // layout for /player/room and /player/game too, and those screens re-claim
-    // their own seat - redirecting from here would bounce a seated player out
-    // of the game they are already in.
-    const saved = loadSession();
-    if (location.pathname === "/player" && !searchTerm && saved.roomId && saved.role === "player") {
-      navigate(`/player/room`);
-    }
+    const plan = planJoinEntry({
+      pathname: location.pathname,
+      searchTerm,
+      own: loadOwnSession(),
+      pending: loadPendingSession(),
+    });
+    if (plan.code) setCode(plan.code);
+    // This tab's own seat is the only one that may be resumed without asking.
+    // The component is also the layout for /player/room and /player/game, and
+    // those screens re-claim their seat themselves — so the plan ignores them,
+    // otherwise a seated player would be bounced out of the game they are in.
+    if (plan.action === "resume") navigate(`/player/room`);
+    else if (plan.action === "offer") setOffer(plan.seat);
   }, [navigate, searchTerm, location.pathname]);
+
+  const reclaimSeat = () => {
+    if (!offer) return;
+    // Make it this tab's seat, then let the room screen do the resuming it
+    // already does on every reconnect — one resume path, not two.
+    saveSession(offer);
+    setOffer(null);
+    navigate(`/player/room`);
+  };
+
+  const declineSeat = () => {
+    setOffer(null);
+    setError("");
+  };
 
   const handleJoinClick = async (e) => {
     e?.preventDefault?.();
@@ -74,8 +96,35 @@ const Player = () => {
             Take Your Seat
           </h1>
           <p style={{ color: "var(--oh-text-muted)", margin: "0 0 20px", fontSize: 14 }}>
-            Enter the code your host shared. The server gives you one ticket.
+            Enter the code your host shared. You can choose how many tickets to play.
           </p>
+          {offer ? (
+            <div
+              className="mb-5"
+              role="status"
+              style={{
+                padding: "12px 14px",
+                borderRadius: 14,
+                background: "var(--oh-inset)",
+                border: "1px solid var(--oh-line-gold)",
+              }}
+            >
+              <div className="oh-eyebrow" style={{ color: "var(--oh-gold)", marginBottom: 6 }}>
+                Seat this browser remembers
+              </div>
+              <p style={{ margin: "0 0 10px", fontSize: 14 }}>
+                {offeredSeatLabel(offer)} — is that you, in this tab?
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="gold" size="sm" onClick={reclaimSeat}>
+                  Take that seat
+                </Button>
+                <Button variant="ghost" size="sm" onClick={declineSeat}>
+                  I’m a new player
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <form onSubmit={handleJoinClick}>
             <label className="oh-eyebrow" htmlFor="player-name" style={{ display: "block", marginBottom: 6 }}>
               Your name
@@ -115,7 +164,7 @@ const Player = () => {
           ) : null}
           <div className="mt-5 flex justify-between items-center">
             <ConnectionIndicator />
-            <span className="oh-eyebrow" style={{ color: "var(--oh-text-faint)" }}>One ticket per seat</span>
+            <span className="oh-eyebrow" style={{ color: "var(--oh-text-faint)" }}>Choose your tickets before the round</span>
           </div>
         </Panel>
       </main>

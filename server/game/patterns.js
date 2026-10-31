@@ -30,6 +30,21 @@ function callOrdinal(calledNumbers, value) {
   return at === -1 ? Infinity : at + 1;
 }
 
+/**
+ * The call ordinal that COMPLETED a pattern: the last of its required numbers
+ * to be called. Every pattern can therefore answer "when did I become claimable",
+ * which is what the late-claim window needs (see config.claimWindowCalls).
+ */
+function completionOrdinal(calledNumbers, needed) {
+  let last = 0;
+  for (const n of needed) {
+    const at = callOrdinal(calledNumbers, n);
+    if (at === Infinity) return Infinity;
+    if (at > last) last = at;
+  }
+  return last;
+}
+
 /** Filled cell columns of a row, left to right (rows always hold exactly 5). */
 function filledColumns(ticket, rowIndex) {
   const cols = [];
@@ -52,7 +67,7 @@ function lineChecker(rowIndex) {
       return { valid: false, reason: "line incomplete", missing };
     }
     // "First to complete" is enforced by exclusive arbitration, not here.
-    return { valid: true };
+    return { valid: true, completedOnCall: completionOrdinal(calledNumbers, line) };
   };
 }
 
@@ -135,7 +150,7 @@ export const PATTERNS = Object.freeze({
       if (missing.length) {
         return { valid: false, reason: "corners incomplete", missing };
       }
-      return { valid: true };
+      return { valid: true, completedOnCall: completionOrdinal(calledNumbers, needed) };
     },
   },
 
@@ -153,7 +168,7 @@ export const PATTERNS = Object.freeze({
       if (missing.length) {
         return { valid: false, reason: "full house incomplete", missing };
       }
-      return { valid: true };
+      return { valid: true, completedOnCall: completionOrdinal(calledNumbers, needed) };
     },
   },
 });
@@ -230,5 +245,94 @@ export function evaluateClaim(patternId, ticket, calledNumbers, config = {}) {
       return { valid: false, reason: "early five window of " + window + " calls already passed" };
     }
   }
+
+  // Late-claim window. `0` is the traditional rule ("claim before the next
+  // number"); `N` allows N further calls of grace for slow phones and networks;
+  // a negative / non-integer value turns the rule off. Enforced here, at the
+  // moment of the claim, against the server's own call history — never against
+  // a timestamp the client reports.
+  const claimWindow = config.claimWindowCalls;
+  if (result.valid && Number.isInteger(claimWindow) && claimWindow >= 0 && Number.isInteger(result.completedOnCall)) {
+    const lateBy = calledNumbers.length - result.completedOnCall;
+    if (lateBy > claimWindow) {
+      return {
+        valid: false,
+        late: true,
+        lateBy,
+        reason:
+          "claim too late: " + lateBy + " call" + (lateBy === 1 ? "" : "s") + " went out after the pattern completed",
+        pattern: patternId,
+        points: pattern.points,
+        label: pattern.label,
+      };
+    }
+  }
+
   return { ...result, pattern: patternId, points: pattern.points, label: pattern.label };
+}
+
+/**
+ * Evaluate one claim across a seat's multiple tickets.
+ *
+ * A player holding several tickets completes a pattern on ANY of them, but the
+ * award itself is still per seat (a seat wins a pattern once). Each ticket is
+ * verified with the single-ticket rule above - so Early Five's call window and
+ * the completion ordinal still apply - and the server, never the client, picks
+ * which ticket won: the earliest completion, breaking ties by ticket number.
+ *
+ * @param {Array<{no:number, grid}|[]>} tickets the seat's own tickets
+ * @param {{ticketNo?: number}} [options] restrict to one named ticket
+ */
+export function evaluateClaimAcrossTickets(patternId, tickets, calledNumbers, config = {}, { ticketNo } = {}) {
+  const pattern = getPattern(patternId, config);
+  if (!pattern) return { valid: false, reason: "unknown or disabled pattern: " + patternId };
+  if (!Array.isArray(tickets) || !tickets.length) return { valid: false, reason: "claimant has no tickets" };
+
+  let candidates = tickets.map((t, i) => ({ no: (t && t.no) || i + 1, grid: (t && t.grid) || t }));
+  if (ticketNo !== undefined && ticketNo !== null) {
+    const wanted = Number(ticketNo);
+    const picked = candidates.filter((c) => c.no === wanted);
+    if (!picked.length) {
+      return { valid: false, reason: "no ticket number " + wanted + " belongs to you", pattern: patternId, points: pattern.points, label: pattern.label };
+    }
+    candidates = picked;
+  }
+
+  const winners = [];
+  let firstReason = null;
+  let firstLate = false;
+  for (const c of candidates) {
+    const verdict = evaluateClaim(patternId, c.grid, calledNumbers, config);
+    if (verdict.valid) winners.push({ ticketNo: c.no, completedOnCall: verdict.completedOnCall });
+    else {
+      if (firstReason == null) firstReason = verdict.reason;
+      if (verdict.late) firstLate = true;
+    }
+  }
+  if (!winners.length) {
+    return {
+      valid: false,
+      reason: firstReason || "none of your tickets completes this pattern",
+      ...(firstLate ? { late: true } : {}),
+      pattern: patternId,
+      points: pattern.points,
+      label: pattern.label,
+    };
+  }
+  winners.sort((a, b) => {
+    const ac = a.completedOnCall ?? Infinity;
+    const bc = b.completedOnCall ?? Infinity;
+    if (ac !== bc) return ac - bc;
+    return a.ticketNo - b.ticketNo;
+  });
+  const chosen = winners[0];
+  return {
+    valid: true,
+    pattern: patternId,
+    points: pattern.points,
+    label: pattern.label,
+    ticketNo: chosen.ticketNo,
+    completedOnCall: chosen.completedOnCall,
+    winningTickets: winners.map((w) => w.ticketNo),
+  };
 }

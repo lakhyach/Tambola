@@ -31,7 +31,7 @@ import {
   createBudget,
   LEGACY_EVENTS,
 } from "./validate.js";
-import { ErrorCodes } from "../game/engine.js";
+import { ErrorCodes, TICKET_MIN, TICKET_MAX } from "../game/engine.js";
 
 /** Send an ack response if the caller supplied a callback. */
 function reply(ack, payload) {
@@ -246,8 +246,37 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
       async ({ socket, session, room, payload, ack }) => {
         const pattern = asPatternId(payload.pattern);
         if (!pattern) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "pattern must be a known pattern id");
+        // an optional ticketNo targets one owned ticket; the server never trusts
+        // it as a hint about the grid, it only narrows which of the claimant's
+        // own tickets the claim is checked against
+        const ticketNo = asInteger(payload.ticketNo, { min: TICKET_MIN, max: TICKET_MAX });
+        if (ticketNo === null) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "ticketNo must be a ticket you hold");
         // identity comes from the socket's own session, never from the payload
-        reply(ack, await controller.claim({ room, playerId: session.playerId, pattern, socketId: socket.id }));
+        reply(
+          ack,
+          await controller.claim({ room, playerId: session.playerId, pattern, ticketNo, socketId: socket.id })
+        );
+      },
+      { requiresRoom: true }
+    );
+
+    /**
+     * A seat chooses how many tickets it wants, before the round starts. The
+     * room ceiling and the WAITING-only lock are enforced by the engine, not
+     * here; this layer only shapes the payload and binds it to this socket's own
+     * seat, so nobody can select tickets for somebody else.
+     */
+    on(
+      "tickets:select",
+      async ({ socket, session, room, payload, ack }) => {
+        const count = asInteger(payload.count, { min: TICKET_MIN, max: TICKET_MAX });
+        if (count === undefined || count === null) {
+          return rejected(ack, ErrorCodes.BAD_PAYLOAD, "count must be a whole number of tickets");
+        }
+        reply(
+          ack,
+          await controller.selectTickets({ room, playerId: session.playerId, count, socketId: socket.id })
+        );
       },
       { requiresRoom: true }
     );
@@ -260,6 +289,21 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
         // chat is not game state: it is rate-limited, length-checked and
         // broadcast, but never persisted and never durable
         reply(ack, room.chat({ playerId: session.playerId, playerToken: room.playerCredential(session.playerId), text }));
+      },
+      { requiresRoom: true }
+    );
+
+    /**
+     * What the room already said. A seat that arrived mid-round has seen none of
+     * it, and an empty panel next to a lively room reads as a broken chat. Read
+     * on demand rather than pushed on join, because the client's listeners are
+     * not guaranteed to be mounted yet at that moment — and never replayed to
+     * everybody, which is why chat stays out of the snapshot.
+     */
+    on(
+      "chat:history",
+      ({ room, ack }) => {
+        reply(ack, { ok: true, messages: room.recentChat() });
       },
       { requiresRoom: true }
     );

@@ -36,6 +36,8 @@ exists (`node --env-file-if-exists=.env`). Copy `.env.example` and adjust.
 | --- | --- | --- |
 | `DATABASE_URL` | yes in production | PostgreSQL connection string. Without it the server runs in memory mode. |
 | `DB_SCHEMA` | no (default `public`) | Schema the pooled connections pin to. Use a non-`public` schema to run several isolated deployments against one cluster. |
+| `DB_POOL_MAX` | no (default `8`, hard ceiling `50`) | Max pooled connections the app opens per instance. The single-instance lease holds one extra connection outside the pool, so keep `DB_POOL_MAX + 1 + headroom` under the **usable `max_connections` of your database plan** (for Supabase, the pooler's client-concurrency limit, not the raw server value). Beyond that every checkout queues and eventually times out. See "Connection pool and capacity" below. |
+| `DB_POOL_ACQUIRE_TIMEOUT_MS` | no (default `5000`) | How long a request waits for a free pooled connection before failing. Kept short so a saturated pool surfaces as a clean retryable error rather than a hung socket. |
 | `ALLOW_MEMORY_ONLY` | no | Must be the literal `1` to start without `DATABASE_URL`. Memory mode loses every game on restart and **cannot sign an owner in**. Development only; in production an explicit `1` is the only way to opt into it. |
 
 ### Network and identity
@@ -47,6 +49,7 @@ exists (`node --env-file-if-exists=.env`). Copy `.env.example` and adjust.
 | `ALLOWED_ORIGINS` | usually empty | Comma-separated browser origins allowed to open a socket. Leave empty for same-origin, which is correct when this server serves the built client. This does **not** enable credentialed admin CORS — the control centre is same-origin by design. |
 | `PUBLIC_ORIGIN` | recommended | Exact public origin (e.g. `https://hall.example.com`) used in invite links and QR codes. Without it invites fall back to the request host and the admin UI shows a setup warning. |
 | `TRUST_PROXY` | set to `1` behind a proxy | Tells Express to trust `X-Forwarded-*` so `req.ip` / `req.protocol` describe the real client. This matters for correct rate-limit keying. Leave unset for direct connections. |
+| `HTTP_REQUEST_TIMEOUT_MS` | `30000` | How long one client may take to finish a request before the server answers `408` and frees the socket. Node's own default is five minutes, which is a slowloris invitation; lower it only if your reverse proxy is slower than 30 s end-to-end. |
 
 ### Gameplay and sessions
 
@@ -153,6 +156,57 @@ process drains, closes rooms durably, releases the advisory lock and exits. Only
 start the replacement after the old process has released the lock — otherwise
 the new one gets `INSTANCE_LOCKED` and exits, which is the correct outcome.
 
+### Connection pool and measured capacity
+
+Because one process owns every room, the practical ceiling on concurrent play is
+**the connection pool and the latency of a single durable write**, not CPU or
+socket count. Every number call, claim, ticket choice and reconnect is written to
+Postgres *before* it is broadcast (see `server/persist/controller.js`: durable-
+before-authoritative), and a call transaction issues several statements —
+`BEGIN`, a `SELECT … FOR UPDATE` on the room's `games` row, the `draw_calls`
+insert, an audit insert and `COMMIT`. Those are separate round-trips, so the
+per-call latency has a floor set by that round-trip cost, not by pool size.
+
+Measured with `scripts/loadtest.mjs staged` against a local PostgreSQL 16
+(`max_connections = 100`, single app instance, throwaway schema). The harness
+fires calls **back-to-back**, which is a far harsher write rate than real play,
+where `CALL_INTERVAL_MS` spaces calls by seconds. Numbers are p50/p99 call-**ack**
+latency at that artificial worst case:
+
+| Active rooms | `DB_POOL_MAX` | p50 | p99 | peak pool | peak waiters | dup calls / leaks / conn errors |
+| --- | --- | --- | --- | --- | --- | --- |
+| 20 | 8 (default) | 25 ms | 58 ms | 8/8 | 12 | 0 / 0 / 0 |
+| 50 | 8 (default) | 61 ms | 101 ms | 8/8 | 42 | 0 / 0 / 0 |
+| 50 | 24 | 49 ms | 90 ms | 24/24 | 26 | 0 / 0 / 0 |
+| 50 | 40 | 49 ms | 86 ms | 40/40 | 10 | 0 / 0 / 0 |
+| 100 | 40 | 108 ms | 170 ms | 40/40 | 60 | 0 / 0 / 0 |
+
+What the data shows:
+
+- **The pool default of 8 starves under load** (42 requests queued behind 8
+  connections at 50 rooms). Raising it to ~24 removes most of the queue; going
+  to 40 shrinks the backlog further but the p99 barely moves. Past ~24 the
+  bottleneck is the per-call transaction round-trips, **not** connection count —
+  so "just make the pool bigger" is the wrong lever once you are around 24.
+- **Correctness held at every size**: zero duplicate calls, zero cross-room
+  fan-out leakage, zero connection errors, and every reconnect sample recovered
+  — the durable-before-authoritative and one-writer-per-room guarantees were
+  never broken under saturation.
+- **A starting production target**: with `DB_POOL_MAX` sized to your plan's
+  connection budget, **~100 concurrent active rooms** sustained the back-to-back
+  burst at p99 ≈ 170 ms; real gameplay (calls seconds apart) is dramatically
+  lighter, so this is a conservative worst case, not a recommended operating
+  point.
+
+**Sizing `DB_POOL_MAX` honestly:** do **not** copy the local `max_connections =
+100`. Production runs against a **Supabase session pooler**, whose *client*
+concurrency limit is set by the plan and is typically far below the raw server
+`max_connections`. Set `DB_POOL_MAX + 1 (lease) + headroom` under that pooler
+limit, then re-run the staged test with a throwaway local database (never the
+live one — `loadtest.mjs` refuses Supabase hosts) to confirm waiters stay near
+zero. The single-instance lease is retained deliberately: multi-instance
+fan-out is a redesign, not a dial.
+
 ## 6. Owner accounts
 
 There is one owner account and no public registration. Every command below runs
@@ -241,7 +295,8 @@ exactly:
 
 - `GET /livez` — **liveness.** Process-level only; never touches the database.
   A Postgres outage must not make a supervisor kill a healthy server. Use this
-  for restart decisions.
+  for restart decisions. It answers `{ok, live, draining}` and nothing else —
+  uptime and every other detail live on `/readyz` and `/healthz`.
 - `GET /readyz` — **readiness.** `200` only when the database is reachable, the
   schema is current, the instance lease is held and the process is not draining;
   otherwise `503`. Use this to gate traffic. Readiness is cached briefly so a

@@ -132,7 +132,8 @@ export function makeRoom(options = {}) {
 export function giveTicket(room, playerId, ticket) {
   const player = room.players.get(playerId);
   if (!player) throw new Error("unknown player " + playerId);
-  player.ticket = ticket;
+  player.tickets = [{ no: 1, grid: ticket }];
+  player.ticketCount = 1;
   return player;
 }
 

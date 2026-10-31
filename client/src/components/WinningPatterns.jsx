@@ -9,16 +9,16 @@ import { PATTERN_META } from "../brand.js";
  * win locally — the awarded state below comes straight back from server awards.
  */
 // eslint-disable-next-line react/prop-types
-const WinningPatterns = ({ patterns = [], awards = [], running = false, myPlayerId, onSubmit }) => {
+const WinningPatterns = ({ patterns = [], awards = [], note = null, canClaim = false, myPlayerId, onSubmit }) => {
   const awardedByPattern = new Map(awards.map((a) => [a.pattern, a]));
 
   return (
     <Panel className="p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="oh-eyebrow">Winning Patterns</h2>
-        {!running ? (
+        {note ? (
           <span className="oh-eyebrow" style={{ color: "var(--oh-text-faint)" }}>
-            claims open while running
+            {note}
           </span>
         ) : null}
       </div>
@@ -65,7 +65,7 @@ const WinningPatterns = ({ patterns = [], awards = [], running = false, myPlayer
                   <Button
                     variant="ghost"
                     size="sm"
-                    disabled={!running}
+                    disabled={!canClaim}
                     onClick={() => onSubmit(id)}
                     aria-label={`Claim ${meta.label}`}
                   >

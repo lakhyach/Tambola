@@ -24,6 +24,7 @@
 
 import test, { after, before, describe } from "node:test";
 import assert from "node:assert/strict";
+import http from "node:http";
 import { createHash, randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -206,7 +207,7 @@ describe("health answers distinguish liveness, readiness and mode", () => {
     const secretish = {
       healthCheck: async () => true,
       query: async () => {
-        throw new Error("connect postgres://user:hunter2@db.internal:5432/tambola failed");
+        throw new Error("connect postgres://user:hunter2@127.0.0.1:5432/tambola failed");
       },
     };
     const health = createHealth({ durable: true, db: secretish, lease: () => ({ held: true }) });
@@ -284,7 +285,7 @@ describe("structured logging keeps credentials out of the log", () => {
 
   test("database credentials quoted inside a message are scrubbed", () => {
     const { logger, last } = capture();
-    logger.error("db.failure", { detail: "connect postgres://user:hunter2@db.internal:5432/tambola refused" });
+    logger.error("db.failure", { detail: "connect postgres://user:hunter2@127.0.0.1:5432/tambola refused" });
     const text = JSON.stringify(last());
     assert.equal(text.includes("hunter2"), false);
     assert.equal(text.includes("user:"), false, "only the scheme survives, the credentials do not");
@@ -859,14 +860,14 @@ describe("hardening that outlives the process (PostgreSQL)", () => {
 // ============================== E. probes + graceful shutdown (in-memory)
 
 describe("liveness, readiness and graceful shutdown over HTTP", () => {
-  async function memoryInstance() {
+  async function memoryInstance({ origins = [] } = {}) {
     const store = createMemoryOwnerStore();
     const sessions = createMemoryOwnerSessions();
     const audit = createMemoryAdminAudit();
     await store.create({ username: OWNER.username, passwordHash: await hashPassword(OWNER.password) });
     const instance = await createApp({
       memoryOnly: true,
-      origins: [],
+      origins,
       config: { autoCall: false, chatIntervalMs: 0, callIntervalMs: 60000 },
       limits: { burst: 2000, perSecond: 4000 },
       ownerStore: store,
@@ -881,11 +882,16 @@ describe("liveness, readiness and graceful shutdown over HTTP", () => {
   test("/livez never touches the database and no probe leaks a secret", async () => {
     const { instance, base } = await memoryInstance();
     try {
-      const live = await (await fetch(base + "/livez")).json();
+      const liveRes = await fetch(base + "/livez");
+      const live = await liveRes.json();
       assert.equal(live.ok, true);
       assert.equal(live.live, true);
       assert.equal(live.draining, false);
       assert.equal(JSON.stringify(live).includes("DATABASE_URL"), false);
+      // One question, one answer: uptime is readiness information, not a fact a
+      // public liveness probe may hand to anyone who curls it.
+      assert.equal(JSON.stringify(live).includes("uptime"), false, "/livez disclosed uptime");
+      assert.equal(liveRes.headers.get("x-powered-by"), null, "the stack was advertised");
 
       const readyRes = await fetch(base + "/readyz");
       assert.equal(readyRes.status, 200, "a memory-mode dev process is ready for traffic");
@@ -896,6 +902,77 @@ describe("liveness, readiness and graceful shutdown over HTTP", () => {
       assert.equal(JSON.stringify(ready).includes("postgres"), false);
     } finally {
       await instance.closeServer();
+    }
+  });
+
+  test("an allow-listed origin comes back as itself, not as the word true", async () => {
+    // The HTTP middleware once set Access-Control-Allow-Origin from the boolean
+    // verdict, so every allow-listed browser was answered `true` — a header no
+    // origin check ever accepts — while the config looked correct on paper.
+    const { instance, base } = await memoryInstance({ origins: ["http://allowed.example"] });
+    try {
+      const ok = await fetch(base + "/livez", { headers: { origin: "http://allowed.example" } });
+      assert.equal(ok.headers.get("access-control-allow-origin"), "http://allowed.example");
+      assert.match(ok.headers.get("vary") || "", /Origin/);
+      const bad = await fetch(base + "/livez", { headers: { origin: "http://evil.example" } });
+      assert.equal(bad.headers.get("access-control-allow-origin"), null, "an unlisted origin was granted CORS");
+    } finally {
+      await instance.closeServer();
+    }
+  });
+
+  test("a request has thirty seconds to finish, not Node's five minutes", async () => {
+    // server.requestTimeout is the slowloris bound: a client that declares a
+    // body and dribbles it is answered 408 and the socket is freed.
+    const { instance } = await memoryInstance();
+    try {
+      assert.equal(instance.server.requestTimeout, 30000, "requestTimeout must be finite and explicit");
+    } finally {
+      await instance.closeServer();
+    }
+  });
+
+  test("a stalled request body is answered 408, not held open forever", async () => {
+    // Node's requestTimeout does not fire once a body has started arriving, and
+    // body-parser has no timeout option — so the admin router bounds it itself.
+    // Without that bound this request would sit in the parser until the process
+    // notices, which is a slowloris invitation with a friendly face.
+    const previous = process.env.HTTP_REQUEST_TIMEOUT_MS;
+    process.env.HTTP_REQUEST_TIMEOUT_MS = "400";
+    let made;
+    try {
+      made = await memoryInstance();
+      const port = Number(new URL(made.base).port);
+      const res = await new Promise((resolve, reject) => {
+        const req = http.request(
+          {
+            host: "127.0.0.1",
+            port,
+            method: "POST",
+            path: "/api/admin/signin",
+            headers: { "content-type": "application/json", "content-length": "80" },
+            agent: false,
+          },
+          resolve
+        );
+        req.on("error", reject);
+        req.setTimeout(5000, () => req.destroy(new Error("the body timeout never fired — a stalled request was held open")));
+        req.write('{"username":"partial');
+        req.end();
+      });
+      const body = await new Promise((resolve) => {
+        let text = "";
+        res.on("data", (c) => (text += c));
+        res.on("end", () => resolve(JSON.parse(text)));
+      });
+      assert.equal(res.statusCode, 408, "a stalled body answered " + res.statusCode);
+      assert.equal(body.code, "REQUEST_TIMEOUT", "and not with a client-actionable code");
+      const live = await fetch(made.base + "/livez");
+      assert.equal(live.status, 200, "the process still answers liveness afterwards");
+    } finally {
+      if (previous === undefined) delete process.env.HTTP_REQUEST_TIMEOUT_MS;
+      else process.env.HTTP_REQUEST_TIMEOUT_MS = previous;
+      if (made) await made.instance.closeServer();
     }
   });
 

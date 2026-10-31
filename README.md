@@ -1,106 +1,201 @@
-# Tambola Game
+# Tambola
 
-**Tambola** is an interactive, web-based version of the classic Indian game Tambola (also known as Bingo). The game allows players to join sessions, generate tickets, and mark numbers in real-time for a fun and engaging experience.
+A free-to-play, real-time multiplayer Tambola (Housie / Bingo) you can run for a
+live game night: one person hosts, everyone else joins from their phone with a
+code or a link, and the server draws the numbers and decides every win.
 
+**No money is involved anywhere.** There are no entry fees, wagers, purchases or
+prize payouts — only points on a scoreboard. That is a product rule, not an
+unfinished feature.
 
-### website will take upto 1/2 minutes to load, because i deploy the website for free.
+---
 
-## Features
+## How a game actually goes
 
-- **Real-Time Gameplay:** Multiple players can join and play simultaneously.
-- **Automated Number Generation:** System generates and calls out numbers automatically.
-- **Ticket Management:** Players can generate and manage their tickets.
-- **Win Conditions:** Automatic detection and announcement of winners.
-- **Responsive Design:** Optimized for desktops, tablets, and smartphones.
+1. **Host** opens the site, names the game and gets an 8-character room code
+   (`E99YSN4A`) plus a share link. The code alphabet deliberately excludes the
+   look-alikes `I`, `O`, `0` and `1`.
+2. **Players** join with the code or the link and pick how many tickets they want
+   (1–4 by default). Tickets are issued by the server, never typed in.
+3. **Host starts.** Ticket selection locks, and the server has already fixed the
+   order of all 90 numbers for the round.
+4. **Numbers are called** on the server's clock (8 seconds apart by default), or
+   manually by the host. Every official number is written to the database *before*
+   it is broadcast, so no two clients can disagree about what was called. A player
+   who turns on the `VOICE` chip has each call read aloud by their own browser —
+   English or Hindi number words, one at a time, in call order, never more than
+   two numbers behind the board. Voice is a per-device convenience; the board
+   stays the truth for everyone.
+5. **Players claim patterns** by pressing a tile. The claim is only an intent: the
+   server re-checks the ticket against its own call history and either awards it
+   or refuses with the reason ("line incomplete", "no ticket number 7 belongs to
+   you", …). Nothing a browser says can create a winner.
+6. **Chat** works during the game — free text plus quick messages in English and
+   Hindi, so a table that mixes languages still plays together. A seat that arrives
+   mid-round is given the last few messages it missed, from memory, so nobody joins
+   a silent-looking panel while the room is talking.
+7. **The round ends** when the host ends it or all 90 numbers have been called.
+   Full House is normally the last claim standing. The scoreboard, the award list
+   and the call history stay available, and the host can reset the room for a fresh
+   round with the same players and the same ticket counts — but brand-new tickets,
+   dealt again by the server — and start it again from the same screen.
 
-## Technologies Used
+Joining after the start is allowed and useful: you watch the round in progress and
+you can chat, but ticket selection is closed once a round starts, so a late joiner
+has no ticket to claim with and picks tickets for the next round. Nobody — early
+or late — can claim a pattern their own ticket does not complete, because the
+server checks it.
 
-- **Frontend:** React, Tailwind, Vite
-- **Backend:** Node.js (Express), server-authoritative game engine
-- **Real-Time Communication:** Socket.io
-- **Persistence:** PostgreSQL (durable rooms, tickets, calls, claims, sessions)
+## Rules that are in play
 
-> The server is the single source of truth. Tickets are issued and drawn by the
-> server, claims are verified server-side, and every official call is committed
-> to the database before it is broadcast. See
-> [`server/DATABASE.md`](server/DATABASE.md) for the schema and recovery design
-> and [`server/net/CONTRACT.md`](server/net/CONTRACT.md) for the Socket.IO
-> protocol.
+| Pattern | Points | What the server verifies |
+|---|---:|---|
+| Early Five | 20 | five of one ticket's numbers called (optionally inside a call window) |
+| Top Line | 10 | all five numbers of the ticket's top row |
+| Middle Line | 10 | all five numbers of the middle row |
+| Bottom Line | 10 | all five numbers of the bottom row |
+| Corners | 20 | the four corner numbers of the ticket |
+| Full House | 30 | all fifteen numbers on the ticket |
 
-## Running it
+Each pattern is awarded once, to the first valid claim (`multipleWinnersPerPattern`
+is off by default). Rules live in [`server/game/patterns.js`](server/game/patterns.js)
+and nowhere else — the client's pattern labels are cosmetic and are filtered
+against what the server says is enabled for the room.
+
+**Not implemented, on purpose:** Early Seven, Star, Middle Number, 1 2 3 / 143 and
+Pyramid. They were on the old UI as buttons with no server rule behind them, so
+they were removed instead of left as controls that cannot be honoured. They are
+listed in `DEFERRED_PATTERNS` with the reason, so nobody re-adds a tile without a
+predicate.
+
+## Defaults and limits
+
+| Setting | Default | Range | Variable |
+|---|---:|---|---|
+| Players per room | 100 | — | `MAX_PLAYERS` |
+| Tickets per player | 4 | 1–12 | room config `maxTicketsPerPlayer` |
+| Time between calls | 8000 ms | 500–120000 | `CALL_INTERVAL_MS` |
+| Chat cooldown per player | 2000 ms | — | `CHAT_INTERVAL_MS` |
+| Chat message length | 120 chars | — | engine `maxChatLength` |
+| Chat the room remembers for a new seat | 24 messages | — | engine `CHAT_HISTORY` (in memory only) |
+| Reconnect grace | 60000 ms | — | engine `disconnectGraceMs` |
+| Session idle window | 7 days | — | `SESSION_IDLE_MS` |
+
+A room is for one game night, not for ten thousand concurrent players: the design
+holds exactly **one** app instance (see [Operations](#operations)). Measured
+capacity is in [`server/RUNBOOK.md`](server/RUNBOOK.md) §5.
+
+## Architecture in one paragraph
+
+React 18 + Vite 5 + Tailwind single-page client, built to static files and served
+by the same Express process. Socket.IO for the game traffic, with a strict ack
+contract ([`server/net/CONTRACT.md`](server/net/CONTRACT.md)). A server-authoritative
+engine (`server/game/engine.js`) owns state, and every mutation that matters goes
+through a durable path (`server/persist/controller.js`) that writes PostgreSQL
+before it broadcasts. Rooms, tickets, calls, claims, awards and reconnect
+sessions all survive a restart; a boot-time recovery pass rebuilds live rooms from
+the database rather than from what any browser remembers.
+
+## Run it
+
+Requires **Node.js 22 or newer** (the production image is `node:22-alpine`).
 
 ```bash
-# 1. install both workspaces
 npm install
 npm install --prefix client
 
-# 2. point the server at a PostgreSQL instance (no database => memory mode,
-#    which must be opted into with ALLOW_MEMORY_ONLY=1 and does not survive a
-#    restart)
-#    .env:
-#      DATABASE_URL=postgres://user:pass@127.0.0.1:5432/tambola
-#      DB_SCHEMA=public
-
-# 3. build the client and run the server (migrates + recovers open rooms on boot)
-npm run build
-npm start
-
-# tests: the durable suite runs when DATABASE_URL is reachable and otherwise
-# skips cleanly; the engine/transport suites always run.
-npm test
+cp .env.example .env       # then read it: DATABASE_URL is the one that matters
+npm run build              # installs both workspaces and builds client/dist
+npm start                  # http://localhost:4000
 ```
 
+Without a `DATABASE_URL` the server refuses to boot. Deliberately running without
+a database (games vanish on restart, no control centre) needs an explicit opt-in:
 
-## Usage
+```bash
+ALLOW_MEMORY_ONLY=1 npm start
+```
 
-1. **Start a Game Session:**
-   - Launch the application and click on "Start New Game" to create a game session.
-   - Share the generated session code with other players.
+### With Docker
 
-2. **Join the Game:**
-   - Players can join the session by entering the session code on the home page and clicking "Join Game."
+```bash
+docker compose up -d --build     # one app instance + PostgreSQL 16, on :4000
+```
 
-3. **Generate Tickets:**
-   - Each player generates their own tickets by clicking on "Generate Ticket."
-   - Tickets will be displayed on the player's screen.
+Compose reads secrets from your local `.env`. Put TLS in front of it and set
+`TRUST_PROXY=1` / `TAMBOLA_COOKIE_SECURE=1`; see
+[`deploy/README.md`](deploy/README.md).
 
-4. **Play the Game:**
-   - The system will automatically call out numbers.
-   - Players mark off the numbers on their tickets as they are called.
+### Tests and verification
 
-5. **Winning:**
-   - The game detects and announces winners based on predefined patterns (e.g., first row, full house).
+```bash
+npm test                 # the whole suite (Node's built-in runner)
+npm run lint             # client ESLint, zero warnings allowed
+npm run e2e              # a complete game through the real engine, in memory
+npm run e2e:durable      # the identical game against real Postgres persistence
+npm run db:backup        # pg_dump + a manifest describing exactly what was saved
+npm run db:restore-check # restores that archive into a throwaway database and proves it
+npm run secret-scan      # no credential in shipped content or in the built bundle
+npm run security-probe   # 51 live checks of the HTTP and socket surface, in-process
+npm run verify           # test + lint + build + secret-scan, in one command
+```
 
-## Game Rules
+`npm test` needs a reachable PostgreSQL for the durable and backup tests; without
+one those tests skip and say so instead of passing quietly. The results of the most
+recent full run are in [`TEST-REPORT.md`](TEST-REPORT.md).
 
-- **Tambola Basics:**
-  - Each ticket contains a grid of numbers.
-  - A caller (the system) generates random numbers.
-  - Players mark the numbers on their tickets as they are called.
+## Re-branding it
 
-- **Winning Patterns:**
-  - **First Row:** The first player to mark all numbers in the first row wins.
-  - **Second Row:** the first player to mark all numbers in the second row wins.
-  - **Third Row:** the first player to mark all numbers in the third row wins.
-  - **Middle Number:** the first player to mark number on the middle element of the ticket.
-  - **Early Five:** the first player to mark all numbers of early five wins.
-  - **Early Seven:** the first player to mark all numbers of early seven wins.
-  - **Star:** the first player to mark all numbers form star on ticket wins.
-  - **Corner:** the first player to mark all numbers of corner on ticket wins.
-  - **Full House:** The first player to mark all numbers on their ticket wins.
+[`client/src/config.js`](client/src/config.js) is the only file to edit for a
+different product name, tagline, logo, accent colour, footer notice, legal links
+or default language. `VITE_*` build-time overrides for the ones that change per
+deployment are documented in [`.env.example`](.env.example). Everything there is
+display only — gameplay limits and rules stay on the server — and every switch is
+actually read by the UI, because a setting that does nothing is worse than no
+setting.
+
+**Never put a secret in a `VITE_*` variable.** The client bundle is public.
+
+## Operations
+
+- [`DEPLOYMENT.md`](DEPLOYMENT.md) — what to provision and why serverless does not work here.
+- [`deploy/README.md`](deploy/README.md) — Render / Fly.io / Railway steps, with the safety controls to preserve.
+- [`server/RUNBOOK.md`](server/RUNBOOK.md) — configuration, boot, recovery, backups, shutdown, load.
+- [`server/DATABASE.md`](server/DATABASE.md) — schema, the durability contract, how a room is rebuilt.
+- [`server/ADMIN.md`](server/ADMIN.md) — the owner control centre at `/admin` (accounts, MFA, audit trail).
+- [`TEST-REPORT.md`](TEST-REPORT.md) — end-to-end evidence for a complete game.
+- [`CHANGELOG.md`](CHANGELOG.md) — what changed and what is still open.
+
+One instance, always. A second process pointed at the same database fails closed
+on an advisory lease rather than double-calling numbers — that is intended
+behaviour, not a fault to work around.
+
+## Known limits
+
+Written plainly, because they are the things a client will ask about:
+
+- **Single instance.** Horizontal scaling is a redesign (per-room ownership), not a dial.
+- **Six patterns.** The five deferred ones (Early Seven, Star, Middle Number,
+  1 2 3 / 143, Pyramid) have neither a server rule nor a button — see
+  [`CHANGELOG.md`](CHANGELOG.md) for why.
+- **Rooms are closed on a clean stop.** `SIGTERM` closes the live rooms durably; a hard
+  crash leaves them open for the next boot's recovery pass, which rebuilds every
+  room the database still calls open. There is no automatic age-out of abandoned
+  rooms — an owner closes them from the control centre.
+- **No accounts for players.** A seat is a server-issued session token held per
+  browser tab; that is enough for a game night and is not an identity system.
+- **Chat is unmoderated** beyond length and rate limits. It is meant for a room of
+  people who already know each other.
 
 ## Contributing
 
-### read CONTRIBUTING.md.
-
-Contributions are welcome! If you'd like to contribute to this project, please follow these steps:
-
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature-branch`).
-3. Make your changes and commit them (`git commit -m 'Add some feature'`).
-4. Push to the branch (`git push origin feature-branch`).
-5. Open a pull request.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Short version: the server decides, the
+client displays — a change that lets a browser assert a fact about the game will
+be rejected in review.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE), whose copyright is held by the original author,
+Sumeet Umbalkar (2024). This repository is a continuation of that project: the
+server-authoritative engine, durable persistence, recovery, the owner control
+centre and the test suite were added on top of the original game.

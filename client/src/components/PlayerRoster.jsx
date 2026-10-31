@@ -1,12 +1,36 @@
 import Panel from "./Panel.jsx";
+import { rosterStatistic, rosterTally } from "../lib/playerview.js";
+
+/**
+ * The right edge of a seat row: tickets before a round, points during it, and
+ * nothing when the number would carry no meaning. See lib/playerview.js.
+ */
+// eslint-disable-next-line react/prop-types
+const SeatStatistic = ({ seat, state }) => {
+  const stat = rosterStatistic(seat, state);
+  if (!stat) return null;
+  return (
+    <span className="oh-num" style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+      {stat.value}
+      <span
+        className="oh-eyebrow"
+        style={{ marginLeft: 5, fontSize: 9, color: "var(--oh-text-faint)" }}
+      >
+        {stat.unit}
+      </span>
+    </span>
+  );
+};
 
 /**
  * The authoritative roster: names, points and live connection state exactly as
  * the server reports them (playersList + leaderboard). Shows who is the host
- * and highlights the viewer.
+ * and highlights the viewer. `state` is the server's game state, so the count
+ * reads "seated" before a round and "playing" during one rather than claiming
+ * numbers are being called when they are not.
  */
 // eslint-disable-next-line react/prop-types
-const PlayerRoster = ({ players = [], leaderboard = [], myPlayerId }) => {
+const PlayerRoster = ({ players = [], leaderboard = [], myPlayerId, state = "WAITING" }) => {
   const pointsById = new Map(leaderboard.map((p) => [p.playerId, p.points]));
 
   return (
@@ -14,7 +38,7 @@ const PlayerRoster = ({ players = [], leaderboard = [], myPlayerId }) => {
       <div className="flex items-center justify-between mb-3">
         <h2 className="oh-eyebrow">In the Hall</h2>
         <span className="oh-num" style={{ color: "var(--oh-text-muted)", fontSize: 12 }}>
-          {players.length} playing
+          {rosterTally(state, players.length)}
         </span>
       </div>
 
@@ -64,9 +88,7 @@ const PlayerRoster = ({ players = [], leaderboard = [], myPlayerId }) => {
                   </span>
                 ) : null}
               </span>
-              <span className="oh-num" style={{ fontWeight: 700 }}>
-                {pointsById.get(p.id) ?? p.points ?? 0}
-              </span>
+              <SeatStatistic seat={{ ...p, points: pointsById.get(p.id) ?? p.points }} state={state} />
             </li>
           ))}
         </ul>

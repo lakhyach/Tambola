@@ -1,7 +1,23 @@
 import { Link } from "react-router-dom";
 import Header from "./Header";
 import Button from "./components/Button.jsx";
-import { APP_NAME, APP_TAGLINE, APP_SUBTITLE } from "./brand.js";
+import { APP_NAME, APP_TAGLINE, APP_SUBTITLE, BRAND_LINKS, FOOTER_NOTICE } from "./brand.js";
+
+/**
+ * Footer links are build-time config (VITE_TERMS_URL & friends). Only a real
+ * http(s) target is rendered, so a mistyped or malicious value can never become
+ * a clickable `javascript:` link, and an unset one is simply absent - the page
+ * never shows a dead "Terms" button.
+ */
+const LINK_LABELS = [
+  ["terms", "Terms"],
+  ["privacy", "Privacy"],
+  ["support", "Support"],
+];
+const links = LINK_LABELS.flatMap(([key, label]) => {
+  const href = String(BRAND_LINKS[key] || "");
+  return /^https?:\/\//i.test(href) ? [{ key, label, href }] : [];
+});
 
 /* A decorative sample used purely to preview the visual language. It is not a
    live ticket and carries no game meaning — no numbers, players or scores on
@@ -85,10 +101,25 @@ const Landing = () => (
     </main>
 
     <footer
-      className="flex items-center justify-center"
+      className="flex flex-col items-center gap-2"
       style={{ padding: "18px", color: "var(--oh-text-faint)", fontSize: 12 }}
     >
-      A free-to-play game · server-authoritative · Obsidian Hall design direction
+      <span>{FOOTER_NOTICE}</span>
+      {links.length ? (
+        <span className="flex items-center gap-3" style={{ flexWrap: "wrap", justifyContent: "center" }}>
+          {links.map((link) => (
+            <a
+              key={link.label}
+              href={link.href}
+              target="_blank"
+              rel="noreferrer noopener"
+              style={{ color: "var(--oh-text-muted)", textDecoration: "none", borderBottom: "1px solid var(--oh-line)" }}
+            >
+              {link.label}
+            </a>
+          ))}
+        </span>
+      ) : null}
     </footer>
 
     <style>{`

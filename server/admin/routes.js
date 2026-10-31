@@ -127,6 +127,37 @@ export function createAdminRouter({
   const durable = Boolean(queries);
   const router = express.Router();
 
+  /**
+   * A client that declares a body and then stops sending would keep `express.json`
+   * waiting indefinitely: Node's `server.requestTimeout` does not fire for a body
+   * that already started, and body-parser has no timeout option of its own.
+   * Answer 408 as the client's error, with `Connection: close` so the half-filled
+   * request cannot confuse whatever the socket carried next. One knob
+   * (`HTTP_REQUEST_TIMEOUT_MS`) bounds both stall shapes.
+   */
+  const requestTimeoutMs = Number(process.env.HTTP_REQUEST_TIMEOUT_MS) || 30000;
+  router.use((req, res, next) => {
+    if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") return next();
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+    };
+    const timer = setTimeout(() => {
+      if (settled || res.headersSent) return;
+      finish();
+      log("admin request body timed out", req.method, req.path, 408, "REQUEST_TIMEOUT");
+      res.setHeader("Connection", "close");
+      res.status(408).json({ ok: false, code: "REQUEST_TIMEOUT", error: "the request body did not arrive in time" });
+    }, requestTimeoutMs);
+    timer.unref?.();
+    req.on("end", finish);
+    req.on("aborted", finish);
+    res.on("finish", finish);
+    next();
+  });
+
   router.use(express.json({ limit: "16kb" }));
   router.use((req, res, next) => {
     res.setHeader("Cache-Control", "no-store");
@@ -729,6 +760,16 @@ export function createAdminRouter({
         overrides.callIntervalMs = callIntervalMs;
       }
       if (body.autoCall !== undefined) overrides.autoCall = Boolean(body.autoCall);
+      // The open call put an official in the room, so ask whose word counts when
+      // a table argues about a late "house": 0 is the traditional rule (claim
+      // before the next number), N gives slow phones N further calls of grace.
+      if (body.claimWindowCalls !== undefined) {
+        const grace = body.claimWindowCalls;
+        if (!Number.isInteger(grace) || grace < 0 || grace > 10) {
+          return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "claimWindowCalls must be a whole number between 0 and 10" });
+        }
+        overrides.claimWindowCalls = grace;
+      }
       const chosen = cleanPatterns(body);
       if (chosen.enabled.length === 0) {
         return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "enable at least one winning pattern" });
@@ -744,7 +785,13 @@ export function createAdminRouter({
         targetType: "room",
         targetId: created.roomId,
         roomCode: created.roomId,
-        metadata: { name, callIntervalMs, enabledPatterns: chosen.enabled, state: room ? room.state : created.state },
+        metadata: {
+          name,
+          callIntervalMs,
+          claimWindowCalls: overrides.claimWindowCalls,
+          enabledPatterns: chosen.enabled,
+          state: room ? room.state : created.state,
+        },
       });
       res.status(201).json({
         ok: true,
@@ -1276,6 +1323,21 @@ export function createAdminRouter({
     if (dbUnavailable(error)) {
       log("admin request could not reach the database", req.method, req.path, error && error.message);
       return res.status(503).json({ ok: false, code: "ADMIN_UNAVAILABLE", error: "the control centre could not reach the database right now" });
+    }
+    // A body the client could not produce is the client's problem, not ours.
+    // This boundary sits in front of the app-level handler, so without this
+    // branch an oversized or malformed body would be reported as a 500 and
+    // look like a server fault in monitoring.
+    const status = Number(error && (error.status || error.statusCode));
+    if (status >= 400 && status < 500) {
+      const code = error.type === "entity.too.large" ? "PAYLOAD_TOO_LARGE"
+        : error.type === "entity.parse.failed" ? "MALFORMED_BODY" : "BAD_REQUEST";
+      log("admin request refused", req.method, req.path, status, code);
+      return res.status(status).json({
+        ok: false,
+        code,
+        error: status === 413 ? "that request body is too large" : "that request body could not be read",
+      });
     }
     log("admin request failed", req.method, req.path, error && error.message);
     res.status(500).json({ ok: false, code: "ADMIN_ERROR", error: "the control centre hit an unexpected error" });

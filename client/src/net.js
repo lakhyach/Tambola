@@ -6,12 +6,13 @@
  * number, never scores a claim and never trusts its own memory of the room:
  * each screen re-reads the server snapshot.
  *
- * `session` is kept in localStorage so a refresh can resume with the
- * server-issued session token. That token is the only credential the browser
- * holds; the raw engine credentials (hostToken / playerToken) never cross the
- * wire.
+ * `session` is kept per browser tab, with a device-level recovery copy, so a
+ * refresh can resume with the server-issued session token (see the storage note
+ * below). That token is the only credential the browser holds; the raw engine
+ * credentials (hostToken / playerToken) never cross the wire.
  */
 import { io } from "socket.io-client";
+import { browserSlots, createSeatStore } from "./lib/seatStore.js";
 
 /** Same origin by default; override for a split deployment. */
 export const SERVER_URL = import.meta.env.VITE_SERVER_URL || window.location.origin;
@@ -20,25 +21,37 @@ export const socket = io(SERVER_URL, {
   transports: ["websocket", "polling"],
 });
 
-const STORAGE_KEY = "tambola.session.v2";
+/**
+ * Seat credentials live per browser tab, with a device-level recovery copy; see
+ * lib/seatStore.js for the rule and the reason. The store is built on each call,
+ * not once at import, so storage that is slow to appear (or gets disabled) never
+ * throws here.
+ */
+const seatStore = () => createSeatStore(browserSlots(typeof window === "undefined" ? null : window));
 
 export function loadSession() {
-  try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return raw && typeof raw === "object" ? raw : {};
-  } catch {
-    return {};
-  }
+  return seatStore().load();
+}
+
+/** This tab's own seat only — never the device's last player. */
+export function loadOwnSession() {
+  return seatStore().loadOwn();
+}
+
+/**
+ * The seat this BROWSER remembers while this TAB holds none. Screens may offer
+ * to reclaim it; they must not take it without asking (lib/joinSeat.js).
+ */
+export function loadPendingSession() {
+  return seatStore().loadPending();
 }
 
 export function saveSession(patch) {
-  const next = { ...loadSession(), ...patch };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-  return next;
+  return seatStore().save(patch);
 }
 
 export function clearSession() {
-  localStorage.removeItem(STORAGE_KEY);
+  seatStore().clear();
 }
 
 /**

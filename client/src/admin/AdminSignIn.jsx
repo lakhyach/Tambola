@@ -21,6 +21,7 @@ import Button from "../components/Button.jsx";
 import { api } from "./api.js";
 import { useAdmin } from "./useAdmin.js";
 import { Banner, Boot, ErrorNote, Field } from "./ui.jsx";
+import { APP_NAME } from "../brand.js";
 
 function refusalMessage(error) {
   const code = error && error.code;
@@ -128,7 +129,7 @@ export default function AdminSignIn() {
         <div className="adm-signin__brand">
           <span className="adm-brand__dot" aria-hidden="true" />
           <span>
-            <span className="oh-display adm-brand__name">Tambola</span>
+            <span className="oh-display adm-brand__name">{APP_NAME}</span>
             <span className="oh-eyebrow adm-signin__eyebrow">Owner control centre</span>
           </span>
         </div>

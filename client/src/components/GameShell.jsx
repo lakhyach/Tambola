@@ -2,7 +2,8 @@
 import GameHeader from "./GameHeader.jsx";
 import CurrentNumberReveal from "./CurrentNumberReveal.jsx";
 import GameProgress from "./GameProgress.jsx";
-import TambolaTicket from "./TambolaTicket.jsx";
+import TicketRail from "./TicketRail.jsx";
+import TicketPicker from "./TicketPicker.jsx";
 import WinningPatterns from "./WinningPatterns.jsx";
 import ClaimFeedback from "./ClaimFeedback.jsx";
 import NumberBoard from "./NumberBoard.jsx";
@@ -11,6 +12,59 @@ import PlayerRoster from "./PlayerRoster.jsx";
 import GameChat from "./GameChat.jsx";
 import HostControls from "./HostControls.jsx";
 import Panel from "./Panel.jsx";
+import { canClaim, claimNote, ticketPanel } from "../lib/playerview.js";
+
+/**
+ * Shown to a participant who joined while a round was already in progress. The
+ * server never issues tickets after a start, so such a seat has none and cannot
+ * claim. Rather than a broken-looking empty ticket + dead claim buttons, this
+ * states the rule plainly: watch this round, pick tickets when the next starts.
+ */
+const SpectatorNotice = () => (
+  <Panel className="p-5">
+    <div className="flex flex-col items-start gap-2">
+      <span
+        className="oh-eyebrow"
+        style={{ color: "var(--oh-gold)", letterSpacing: ".16em" }}
+      >
+        Watching this round
+      </span>
+      <h2 className="oh-display" style={{ fontSize: 20, margin: 0 }}>
+        You joined mid-game
+      </h2>
+      <p style={{ color: "var(--oh-text-muted)", fontSize: 14, margin: 0, maxWidth: "46ch" }}>
+        Tickets can only be chosen before a round starts, so you’re watching this
+        one. Follow the board and chat, and you can pick your tickets as soon as
+        the host opens the next round — your seat is already saved for it.
+      </p>
+    </div>
+  </Panel>
+);
+
+/**
+ * Shown before the first ticket of a round exists. Nothing is wrong and nothing
+ * is broken: the picker directly above this panel is the control that produces
+ * the ticket, so this says where to look instead of drawing an empty grid.
+ */
+const TicketChoiceNotice = () => (
+  <Panel className="p-5">
+    <div className="flex flex-col items-start gap-2">
+      <span
+        className="oh-eyebrow"
+        style={{ color: "var(--oh-gold)", letterSpacing: ".16em" }}
+      >
+        No ticket yet
+      </span>
+      <h2 className="oh-display" style={{ fontSize: 20, margin: 0 }}>
+        Choose how many you want to play
+      </h2>
+      <p style={{ color: "var(--oh-text-muted)", fontSize: 14, margin: 0, maxWidth: "46ch" }}>
+        Pick a number of tickets above and the server deals them here straight
+        away. They are locked in the moment the host starts the round.
+      </p>
+    </div>
+  </Panel>
+);
 
 /**
  * The composed game screen — presentation only. It reads every value from the
@@ -19,11 +73,23 @@ import Panel from "./Panel.jsx";
  */
 const GameShell = ({ role, view }) => {
   const isHost = role === "host";
-  const running = view.state === "RUNNING";
+  const waiting = view.state === "WAITING";
+  // The tickets this seat owns, exactly as the server issued them — never a
+  // placeholder. `panel` is the honest state of the ticket area (see
+  // lib/playerview.js): real tickets, "not chosen yet", or "watching this round".
+  const tickets = view.tickets || [];
+  const panel = ticketPanel({ state: view.state, sheets: tickets });
+  const claimable = canClaim({ state: view.state, sheets: tickets });
 
   return (
     <div className="oh-app-shell">
-      <GameHeader roomId={view.roomId} sound={view.sound} onToggleSound={view.onToggleSound} />
+      <GameHeader
+        roomId={view.roomId}
+        sound={view.sound}
+        onToggleSound={view.onToggleSound}
+        onToggleSpeech={view.onToggleSpeech}
+        onToggleSpeechLang={view.onToggleSpeechLang}
+      />
 
       {view.message ? (
         <div
@@ -57,6 +123,7 @@ const GameShell = ({ role, view }) => {
               number={view.lastCall}
               callIndex={view.calledCount}
               total={90}
+              voicePending={view.sound && view.sound.speech ? view.sound.pending || 0 : 0}
             />
           </div>
           <div style={{ flex: "1 1 240px", minWidth: 220 }}>
@@ -94,6 +161,17 @@ const GameShell = ({ role, view }) => {
         </div>
       ) : null}
 
+      {waiting && view.onSelectTicketCount ? (
+        <div className="mt-4">
+          <TicketPicker
+            value={view.ticketCount ?? 1}
+            max={view.maxTickets ?? 1}
+            disabled={view.busy}
+            onPick={view.onSelectTicketCount}
+          />
+        </div>
+      ) : null}
+
       <div
         className="mt-4"
         style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}
@@ -101,16 +179,23 @@ const GameShell = ({ role, view }) => {
         data-oh-grid="true"
       >
         <div className="flex flex-col gap-4 oh-col">
-          <TambolaTicket
-            ticket={view.ticket}
-            calledNumbers={view.calledNumbers}
-            currentNumber={view.lastCall}
-            playerName={view.name}
-          />
+          {panel === "spectator" ? (
+            <SpectatorNotice />
+          ) : panel === "choose" ? (
+            <TicketChoiceNotice />
+          ) : (
+            <TicketRail
+              tickets={tickets}
+              calledNumbers={view.calledNumbers}
+              currentNumber={view.lastCall}
+              playerName={view.name}
+            />
+          )}
           <WinningPatterns
             patterns={view.enabledPatterns}
             awards={view.awards}
-            running={running}
+            note={claimNote({ state: view.state, sheets: tickets })}
+            canClaim={claimable}
             myPlayerId={view.playerId}
             onSubmit={view.onClaim}
           />
@@ -120,7 +205,7 @@ const GameShell = ({ role, view }) => {
         <div className="flex flex-col gap-4 oh-col">
           <NumberBoard calledNumbers={view.calledNumbers} currentNumber={view.lastCall} />
           <CallHistory calledNumbers={view.calledNumbers} />
-          <PlayerRoster players={view.players} leaderboard={view.leaderboard} myPlayerId={view.playerId} />
+          <PlayerRoster players={view.players} leaderboard={view.leaderboard} myPlayerId={view.playerId} state={view.state} />
           <GameChat />
         </div>
       </div>

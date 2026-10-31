@@ -8,6 +8,7 @@ import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import { useAdmin } from "./useAdmin.js";
 import { Badge } from "./ui.jsx";
+import { APP_NAME } from "../brand.js";
 
 const NAV = [
   { to: "/admin", label: "Overview", end: true },
@@ -40,7 +41,7 @@ export default function AdminLayout() {
           <Link to="/admin" className="adm-brand">
             <span className="adm-brand__dot" aria-hidden="true" />
             <span className="adm-brand__text">
-              <span className="oh-display adm-brand__name">Tambola</span>
+              <span className="oh-display adm-brand__name">{APP_NAME}</span>
               <span className="oh-eyebrow">Control Centre</span>
             </span>
           </Link>

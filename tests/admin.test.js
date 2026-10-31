@@ -269,6 +269,37 @@ describe("owner control centre over HTTP (in-memory backends)", () => {
     assert.equal(res.body.code, "CSRF_FAILED");
   });
 
+  test("a mangled request body is the client's error, not a reported server fault", async () => {
+    // A body past the router's 16 kb limit, and a truncated JSON body. Both are
+    // rejected by the body parser before any handler runs, and both used to
+    // surface as 500 because this router's error boundary runs in front of the
+    // app-level one - a client typo would have paged an operator at 3am.
+    const oversized = await fetch(`${url}/api/admin/signin`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: OWNER.username, password: "x".repeat(32 * 1024) }),
+    });
+    assert.equal(oversized.status, 413);
+    const tooBig = await oversized.json();
+    assert.equal(tooBig.ok, false);
+    assert.equal(tooBig.code, "PAYLOAD_TOO_LARGE");
+    assert.ok(!JSON.stringify(tooBig).includes("xxxx"), "the offending body is never echoed back");
+
+    const malformed = await fetch(`${url}/api/admin/signin`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: '{"username":"operator","password":',
+    });
+    assert.equal(malformed.status, 400);
+    const unreadable = await malformed.json();
+    assert.equal(unreadable.ok, false);
+    assert.equal(unreadable.code, "MALFORMED_BODY");
+
+    // Refusing a bad body must not damage the process or the session endpoint.
+    const alive = await new AdminClient(url).get("/api/admin/session");
+    assert.equal(alive.status, 200);
+  });
+
   test("wrong credentials are rejected without revealing whether the user exists", async () => {
     const client = new AdminClient(url);
     const res = await client.signIn(OWNER.username, "definitely-wrong");
@@ -364,6 +395,27 @@ describe("owner control centre over HTTP (in-memory backends)", () => {
     assert.ok(actions.includes("admin.room.start"));
     assert.ok(actions.includes("admin.room.call"));
     assert.ok(actions.includes("admin.room.end"));
+  });
+
+  test("the claim window is an operator decision, validated and stored", async () => {
+    const owner = new AdminClient(url);
+    await owner.signIn();
+
+    const friendly = await owner.post("/api/admin/games", { name: "Grace Table", claimWindowCalls: 1 });
+    assert.equal(friendly.status, 201, JSON.stringify(friendly.body));
+    const detail = await owner.get(`/api/admin/games/${friendly.body.roomId}`);
+    assert.equal(detail.body.room.config.claimWindowCalls, 1, "one call of grace is remembered");
+
+    // the traditional room (the default) stores 0, not "undefined"
+    const strict = await owner.post("/api/admin/games", { name: "Strict Table" });
+    const strictDetail = await owner.get(`/api/admin/games/${strict.body.roomId}`);
+    assert.equal(strictDetail.body.room.config.claimWindowCalls, 0);
+
+    for (const bad of [11, -1, 1.5, "1", null]) {
+      const refused = await owner.post("/api/admin/games", { name: "Bad Window", claimWindowCalls: bad });
+      assert.equal(refused.status, 400, "refused " + JSON.stringify(bad));
+      assert.equal(refused.body.code, "INVALID_INPUT");
+    }
   });
 
   test("invitations are built from the configured public origin and carry no credentials", async () => {

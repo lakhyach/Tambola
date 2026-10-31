@@ -145,6 +145,49 @@
   box-shadow: 0 0 0 3px rgba(207, 171, 99, 0.16);
 }
 
+/* ---------------------------------------------------- chat quick-reply chips */
+.oh-chip {
+  font-family: var(--oh-font-ui);
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--oh-text-muted);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--oh-line);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: color var(--oh-fast) var(--oh-ease), border-color var(--oh-fast) var(--oh-ease),
+    background var(--oh-fast) var(--oh-ease);
+}
+.oh-chip:hover:not(:disabled) {
+  color: var(--oh-text);
+  border-color: var(--oh-silver-dim);
+  background: rgba(255, 255, 255, 0.07);
+}
+.oh-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+.oh-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(207, 171, 99, 0.22);
+}
+.oh-chip--active {
+  color: var(--oh-gold-bright);
+  border-color: var(--oh-line-gold);
+  background: rgba(207, 171, 99, 0.12);
+}
+.oh-chip--lang {
+  font-weight: 600;
+  padding-inline: 10px;
+}
+.oh-chip--quick {
+  color: var(--oh-text);
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+}
+
 /* ------------------------------------------------------------------- tiles */
 .oh-tile {
   position: relative;
@@ -311,6 +354,133 @@
     opacity: 1;
     transform: translate(-50%, 0);
   }
+}
+
+/* ------------------------------------------------ celebration overlay (§4) */
+.oh-celebrate {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: radial-gradient(120% 120% at 50% 0%, rgba(20, 16, 8, 0.72), rgba(6, 7, 10, 0.86));
+  backdrop-filter: blur(6px);
+  animation: oh-fade var(--oh-med) var(--oh-ease-out);
+}
+.oh-celebrate__card {
+  width: min(520px, 100%);
+  text-align: center;
+  padding: 28px 24px;
+  animation: oh-pop var(--oh-slow) var(--oh-ease-out);
+}
+.oh-celebrate__eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--oh-gold);
+  margin: 0 0 6px;
+}
+.oh-celebrate__title {
+  font-family: var(--oh-font-display);
+  font-size: 26px;
+  line-height: 1.2;
+  color: var(--oh-gold-bright);
+  margin: 0 0 8px;
+}
+.oh-celebrate__sub {
+  font-size: 14px;
+  color: var(--oh-text-muted);
+  margin: 0 0 6px;
+}
+.oh-celebrate__winners {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 16px;
+}
+.oh-celebrate__winners li {
+  color: var(--oh-text);
+  font-weight: 600;
+}
+.oh-celebrate__medal {
+  margin-right: 8px;
+}
+.oh-celebrate__standings {
+  margin-top: 16px;
+  text-align: left;
+}
+.oh-celebrate__standings ol {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+.oh-celebrate__standings li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid var(--oh-line);
+  padding-top: 4px;
+}
+.oh-celebrate__rank {
+  color: var(--oh-text-faint);
+  width: 1.2em;
+}
+.oh-celebrate__name {
+  flex: 1 1 auto;
+}
+.oh-celebrate__controls {
+  margin-top: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.oh-celebrate__toggles {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.oh-confetti {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.oh-confetti__pip {
+  position: absolute;
+  top: -16px;
+  border-radius: 2px;
+  opacity: 0.9;
+  animation-name: oh-confetti-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: 1;
+  animation-fill-mode: forwards;
+}
+.oh-confetti__pip--0 { background: var(--oh-gold); }
+.oh-confetti__pip--1 { background: var(--oh-gold-bright); }
+.oh-confetti__pip--2 { background: var(--oh-ivory); }
+
+@keyframes oh-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes oh-pop {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes oh-confetti-fall {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(105vh) rotate(540deg); opacity: 0.15; }
 }
 
 @media (prefers-reduced-motion: reduce) {

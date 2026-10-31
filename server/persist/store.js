@@ -140,6 +140,20 @@ export function createStore({ db, log = () => {} } = {}) {
   }
 
   /**
+   * Remember a seat's chosen ticket count before the round starts. Only the
+   * count is durable while WAITING (there is no games row to hang grids on);
+   * start() re-mints the actual tickets to this number.
+   */
+  async function setTicketCount({ roomId, playerId, count } = {}) {
+    const safe = Math.max(1, Math.min(12, Number(count) || 1));
+    await db.query(
+      "UPDATE room_members SET ticket_count = $3 WHERE room_code = $1 AND player_id = $2",
+      [roomId, playerId, safe]
+    );
+    return { ok: true };
+  }
+
+  /**
    * Compare-and-set on the lifecycle state. Returns false when the room is not
    * in the state the caller believed it was, which is how two hosts pressing
    * the same button at the same moment resolve to one winner.
@@ -188,7 +202,7 @@ export function createStore({ db, log = () => {} } = {}) {
    * all of that is durable or none of it is, so a crash can never leave a room
    * "running" with half its tickets.
    */
-  async function startGame({ roomId, gameNumber, drawSequence, tickets = [], config } = {}) {
+  async function startGame({ roomId, gameNumber, drawSequence, tickets = [], ticketCounts = [], config } = {}) {
     if (!Array.isArray(drawSequence) || drawSequence.length !== DRAW_LENGTH) {
       throw new IntegrityError("refusing to persist a draw that is not 90 numbers", { roomId });
     }
@@ -209,13 +223,19 @@ export function createStore({ db, log = () => {} } = {}) {
          VALUES ($1, $2, 'RUNNING', $3)`,
         [roomId, gameNumber, json(drawSequence)]
       );
-      for (const ticket of tickets) {
+      for (const entry of ticketCounts) {
         await client.query(
-          "INSERT INTO tickets (room_code, game_number, player_id, grid) VALUES ($1, $2, $3, $4)",
-          [roomId, gameNumber, ticket.playerId, json(ticket.grid)]
+          "UPDATE room_members SET ticket_count = $3 WHERE room_code = $1 AND player_id = $2",
+          [roomId, entry.playerId, Math.max(1, Math.min(12, Number(entry.count) || 1))]
         );
       }
-      await audit(client, { roomId, gameNumber, type: "start", detail: { players: tickets.length } });
+      for (const ticket of tickets) {
+        await client.query(
+          "INSERT INTO tickets (room_code, game_number, player_id, ticket_no, grid) VALUES ($1, $2, $3, $4, $5)",
+          [roomId, gameNumber, ticket.playerId, ticket.ticketNo || 1, json(ticket.grid)]
+        );
+      }
+      await audit(client, { roomId, gameNumber, type: "start", detail: { players: ticketCounts.length, tickets: tickets.length } });
       return { ok: true, gameNumber };
     });
     return result;
@@ -409,7 +429,7 @@ export function createStore({ db, log = () => {} } = {}) {
     return db.withTransaction(async (client) => {
       const room = await client.query("SELECT * FROM rooms WHERE room_code = $1", [roomId]);
       const members = await client.query(
-        `SELECT m.player_id, m.role, m.connected, m.joined_at, m.left_at, p.display_name
+        `SELECT m.player_id, m.role, m.connected, m.joined_at, m.left_at, m.ticket_count, p.display_name
            FROM room_members m
            JOIN players p ON p.player_id = m.player_id
           WHERE m.room_code = $1
@@ -424,7 +444,7 @@ export function createStore({ db, log = () => {} } = {}) {
       );
       const gameNumber = game.rows.length ? game.rows[0].game_number : null;
       const tickets = await client.query(
-        "SELECT player_id, grid, assigned_at FROM tickets WHERE room_code = $1 AND game_number = $2",
+        "SELECT player_id, ticket_no, grid, assigned_at FROM tickets WHERE room_code = $1 AND game_number = $2 ORDER BY player_id, ticket_no",
         [roomId, gameNumber]
       );
       const calls = await client.query(
@@ -574,6 +594,7 @@ export function createStore({ db, log = () => {} } = {}) {
     markSeatLeft,
     setHost,
     saveConfig,
+    setTicketCount,
     setStatus,
     closeRoom,
     setRecoveryError,

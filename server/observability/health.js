@@ -93,7 +93,10 @@ export function createHealth({
 
   function liveness() {
     // Only facts about this process. A database outage is a readiness problem.
-    return { ok: true, live: true, uptimeSeconds: Math.round((now() - startedAt) / 1000), draining: Boolean(draining()) };
+    // Not even uptime belongs here: /livez answers one question — is this
+    // process alive — and says nothing else, so a public probe URL cannot
+    // become a free telemetry feed. Uptime is still on /readyz and /healthz.
+    return { ok: true, live: true, draining: Boolean(draining()) };
   }
 
   async function readiness() {

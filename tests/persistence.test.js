@@ -19,7 +19,7 @@
 import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
-import { createPool } from "../server/db/pool.js";
+import { createPool, instanceLeaseKey } from "../server/db/pool.js";
 import { migrate, listMigrations, migrationStatus } from "../server/db/migrate.js";
 import { createStore } from "../server/persist/store.js";
 import { createSessionStore, SESSION_CODES } from "../server/persist/sessions.js";
@@ -123,6 +123,21 @@ test("editing an applied migration is a hard error, not silent drift", { skip },
   }
 });
 
+test("every pooled connection is pinned to this schema before any query runs", { skip }, async () => {
+  // Four fresh connections at once: a client that is handed to the pool while
+  // its own setup is still running would answer from `public` instead.
+  const pinned = (value) => String(value).replace(/\s+/g, "");
+  const clients = await Promise.all([1, 2, 3, 4].map(() => db.pool.connect()));
+  try {
+    const seen = await Promise.all(clients.map((client) => client.query("SHOW search_path")));
+    for (const result of seen) assert.equal(pinned(result.rows[0].search_path), SCHEMA + ",public");
+  } finally {
+    for (const client of clients) client.release();
+  }
+  const pooled = await db.query("SHOW search_path");
+  assert.equal(pinned(pooled.rows[0].search_path), SCHEMA + ",public", "and so does a query taken straight from the pool");
+});
+
 // ------------------------------------------------------------- room + recovery
 
 test("a created room is durable and reconstructs after a restart", { skip }, async () => {
@@ -135,7 +150,7 @@ test("a created room is durable and reconstructs after a restart", { skip }, asy
   for (let i = 0; i < 5; i++) await controller.callNext({ room, socketId: "s-host", source: "host" });
   const firstFive = room.calledNumbers.slice();
   const hostId = room.hostPlayerId;
-  const ticketBySeat = new Map([...room.players.values()].map((p) => [p.id, JSON.stringify(p.ticket)]));
+  const ticketBySeat = new Map([...room.players.values()].map((p) => [p.id, JSON.stringify(p.tickets.map((t) => t.grid))]));
 
   // a brand-new process: empty registry, same database
   const registry2 = freshRegistry();
@@ -149,7 +164,7 @@ test("a created room is durable and reconstructs after a restart", { skip }, asy
   assert.equal(room2.players.size, ticketBySeat.size, "no seat was invented or lost");
   assert.equal(room2.hostPlayerId, hostId, "authority returns to the same owner");
   for (const player of room2.players.values()) {
-    assert.equal(JSON.stringify(player.ticket), ticketBySeat.get(player.id), "the ticket is the stored one, not a redraw");
+    assert.equal(JSON.stringify(player.tickets.map((t) => t.grid)), ticketBySeat.get(player.id), "the tickets are the stored ones, not a redraw");
   }
 });
 
@@ -236,6 +251,55 @@ test("tickets are unique per seat and the draw is a full 90 permutation", { skip
   assert.equal(rejoin.playerId, joined.playerId, "the same seat, not a fresh one");
   const after = await store.loadRoomBundle({ roomId });
   assert.equal(after.tickets.length, bundle.tickets.length, "still one ticket for that seat");
+});
+
+test("a chosen ticket count survives a restart and every ticket is durable per number", { skip }, async () => {
+  const { controller, roomId, room, session } = await makeDurableRoom();
+  const joined = await controller.joinRoom({ roomId, name: "Mira", socketId: "s-m" });
+  assert.equal(joined.ok, true, JSON.stringify(joined));
+
+  const picked = await controller.selectTickets({ room, playerId: joined.playerId, count: 3, socketId: "s-m" });
+  assert.equal(picked.ok, true, JSON.stringify(picked));
+  assert.equal(picked.ticketCount, 3);
+
+  // the WAITING-time choice is durable before any game row exists
+  const waiting = await store.loadRoomBundle({ roomId });
+  const mira = waiting.members.find((m) => m.player_id === joined.playerId);
+  assert.equal(mira.ticket_count, 3, "the choice is stored with the seat");
+  assert.equal(waiting.tickets.length, 0, "no grids are invented before the start");
+
+  // restart before the round begins: the seat wakes up still wanting three
+  const registry2 = freshRegistry();
+  const controller2 = freshController(registry2);
+  await recoverRooms({ store, registry: registry2, log: () => {} });
+  const room2 = registry2.get(roomId);
+  assert.ok(room2, "the waiting room came back");
+  assert.equal(room2.players.get(joined.playerId).ticketCount, 3, "the chosen count survived the restart");
+  assert.equal((await controller2.resume({ roomId, sessionToken: session.sessionToken, socketId: "s-host" })).ok, true);
+
+  // starting in the recovered room mints exactly the chosen tickets
+  const started = await controller2.start({ room: room2, socketId: "s-host" });
+  assert.equal(started.ok, true, JSON.stringify(started));
+  assert.equal(started.ticketsIssued, 4, "host 1 + mira 3");
+
+  const running = await store.loadRoomBundle({ roomId });
+  const mine = running.tickets.filter((t) => t.player_id === joined.playerId);
+  assert.equal(mine.length, 3);
+  assert.deepEqual(mine.map((t) => t.ticket_no), [1, 2, 3], "one stored row per ticket number");
+  assert.equal(new Set(mine.map((t) => JSON.stringify(t.grid))).size, 3, "no duplicate grids");
+
+  // restart again mid-round: the whole set returns unchanged
+  await controller2.callNext({ room: room2, socketId: "s-host", source: "host" });
+  const seat2 = room2.players.get(joined.playerId);
+  const gridsBefore = JSON.stringify(seat2.tickets.map((t) => [t.no, t.grid]));
+  const registry3 = freshRegistry();
+  await recoverRooms({ store, registry: registry3, log: () => {} });
+  const seat3 = registry3.get(roomId).players.get(joined.playerId);
+  assert.equal(
+    JSON.stringify(seat3.tickets.map((t) => [t.no, t.grid])),
+    gridsBefore,
+    "the same three tickets with the same numbers, not a redraw"
+  );
 });
 
 // -------------------------------------------------------- duplicate-call safety
@@ -338,6 +402,122 @@ test("an exclusive pattern is awarded to exactly one winner, twice tried", { ski
 
   const rows = await db.query("SELECT count(*)::int AS n FROM awards WHERE room_code = $1 AND pattern = 'smallstraight'", [roomId]);
   assert.equal(rows.rows[0].n, 1, "and it is one row in the database");
+});
+
+test("the claim window is a stored room decision, and a restart cannot widen it", { skip }, async () => {
+  const registry = freshRegistry();
+  const controller = freshController(registry);
+  const created = await controller.createRoom({
+    name: "Window host",
+    socketId: "s-host",
+    overrides: { claimWindowCalls: 1 },
+  });
+  assert.equal(created.ok, true, JSON.stringify(created));
+  const roomId = created.roomId;
+  const room = registry.get(roomId);
+
+  const joined = await controller.joinRoom({ roomId, name: "Neha", socketId: "s-neha" });
+  assert.equal(joined.ok, true, JSON.stringify(joined));
+  await controller.start({ room, socketId: "s-host" });
+
+  // draw until this seat's ticket holds five called numbers: the ordinary Early
+  // Five moment, reached by the same path a player would
+  const mine = new Set(room.players.get(joined.playerId).tickets[0].grid.flat().filter((n) => n !== null));
+  let hits = 0;
+  while (hits < 5) {
+    const drawn = await controller.callNext({ room, socketId: "s-host", source: "host" });
+    assert.equal(drawn.ok, true, JSON.stringify(drawn));
+    hits = room.calledNumbers.filter((n) => mine.has(n)).length;
+  }
+  const completedAt = room.cursor;
+
+  // the operator's choice is a stored decision, not a process-wide default
+  const stored = await db.query("SELECT config FROM rooms WHERE room_code = $1", [roomId]);
+  assert.equal(stored.rows[0].config.claimWindowCalls, 1, "the chosen window is what the database holds");
+
+  // a brand-new process: empty registry, same database
+  // This suite shares one schema, and an earlier test deliberately corrupts a
+  // room, so the sweep is asserted for THIS room rather than for the whole set.
+  const registry2 = freshRegistry();
+  const recovered = await recoverRooms({ store, registry: registry2, log: () => {} });
+  assert.equal(recovered.frozen.some((entry) => entry.roomId === roomId), false, JSON.stringify(recovered.frozen));
+  const room2 = registry2.get(roomId);
+  assert.ok(room2, "the room came back");
+  assert.equal(room2.config.claimWindowCalls, 1, "a restart does not quietly restore the shipped default of 0");
+  assert.equal(room2.cursor, completedAt, "the clock resumes where it stopped, it is not re-run");
+
+  const controller2 = freshController(registry2);
+  const back = room2.resume({ hostToken: room2.hostToken, socketId: "s-host2" });
+  assert.equal(back.ok, true, JSON.stringify(back));
+
+  // Exactly one call of grace is inside a window of one - which is also the
+  // proof that the restored setting is enforced, not merely stored: a window of
+  // 0 would refuse this claim. The completion ordinal is recomputed from the
+  // authoritative call history, so a restart cannot reset the clock for free.
+  const grace = await controller2.callNext({ room: room2, socketId: "s-host2", source: "host" });
+  assert.equal(grace.ok, true, JSON.stringify(grace));
+  const onGrace = await controller2.claim({ room: room2, playerId: joined.playerId, pattern: "earlyFive" });
+  assert.equal(onGrace.ok, true, "one call late is inside a window of one: " + JSON.stringify(onGrace));
+
+  // a second restart: the paid award and the standings it produced are durable
+  const registry3 = freshRegistry();
+  await recoverRooms({ store, registry: registry3, log: () => {} });
+  const room3 = registry3.get(roomId);
+  assert.ok(room3, "the room comes back again");
+  const neha = room3.leaderboard().find((row) => row.playerId === joined.playerId);
+  assert.ok(neha, "the winner is still on the board after a restart");
+  assert.equal(neha.points, 20, "with the points she was paid");
+  assert.deepEqual(neha.claims, ["earlyFive"]);
+  assert.equal(room3.awards.get("earlyFive").length, 1, "one winner, not a re-award");
+
+  const awards = await db.query("SELECT count(*)::int AS n FROM awards WHERE room_code = $1 AND pattern = 'earlyFive'", [roomId]);
+  assert.equal(awards.rows[0].n, 1, "and exactly one row in the database");
+});
+
+test("a closed tab does not erase a finished round's standings", { skip }, async () => {
+  const { controller, roomId, room } = await makeDurableRoom();
+  const joined = await controller.joinRoom({ roomId, name: "Omar", socketId: "s-o" });
+  assert.equal(joined.ok, true, JSON.stringify(joined));
+  await controller.start({ room, socketId: "s-host" });
+
+  // one real award, written the way the durable claim path writes it, then the
+  // round ends while the winner is still seated
+  const recorded = await store.recordAward({
+    roomId,
+    gameNumber: room.gameNumber,
+    playerId: joined.playerId,
+    pattern: "earlyFive",
+    points: 20,
+    callIndex: room.cursor,
+    exclusive: true,
+  });
+  assert.equal(recorded.ok, true, JSON.stringify(recorded));
+  room.commitClaim({ prepared: { playerId: joined.playerId, pattern: "earlyFive", callIndex: room.cursor } });
+  const ended = await controller.transition({ room, socketId: "s-host", action: "end" });
+  assert.equal(ended.ok, true, JSON.stringify(ended));
+  assert.equal(room.state, GameState.COMPLETED);
+
+  // the winner's phone goes away after the whistle: a grace timer fires
+  room.dropPlayer(joined.playerId, "grace period expired");
+  assert.ok(room.players.has(joined.playerId), "the seat stays on the final board");
+  assert.equal(room.players.get(joined.playerId).connected, false, "and is shown as away");
+  const member = await db.query("SELECT left_at FROM room_members WHERE room_code = $1 AND player_id = $2", [
+    roomId,
+    joined.playerId,
+  ]);
+  assert.equal(member.rows[0].left_at, null, "a dropped connection is not a departure in the durable record");
+
+  // and a restart still shows the room they won
+  const registry2 = freshRegistry();
+  const recovered = await recoverRooms({ store, registry: registry2, log: () => {} });
+  assert.equal(recovered.frozen.some((entry) => entry.roomId === roomId), false, JSON.stringify(recovered.frozen));
+  const room2 = registry2.get(roomId);
+  assert.ok(room2, "the finished room comes back");
+  assert.equal(room2.state, GameState.COMPLETED);
+  const omar = room2.leaderboard().find((row) => row.playerId === joined.playerId);
+  assert.ok(omar, "the winner is still in the standings");
+  assert.equal(omar.points, 20);
+  assert.equal(room2.awards.get("earlyFive").length, 1, "with their award intact");
 });
 
 // ------------------------------------------------------- independent schedules
@@ -457,6 +637,17 @@ test("the single-instance lease refuses a second scheduler", { skip }, async () 
   }
   const again = await db.acquireInstanceLease({ holder: "third" });
   await again.release();
+});
+
+test("the lease belongs to a schema, so another schema on the same database is not blocked", () => {
+  // The key is derived, not fixed: a staging instance on its own schema (and
+  // this suite on its throwaway schema) must not be refused by - or refuse - a
+  // server that owns `public`. Both halves must fit the int4 lock form.
+  assert.deepEqual(instanceLeaseKey("public"), instanceLeaseKey("public"), "stable across calls");
+  assert.notDeepEqual(instanceLeaseKey("public"), instanceLeaseKey("tambola_staging"));
+  for (const half of instanceLeaseKey(SCHEMA)) {
+    assert.ok(Number.isInteger(half) && half >= 0 && half <= 2147483647, "inside the int4 range");
+  }
 });
 
 test("buildHydrationSource rejects a non-contiguous call history", { skip }, async () => {

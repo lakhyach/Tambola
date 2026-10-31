@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import { api } from "./api.js";
+import { INVITE_TEXT, INVITE_TITLE } from "../brand.js";
 import { useAdmin } from "./useAdmin.js";
 import {
   claimTone,
@@ -162,7 +163,7 @@ export default function AdminGameDetail() {
     const data = invitation.data;
     if (!data || !data.url) return;
     try {
-      await navigator.share({ title: "Tambola", text: data.message || "Join my Tambola room", url: data.url });
+      await navigator.share({ title: INVITE_TITLE, text: data.message || INVITE_TEXT, url: data.url });
     } catch (error) {
       if (error && error.name === "AbortError") return;
       toast("Sharing is not available on this device.", "warn");

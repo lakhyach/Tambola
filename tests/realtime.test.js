@@ -569,51 +569,54 @@ test("a genuine winner is paid once and the room hears about it", async () => {
   assert.equal(view.snapshot.awards.length, 1);
 });
 
-test("racing claims for one exclusive prize award exactly once", async () => {
-  const rounds = 20;
+test("over the wire, a stale prize is refused and the prize that just completed is paid", async () => {
+  const rounds = 6;
+  let timed = 0;
   for (let round = 0; round < rounds; round++) {
     const { client: host, session } = await hostRoom("Racer" + round);
-    const one = await joinRoom(session.roomId, "Sprinter1");
-    const two = await joinRoom(session.roomId, "Sprinter2");
+    const player = await joinRoom(session.roomId, "Sprinter");
     await host.call("game:start");
     await settle(80);
 
-    const ticketOne = one.client.tickets()[0].flat().filter((cell) => cell !== null);
-    const ticketTwo = two.client.tickets()[0].flat().filter((cell) => cell !== null);
-
-    // drive the draw until BOTH tickets have five numbers called
-    let hitsOne = 0;
-    let hitsTwo = 0;
-    for (let i = 0; i < 85 && (hitsOne < 5 || hitsTwo < 5); i++) {
+    const ticket = new Set(player.client.tickets()[0].flat().filter((cell) => cell !== null));
+    // Call until every number on this ticket has gone out. Early Five was
+    // completed long before that, so a claim for it now is stale by definition,
+    // while the full house completed on the last of these calls is still inside
+    // the window (the rule the room ships: claim before the next number).
+    let hits = 0;
+    for (let i = 0; i < 90 && hits < ticket.size; i++) {
       const ack = await host.call("game:call-next");
       if (!ack.ok) break;
-      if (ticketOne.includes(ack.number)) hitsOne += 1;
-      if (ticketTwo.includes(ack.number)) hitsTwo += 1;
+      if (ticket.has(ack.number)) hits += 1;
     }
-    if (hitsOne < 5 || hitsTwo < 5) {
-      // statistically impossible, but do not turn a rare shuffle into a false pass
-      assert.fail("round " + round + " could not complete both early fives");
-    }
+    assert.equal(hits, ticket.size, "round " + round + ": every ticket number was called");
 
-    const [first, second] = await Promise.all([
-      one.client.call("claim:submit", { pattern: "earlyFive" }),
-      two.client.call("claim:submit", { pattern: "earlyFive" }),
-    ]);
-    const wins = [first, second].filter((result) => result.ok);
-    assert.equal(wins.length, 1, "round " + round + ": exactly one winner, got " + JSON.stringify([first, second]));
-    const loser = wins[0] === first ? second : first;
-    assert.equal(loser.code, ErrorCodes.ALREADY_AWARDED);
+    // The last needed number can be the 90th call, which ends the round itself;
+    // then the correct answer is "the round is over", not "too late".
+    const view = await host.call("room:state");
+    const endedNow = view.snapshot.state === "COMPLETED";
+    const stale = await player.client.call("claim:submit", { pattern: "earlyFive" });
+    assert.equal(stale.ok, false, "round " + round + ": a prize completed calls ago cannot be claimed");
+
+    if (endedNow) {
+      assert.equal(view.snapshot.calledNumbers.length, 90);
+      assert.equal(stale.code, ErrorCodes.INVALID_STATE, "the round ended before the claim arrived");
+    } else {
+      timed += 1;
+      assert.equal(stale.code, ErrorCodes.CLAIM_TOO_LATE, "round " + round);
+      assert.equal(stale.late, true);
+      const fresh = await player.client.call("claim:submit", { pattern: "fullHouse" });
+      assert.equal(fresh.ok, true, "round " + round + ": " + JSON.stringify(fresh));
+      assert.equal(fresh.points, 30);
+    }
 
     await settle(60);
-    const broadcast = host.history("claim:result").filter((payload) => payload.pattern === "earlyFive");
-    assert.equal(broadcast.length, 1, "one win announced");
-    const view = await host.call("room:state");
-    const paid = view.snapshot.players.reduce((sum, entry) => sum + entry.points, 0);
-    assert.equal(paid, 20, "the prize was paid once");
-    assert.equal(view.snapshot.awards.filter((award) => award.pattern === "earlyFive").length, 1);
+    const paid = (await host.call("room:state")).snapshot.players.reduce((sum, entry) => sum + entry.points, 0);
+    assert.equal(paid, endedNow ? 0 : 30, "round " + round + ": only the full house could be paid");
 
     instance.registry.close(session.roomId, "round teardown");
   }
+  assert.ok(timed > 0, "at least one round really exercised the claim window");
 });
 
 // ---------------------------------------------------------- roster + transport
@@ -739,6 +742,49 @@ test("chat is room scoped, attributed and rate limited", async () => {
     assert.equal(rejected.ok, false, "refused " + JSON.stringify(bad));
     assert.equal(rejected.code, ErrorCodes.BAD_PAYLOAD);
   }
+});
+
+/**
+ * A seat that arrives while the room is already talking. The engine has been
+ * right all along — it never hands a mid-round joiner a ticket — but the panel
+ * that showed "No messages yet." next to a live conversation looked exactly like
+ * broken chat, which is what §5 asks the client never to do. So the room keeps a
+ * short in-memory tail and the newcomer asks for it.
+ */
+test("a seat that joins mid-round can read what the room already said", async () => {
+  const a = await hostRoom("HistoryHost");
+  const early = await joinRoom(a.session.roomId, "Early");
+
+  const first = await early.client.call("chat:send", { text: "before you got here" });
+  assert.equal(first.ok, true);
+  assert.equal(typeof first.id, "string", "every message carries an id so a client can spot a repeat");
+  assert.match(first.id, /^c-[0-9a-f]{20}$/);
+  await a.client.until("chat:message", (m) => m.text === "before you got here");
+
+  const late = await joinRoom(a.session.roomId, "Latecomer");
+  assert.equal(late.client.count("chat:message"), 0, "nothing is replayed at a socket that was not there");
+
+  const seen = await late.client.call("chat:history");
+  assert.equal(seen.ok, true);
+  assert.ok(Array.isArray(seen.messages), "a room that was asked answers with a list, even an empty one");
+  assert.equal(
+    seen.messages.some((m) => m.text === "before you got here" && m.from === "Early"),
+    true,
+    "the newcomer can see the conversation it missed",
+  );
+  assert.equal(seen.messages[seen.messages.length - 1].id, first.id, "oldest first, the newest last");
+
+  // another room's newcomer gets that room's tail, which is nothing at all
+  const other = await hostRoom("OtherHistoryHost");
+  const outsider = await joinRoom(other.session.roomId, "Outsider");
+  const foreign = await outsider.client.call("chat:history");
+  assert.deepEqual(foreign.messages, [], "no other room's chatter crosses over");
+
+  // and an unseated connection may not read a room's conversation at all
+  const stranger = await newClient("Stranger");
+  const refused = await stranger.call("chat:history");
+  assert.equal(refused.ok, false);
+  assert.equal(refused.code, ErrorCodes.NOT_PLAYER);
 });
 
 test("malformed frames are refused without touching the game", async () => {
@@ -894,4 +940,104 @@ test("nothing in a snapshot exposes the future draw", async () => {
     assert.equal(blob.includes('"shuffle"'), false, "no shuffle field is ever shipped");
   }
   assert.equal(new Set(room.calledNumbers).size, 10);
+});
+
+// ---------------------------------------------------- multi-ticket over the wire
+
+test("a seat selects its ticket count over the socket and the ceiling is enforced server-side", async () => {
+  const { client: host, session } = await hostRoom("MultiHost");
+  const player = await joinRoom(session.roomId, "MultiPlayer");
+
+  const picked = await player.client.call("tickets:select", { count: 3 });
+  assert.equal(picked.ok, true, JSON.stringify(picked));
+  assert.equal(picked.ticketCount, 3);
+  assert.equal(picked.maxTickets, 4, "the room's default ceiling is echoed");
+  assert.equal(picked.tickets.length, 3, "the player sees the tickets while choosing");
+  assert.deepEqual(picked.tickets.map((t) => t.no), [1, 2, 3]);
+
+  // inside the wire bounds but above the room's ceiling: refused, not clamped
+  const tooMany = await player.client.call("tickets:select", { count: 5 });
+  assert.equal(tooMany.ok, false);
+  assert.equal(tooMany.code, ErrorCodes.TICKET_LIMIT);
+  assert.equal(tooMany.max, 4, "the message can name the real limit");
+
+  for (const junk of [{}, { count: "3" }, { count: 0 }, { count: -2 }, { count: 1.5 }, { count: 999 }]) {
+    const bad = await player.client.call("tickets:select", junk);
+    assert.equal(bad.ok, false, "refused " + JSON.stringify(junk));
+    assert.equal(bad.code, ErrorCodes.BAD_PAYLOAD);
+  }
+});
+
+test("start issues every chosen ticket privately to its owner and nobody else", async () => {
+  const { client: host, session } = await hostRoom("IssueHost");
+  const alice = await joinRoom(session.roomId, "IssueAlice");
+  const bob = await joinRoom(session.roomId, "IssueBob");
+  await alice.client.call("tickets:select", { count: 3 });
+
+  const started = await host.call("game:start");
+  assert.equal(started.ok, true, JSON.stringify(started));
+  assert.equal(started.ticketsIssued, 5, "host 1 + alice 3 + bob 1");
+  await settle(150);
+
+  const mine = alice.client.history("ticket:assigned");
+  assert.equal(mine.length, 3, "one private push per chosen ticket");
+  assert.deepEqual(mine.map((p) => p.ticketNo), [1, 2, 3]);
+  assert.equal(mine.every((p) => p.ticketCount === 3), true);
+  assert.equal(new Set(mine.map((p) => JSON.stringify(p.ticket))).size, 3, "no duplicate tickets");
+  assert.equal(bob.client.count("ticket:assigned"), 1, "bob only ever sees his own");
+  assert.equal(host.count("ticket:assigned"), 1);
+});
+
+test("selection locks the moment the game starts over the wire", async () => {
+  const { client: host, session } = await hostRoom("LockHost");
+  const player = await joinRoom(session.roomId, "LockPlayer");
+  await player.client.call("tickets:select", { count: 2 });
+  await host.call("game:start");
+
+  const late = await player.client.call("tickets:select", { count: 4 });
+  assert.equal(late.ok, false);
+  assert.equal(late.code, ErrorCodes.INVALID_STATE, "a locked seat cannot change");
+});
+
+test("claims name tickets within bounds and only the seat's own tickets qualify", async () => {
+  const { client: host, session } = await hostRoom("ClaimHost");
+  const player = await joinRoom(session.roomId, "ClaimPlayer");
+  await player.client.call("tickets:select", { count: 2 });
+  await host.call("game:start");
+  await settle(120);
+
+  // out-of-bounds ticket numbers never reach the engine
+  const huge = await player.client.call("claim:submit", { pattern: "topLine", ticketNo: 999 });
+  assert.equal(huge.ok, false);
+  assert.equal(huge.code, ErrorCodes.BAD_PAYLOAD);
+
+  // a ticket the seat does not own cannot be the one credited
+  const foreign = await player.client.call("claim:submit", { pattern: "topLine", ticketNo: 5 });
+  assert.equal(foreign.ok, false, JSON.stringify(foreign));
+  assert.match(String(foreign.reason), /belongs to you/, "the reason crosses the wire - the client says why");
+
+  // an owned ticket with nothing called yet is still just incomplete
+  const early = await player.client.call("claim:submit", { pattern: "topLine", ticketNo: 1 });
+  assert.equal(early.ok, false, "no call happened, no line completed");
+  assert.equal(early.code, ErrorCodes.INVALID_STATE);
+  assert.match(String(early.reason), /incomplete/, "not a state problem, so the wording must not claim one");
+});
+
+test("a reconnecting player keeps the count they chose and receives all their tickets", async () => {
+  const { client: host, session } = await hostRoom("RecoverHost");
+  const player = await joinRoom(session.roomId, "RecoverPlayer");
+  await player.client.call("tickets:select", { count: 3 });
+  const token = player.session.sessionToken;
+  assert.ok(token, "joining issues a resume credential");
+  await player.client.disconnect();
+
+  const back = await newClient("RecoverAgain");
+  const resumed = await back.call("session:resume", { roomId: session.roomId, sessionToken: token });
+  assert.equal(resumed.ok, true, JSON.stringify(resumed));
+
+  await host.call("game:start");
+  await settle(150);
+  const mine = back.history("ticket:assigned");
+  assert.equal(mine.length, 3, "the chosen count survived the refresh");
+  assert.deepEqual(mine.map((p) => p.ticketNo), [1, 2, 3]);
 });

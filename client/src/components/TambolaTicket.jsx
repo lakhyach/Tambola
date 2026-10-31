@@ -9,7 +9,7 @@ import { APP_NAME } from "../brand.js";
  * Marking is derived from the official called history; a tap here never changes
  * the score, it only shows which of the fifteen have been called.
  */
-const TambolaTicket = ({ ticket, calledNumbers = [], currentNumber = null, playerName }) => {
+const TambolaTicket = ({ ticket, calledNumbers = [], currentNumber = null, playerName, ticketNo = null, ticketTotal = null }) => {
   const calledSet = useMemo(() => new Set(calledNumbers), [calledNumbers]);
   const rows = useMemo(
     () => (ticket && ticket.length === 3 ? ticket : [[], [], []]),
@@ -37,6 +37,9 @@ const TambolaTicket = ({ ticket, calledNumbers = [], currentNumber = null, playe
           </div>
           <div className="oh-eyebrow" style={{ marginTop: 2 }}>
             {playerName ? `${playerName}'s ticket` : "Your ticket"}
+            {ticketNo != null
+              ? ` · No. ${ticketNo}${ticketTotal ? ` of ${ticketTotal}` : ""}`
+              : ""}
           </div>
         </div>
         <div className="oh-num text-right" style={{ color: "var(--oh-gold-bright)", fontWeight: 700 }}>
@@ -51,7 +54,11 @@ const TambolaTicket = ({ ticket, calledNumbers = [], currentNumber = null, playe
         className="grid gap-1.5"
         style={{ gridTemplateColumns: "repeat(9, minmax(0, 1fr))" }}
         role="table"
-        aria-label="Your Tambola ticket"
+        aria-label={
+          ticketNo != null
+            ? `Ticket ${ticketNo}${ticketTotal ? " of " + ticketTotal : ""}`
+            : `Your ${APP_NAME} ticket`
+        }
       >
         {rows.flatMap((row, r) =>
           Array.from({ length: 9 }, (_, c) => {

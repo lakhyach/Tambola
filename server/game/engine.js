@@ -38,7 +38,7 @@
 
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { generateTicket, validateTicket } from "./ticket.js";
-import { evaluateClaim, getPattern, enabledPatternIds, PATTERNS } from "./patterns.js";
+import { evaluateClaimAcrossTickets, getPattern, enabledPatternIds, PATTERNS } from "./patterns.js";
 
 export const GameState = Object.freeze({
   WAITING: "WAITING",
@@ -77,10 +77,31 @@ export const DEFAULT_CONFIG = Object.freeze({
   maxChatLength: 120,
   /** 0 disables the window; N > 0 requires Early Five to complete by call N */
   earlyFiveMaxCalls: 0,
+  /**
+   * How many calls may pass after a pattern completes before it can no longer
+   * be claimed. 0 is the traditional Indian rule — claim before the next number
+   * is called. N allows N further calls of grace for slow phones; a negative
+   * value turns the rule off entirely. Also reachable as an admin setting.
+   */
+  claimWindowCalls: 0,
+  /** most tickets a single seat may hold; clamped TICKET_MIN..TICKET_MAX */
+  maxTicketsPerPlayer: 4,
   /** pattern id -> boolean, overrides enabledByDefault */
   patterns: {},
   multipleWinnersPerPattern: false,
 });
+
+/** Hard bounds on a seat's ticket count, independent of the room's max. */
+export const TICKET_MIN = 1;
+export const TICKET_MAX = 12;
+
+/**
+ * How many past messages a room remembers in memory, so a seat that joins
+ * mid-round can ask what the room already said. Deliberately small: chat is not
+ * game state, is never persisted, is never in a snapshot, and travels only to
+ * the one connection that asks for it.
+ */
+export const CHAT_HISTORY = 24;
 
 export const ErrorCodes = Object.freeze({
   BAD_PAYLOAD: "BAD_PAYLOAD",
@@ -98,7 +119,9 @@ export const ErrorCodes = Object.freeze({
   UNKNOWN_PATTERN: "UNKNOWN_PATTERN",
   ALREADY_AWARDED: "ALREADY_AWARDED",
   ALREADY_CLAIMED_BY_YOU: "ALREADY_CLAIMED_BY_YOU",
+  CLAIM_TOO_LATE: "CLAIM_TOO_LATE",
   RATE_LIMITED: "RATE_LIMITED",
+  TICKET_LIMIT: "TICKET_LIMIT",
 });
 
 function fail(code, message, extra = {}) {
@@ -162,6 +185,31 @@ function shuffled(items, rng) {
 }
 
 const FULL_DRAW = Object.freeze(Array.from({ length: 90 }, (_, i) => i + 1));
+
+/** A seat's ticket fingerprint: its 15 numbers sorted, so duplicates are caught. */
+function ticketFingerprint(grid) {
+  return grid.flat().filter((n) => n !== null && n !== undefined).sort((a, b) => a - b).join(",");
+}
+
+/** Public shape of one owned ticket: a stable number plus its grid. */
+function publicTicket(ticket) {
+  return { no: ticket.no, grid: ticket.grid };
+}
+
+/**
+ * Coerce whatever the persistence/recovery layer hands back into the engine's
+ * canonical `[{ no, grid }]` seat list. Accepts the new `tickets` array (either
+ * `{no, grid}` objects or bare grids) and the legacy single `ticket` field.
+ */
+function normalizeStoredTickets(entry) {
+  if (Array.isArray(entry.tickets)) {
+    return entry.tickets
+      .map((t, i) => (t && t.grid ? { no: t.no || i + 1, grid: t.grid } : { no: i + 1, grid: t }))
+      .filter((t) => Array.isArray(t.grid));
+  }
+  if (entry.ticket && Array.isArray(entry.ticket)) return [{ no: 1, grid: entry.ticket }];
+  return [];
+}
 
 export class TambolaRoom {
   /**
@@ -242,6 +290,14 @@ export class TambolaRoom {
     this.claimLog = [];
     this.audit = [];
     this.lastChatAt = new Map();
+    /**
+     * The room's conversation, newest last, capped at CHAT_HISTORY. Chat is not
+     * game state: it is never persisted and never part of a snapshot, and it is
+     * lost when the process restarts. It is kept in memory for one reason — a
+     * seat that joins mid-round would otherwise see an empty chat panel while
+     * the room is clearly talking.
+     */
+    this.chatLog = [];
     this.autoCallTimer = null;
 
     /** game round this state belongs to; the database owns the numbering */
@@ -278,11 +334,16 @@ export class TambolaRoom {
         name: entry.name,
         socketId: null,
         connected: false,
-        ticket: entry.ticket || null,
+        tickets: normalizeStoredTickets(entry),
+        ticketCount: 0,
         points: Number.isInteger(entry.points) ? entry.points : 0,
         claims: Array.isArray(entry.claims) ? entry.claims.slice() : [],
         joinedAt: Number.isFinite(entry.joinedAt) ? entry.joinedAt : this.now(),
       });
+      const seated = this.players.get(entry.id);
+      seated.ticketCount = Number.isInteger(entry.ticketCount) && entry.ticketCount > 0
+        ? entry.ticketCount
+        : seated.tickets.length || 1;
     }
 
     this.draw = Array.isArray(source.draw) ? source.draw.slice() : [];
@@ -361,6 +422,9 @@ export class TambolaRoom {
     for (const player of this.players.values()) {
       let expected = 0;
       for (const [pattern, winners] of this.awards.entries()) {
+        // an unknown pattern is already reported above; adding its points would
+        // throw and hide every other problem behind a TypeError message
+        if (!PATTERNS[pattern]) continue;
         if (winners.some((winner) => winner.playerId === player.id)) expected += PATTERNS[pattern].points;
       }
       if (player.points !== expected) {
@@ -432,6 +496,12 @@ export class TambolaRoom {
       connected: player.connected,
       isHost: player.id === this.hostPlayerId,
       points: player.points,
+      // How many tickets this seat is playing. It is the chosen count, not the
+      // grids already minted: a seat that never touched the picker holds none
+      // yet, but is issued its committed count at start (see start()). Reading
+      // `tickets.length` here made those seats look like they were not playing.
+      // A count is never a grid.
+      tickets: player.ticketCount,
     }));
   }
 
@@ -442,6 +512,78 @@ export class TambolaRoom {
       throw new Error("engine produced an invalid ticket: " + check.errors.join("; "));
     }
     return ticket;
+  }
+
+  /** The room's per-seat ticket ceiling, clamped to the hard bounds. */
+  ticketCeiling() {
+    const raw = Number(this.config.maxTicketsPerPlayer);
+    const max = Number.isFinite(raw) ? Math.floor(raw) : TICKET_MIN;
+    return Math.min(TICKET_MAX, Math.max(TICKET_MIN, max));
+  }
+
+  /**
+   * Mint a fresh ticket that does not duplicate anything this seat already
+   * holds. generateTickets already de-dupes within a batch, so a small retry
+   * against the seat's own set is all that is needed.
+   */
+  mintDistinctTicket(owned) {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      const grid = this.issueTicket();
+      if (!owned.has(ticketFingerprint(grid))) return grid;
+    }
+    return this.issueTicket();
+  }
+
+  /**
+   * A seat chooses how many tickets it wants before the round begins.
+   *
+   * Server-authoritative and enforced here, not just in the UI:
+   *  - only while the room is WAITING (a locked selection cannot be changed once
+   *    the first number is called, which is what keeps a claim's ticket stable);
+   *  - the count is clamped to 1..maxTicketsPerPlayer; asking for more returns
+   *    TICKET_LIMIT rather than silently over-issuing;
+   *  - growing appends new, distinct tickets and shrinking drops from the end, so
+   *    a ticket a player can already see never changes under them.
+   */
+  selectTickets({ playerId, count, playerToken, socketId } = {}) {
+    let player = this.players.get(playerId);
+    if (!player && socketId) player = this.players.get(this.socketToPlayer.get(socketId));
+    if (!player) return fail(ErrorCodes.NOT_PLAYER, "you are not a participant of this room");
+    if (playerToken !== undefined && player.token !== playerToken) {
+      return fail(ErrorCodes.NOT_PLAYER, "bad player credential");
+    }
+    if (this.state !== GameState.WAITING) {
+      return fail(ErrorCodes.INVALID_STATE, "ticket selection is locked once the game has started", { state: this.state });
+    }
+    const ceiling = this.ticketCeiling();
+    const wanted = Number.isInteger(count) ? count : NaN;
+    if (!Number.isInteger(wanted) || wanted < TICKET_MIN) {
+      return fail(ErrorCodes.BAD_PAYLOAD, "count must be a whole number of tickets");
+    }
+    if (wanted > ceiling) {
+      return fail(ErrorCodes.TICKET_LIMIT, "this room allows at most " + ceiling + " tickets per player", { max: ceiling });
+    }
+
+    player.ticketCount = wanted;
+    const owned = new Set(player.tickets.map((t) => ticketFingerprint(t.grid)));
+    if (wanted < player.tickets.length) {
+      // dropping tickets frees their fingerprints so a later re-add never collides
+      player.tickets = player.tickets.slice(0, wanted);
+      owned.clear();
+      for (const t of player.tickets) owned.add(ticketFingerprint(t.grid));
+    } else {
+      while (player.tickets.length < wanted) {
+        const grid = this.mintDistinctTicket(owned);
+        owned.add(ticketFingerprint(grid));
+        player.tickets.push({ no: player.tickets.length + 1, grid });
+      }
+    }
+    // keep the numbering contiguous after any shrink/grow
+    player.tickets.forEach((t, i) => { t.no = i + 1; });
+
+    this.record({ type: "tickets-selected", player: player.id, count: wanted });
+    this.emit("room:updated", { players: this.playersList() });
+    return ok({ ticketCount: wanted, maxTickets: ceiling, tickets: player.tickets.map(publicTicket) });
   }
 
   // ------------------------------------------------------------------- roster
@@ -487,7 +629,8 @@ export class TambolaRoom {
       name: cleanName,
       socketId,
       connected: true,
-      ticket: null,
+      tickets: [],
+      ticketCount: 1,
       points: 0,
       claims: [],
       joinedAt: this.now(),
@@ -584,7 +727,9 @@ export class TambolaRoom {
       playerId: player.id,
       playerToken: player.token,
       name: player.name,
-      ticket: player.ticket,
+      ticket: player.tickets.length ? player.tickets[0].grid : null,
+      tickets: player.tickets.map(publicTicket),
+      ticketCount: player.ticketCount,
       points: player.points,
       claims: player.claims.slice(),
     };
@@ -637,8 +782,16 @@ export class TambolaRoom {
     return { playerId: player.id };
   }
 
-  /** Remove a participant entirely - they stop being an active player. */
-  dropPlayer(playerId, reason) {
+  /**
+   * Remove a participant entirely - they stop being an active player.
+   *
+   * Once the round is COMPLETED the seat is only vacated: it keeps its points
+   * and awards and shows as away, because the final board is part of the room's
+   * record. Erasing it here made a finished game's standings shrink under the
+   * host while the results screen was open. `reset()` clears those seats for
+   * real (`final: true`) so a new round starts with the people who are present.
+   */
+  dropPlayer(playerId, reason, { final = false } = {}) {
     const timer = this.pendingRemovals.get(playerId);
     if (timer) {
       this.clearTimer(timer);
@@ -647,6 +800,14 @@ export class TambolaRoom {
     const player = this.players.get(playerId);
     if (!player) return false;
     const wasHost = this.hostPlayerId === playerId;
+    if (!final && this.state === GameState.COMPLETED && !wasHost) {
+      if (player.socketId) this.socketToPlayer.delete(player.socketId);
+      player.socketId = null;
+      player.connected = false;
+      this.record({ type: "seat-vacated", player: playerId, reason });
+      this.emit("room:updated", { players: this.playersList() });
+      return true;
+    }
     if (wasHost && this.keepHostSeat) {
       // leaving voluntarily does not hand the room away either: the seat is
       // kept, the game stops, and the same credential can come back to it
@@ -719,15 +880,33 @@ export class TambolaRoom {
     for (const player of this.players.values()) {
       player.points = 0;
       player.claims = [];
-      player.ticket = this.issueTicket();
+      // honour the seat's chosen count; a seat that never chose still gets one.
+      const want = Math.min(Math.max(1, player.ticketCount || 1), this.ticketCeiling());
+      player.ticketCount = want;
+      const owned = new Set(player.tickets.map((t) => ticketFingerprint(t.grid)));
+      while (player.tickets.length < want) {
+        const grid = this.mintDistinctTicket(owned);
+        owned.add(ticketFingerprint(grid));
+        player.tickets.push({ no: player.tickets.length + 1, grid });
+      }
+      if (player.tickets.length > want) player.tickets = player.tickets.slice(0, want);
+      player.tickets.forEach((t, i) => { t.no = i + 1; });
     }
     this.record({ type: "start", players: this.players.size });
     this.emit("game:state", this.stateView());
     for (const player of this.players.values()) {
-      if (player.socketId) this.emitTo(player.socketId, "ticket:assigned", { ticket: player.ticket });
+      if (!player.socketId) continue;
+      for (const t of player.tickets) {
+        this.emitTo(player.socketId, "ticket:assigned", {
+          ticket: t.grid,
+          ticketNo: t.no,
+          ticketCount: player.tickets.length,
+        });
+      }
     }
     if (this.config.autoCall) this.scheduleAutoCall();
-    return ok({ state: this.state, ticketsIssued: this.players.size, snapshot: this.hostSnapshot() });
+    const ticketsIssued = [...this.players.values()].reduce((n, p) => n + p.tickets.length, 0);
+    return ok({ state: this.state, ticketsIssued, snapshot: this.hostSnapshot() });
   }
 
   /**
@@ -858,10 +1037,18 @@ export class TambolaRoom {
     this.calledSet = new Set();
     this.awards = new Map();
     this.claimLog = [];
+    // Seats that closed the tab after the final whistle were kept on the board.
+    // A new round starts with the people who are actually here: clear those out
+    // (and their pending grace timers) before anybody is dealt a ticket.
+    for (const player of [...this.players.values()]) {
+      if (!player.connected && player.id !== this.hostPlayerId) {
+        this.dropPlayer(player.id, "gone before the next round", { final: true });
+      }
+    }
     for (const player of this.players.values()) {
       player.points = 0;
       player.claims = [];
-      player.ticket = null;
+      player.tickets = [];
     }
     this.record({ type: "reset" });
     this.emit("game:state", this.stateView());
@@ -948,7 +1135,7 @@ export class TambolaRoom {
    * Every check, no mutation. Returns the award the caller is entitled to, so
    * the persistence layer can write it durably first.
    */
-  prepareClaim({ playerId, pattern, playerToken, socketId } = {}) {
+  prepareClaim({ playerId, pattern, ticketNo, playerToken, socketId } = {}) {
     let player = this.players.get(playerId);
     if (!player && socketId) {
       const bySocket = this.socketToPlayer.get(socketId);
@@ -958,7 +1145,7 @@ export class TambolaRoom {
     if (playerToken !== undefined && player.token !== playerToken) {
       return fail(ErrorCodes.NOT_PLAYER, "bad player credential");
     }
-    if (!player.ticket) return fail(ErrorCodes.NOT_PLAYER, "no ticket has been assigned to you yet");
+    if (!player.tickets.length) return fail(ErrorCodes.NOT_PLAYER, "no ticket has been assigned to you yet");
     if (this.state !== GameState.RUNNING) {
       return fail(ErrorCodes.INVALID_STATE, "claims need a RUNNING game, it is " + this.state);
     }
@@ -976,7 +1163,13 @@ export class TambolaRoom {
       });
     }
 
-    const verdict = evaluateClaim(pattern, player.ticket, this.calledNumbers, this.config);
+    // Verify against this player's actual tickets. A claim may name one ticket
+    // (a targeted claim) or leave it open, in which case the server picks the
+    // ticket that completed the pattern earliest. It never trusts a client hint
+    // about which ticket won - the grids here are the server's own.
+    const verdict = evaluateClaimAcrossTickets(pattern, player.tickets, this.calledNumbers, this.config, {
+      ticketNo,
+    });
     this.claimLog.push({
       at: this.now(),
       playerId: player.id,
@@ -984,12 +1177,18 @@ export class TambolaRoom {
       pattern,
       accepted: Boolean(verdict.valid),
       reason: verdict.valid ? "complete" : verdict.reason,
+      ticketNo: verdict.valid ? verdict.ticketNo : null,
       callIndex: this.cursor,
     });
 
     if (!verdict.valid) {
       this.record({ type: "claim-rejected", player: player.id, pattern, reason: verdict.reason });
-      return fail(ErrorCodes.INVALID_STATE, "invalid claim: " + verdict.reason, { pattern, reason: verdict.reason });
+      const code = verdict.late ? ErrorCodes.CLAIM_TOO_LATE : ErrorCodes.INVALID_STATE;
+      return fail(code, "invalid claim: " + verdict.reason, {
+        pattern,
+        reason: verdict.reason,
+        ...(verdict.late ? { late: true } : {}),
+      });
     }
 
     return ok({
@@ -998,6 +1197,8 @@ export class TambolaRoom {
         pattern,
         label: known.label,
         points: known.points,
+        ticketNo: verdict.ticketNo,
+        completedOnCall: verdict.completedOnCall ?? null,
         callIndex: this.cursor,
       },
     });
@@ -1014,6 +1215,25 @@ export class TambolaRoom {
     }
     const player = this.players.get(prepared.playerId);
     if (!player) return fail(ErrorCodes.NOT_PLAYER, "that participant is gone");
+    // A claim prepared on the last tick of a round must not be paid out into the
+    // results screen: the window is re-checked here as well, against the same
+    // authoritative history, because the durable path awaits a database write
+    // between preparing and committing.
+    if (this.state !== GameState.RUNNING) {
+      return fail(ErrorCodes.INVALID_STATE, "the round ended before the claim was awarded", {
+        pattern: prepared.pattern,
+      });
+    }
+    const window = this.config.claimWindowCalls;
+    if (Number.isInteger(window) && window >= 0 && Number.isInteger(prepared.completedOnCall)) {
+      const lateBy = this.calledNumbers.length - prepared.completedOnCall;
+      if (lateBy > window) {
+        return fail(ErrorCodes.CLAIM_TOO_LATE, "invalid claim: the next number was called before the award landed", {
+          pattern: prepared.pattern,
+          late: true,
+        });
+      }
+    }
     const known = getPattern(prepared.pattern, this.config);
     if (!known) return fail(ErrorCodes.UNKNOWN_PATTERN, "unknown pattern: " + prepared.pattern);
 
@@ -1034,6 +1254,7 @@ export class TambolaRoom {
       playerId: player.id,
       name: player.name,
       points: known.points,
+      ticketNo: prepared.ticketNo ?? null,
       callIndex: prepared.callIndex ?? this.cursor,
       at: this.now(),
     });
@@ -1047,6 +1268,7 @@ export class TambolaRoom {
       playerId: player.id,
       name: player.name,
       points: known.points,
+      ticketNo: prepared.ticketNo ?? null,
       leaderboard: this.leaderboard(),
       awards: this.awardList(),
     };
@@ -1058,8 +1280,8 @@ export class TambolaRoom {
   /** Read-only: could this player truthfully claim this pattern right now? */
   claimability(playerId, pattern) {
     const player = this.players.get(playerId);
-    if (!player || !player.ticket) return { valid: false, reason: "no ticket" };
-    return evaluateClaim(pattern, player.ticket, this.calledNumbers, this.config);
+    if (!player || !player.tickets.length) return { valid: false, reason: "no ticket" };
+    return evaluateClaimAcrossTickets(pattern, player.tickets, this.calledNumbers, this.config, {});
   }
 
   leaderboard() {
@@ -1078,6 +1300,7 @@ export class TambolaRoom {
           playerId: winner.playerId,
           name: winner.name,
           points: winner.points,
+          ticketNo: winner.ticketNo ?? null,
           callIndex: winner.callIndex,
         });
       }
@@ -1100,8 +1323,29 @@ export class TambolaRoom {
       return fail(ErrorCodes.RATE_LIMITED, "one message every " + this.config.chatIntervalMs + "ms");
     }
     this.lastChatAt.set(player.id, this.now());
-    this.emit("chat:message", { from: player.name, playerId: player.id, text: clean, at: this.now() });
-    return ok({ sent: true, text: clean });
+    const message = {
+      // an opaque id so a client can recognise a message it has already shown:
+      // a seat that rejoins gets the history replayed, and the live broadcast of
+      // the next message must not double up anything already on screen
+      id: "c-" + newToken(10),
+      from: player.name,
+      playerId: player.id,
+      text: clean,
+      at: this.now(),
+    };
+    this.chatLog.push(message);
+    if (this.chatLog.length > CHAT_HISTORY) this.chatLog.splice(0, this.chatLog.length - CHAT_HISTORY);
+    this.emit("chat:message", message);
+    return ok({ sent: true, text: clean, id: message.id });
+  }
+
+  /**
+   * The room's conversation, oldest first. Deliberately NOT part of any snapshot
+   * — it is read on demand by a seat that just arrived (chat:history), so a room
+   * full of players does not re-send the same text on every number call.
+   */
+  recentChat() {
+    return this.chatLog.slice();
   }
 
   // ------------------------------------------------------------------ snapshot
@@ -1131,12 +1375,22 @@ export class TambolaRoom {
     };
   }
 
-  /** Public snapshot plus the requester's own ticket only. */
+  /** Public snapshot plus the requester's own tickets only. */
   playerSnapshot(playerId) {
     const base = this.publicSnapshot();
     const player = this.players.get(playerId);
     if (!player) return base;
-    return { ...base, playerId: player.id, name: player.name, points: player.points, claims: player.claims.slice(), ticket: player.ticket };
+    return {
+      ...base,
+      playerId: player.id,
+      name: player.name,
+      points: player.points,
+      claims: player.claims.slice(),
+      ticket: player.tickets.length ? player.tickets[0].grid : null,
+      tickets: player.tickets.map(publicTicket),
+      ticketCount: player.ticketCount,
+      maxTickets: this.ticketCeiling(),
+    };
   }
 
   /** Host view: everything a player sees plus room internals, still no draw tail. */

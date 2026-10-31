@@ -15,7 +15,7 @@
  *    refuses to start rather than running two schedulers over one set of rooms.
  */
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import pg from "pg";
 
 const { Pool } = pg;
@@ -49,8 +49,23 @@ export function assertSchemaName(name) {
   return name;
 }
 
-/** Advisory-lock key for "one Tambola game server owns these rooms". */
-export const INSTANCE_LOCK_KEY = 728439273842317;
+/**
+ * Advisory-lock key for "one Tambola game server owns these rooms".
+ *
+ * Derived from the schema, not fixed: two servers conflict only if they own the
+ * same tables. A fixed key meant any second process against the same database
+ * was refused - including a staging instance on its own schema and the durable
+ * test suite on its throwaway schema, which then could not run while a server
+ * was up. PostgreSQL's two-int form of pg_try_advisory_lock keeps both halves
+ * inside int4, so no 64-bit JSON or BigInt plumbing is needed.
+ *
+ * @param {string} schema
+ * @returns {[number, number]}
+ */
+export function instanceLeaseKey(schema) {
+  const digest = createHash("sha256").update("tambola-instance-lease:" + schema).digest();
+  return [digest.readUInt32BE(0) % 2147483647, digest.readUInt32BE(4) % 2147483647];
+}
 
 export function createPool(options = {}) {
   const schema = assertSchemaName(options.schema || "public");
@@ -60,19 +75,20 @@ export function createPool(options = {}) {
 
   const pool = new Pool({
     connectionString,
+    /**
+     * The schema is pinned in the STARTUP packet, not by a query in an
+     * `on("connect")` listener. A listener query races the first query the pool
+     * hands that same client (pg warns that the client is already executing),
+     * and losing that race means SQL runs against `public` instead of the
+     * schema it was written for - which, for a test schema, is silent
+     * cross-contamination. `-c` runs before any statement can.
+     */
+    options: "-c search_path=" + schema + ",public",
     max: options.max ?? 8,
     connectionTimeoutMillis: options.connectionTimeoutMillis ?? 5000,
     statement_timeout: options.statementTimeoutMs ?? 5000,
     idle_timeout_millis: options.idleTimeoutMs ?? 30000,
     application_name: options.applicationName || "tambola-server",
-  });
-
-  // Every physical connection works inside the chosen schema, so the same SQL
-  // runs against production `public` or a throwaway test schema unchanged.
-  pool.on("connect", (client) => {
-    client.query("SET search_path TO " + schema + ", public").catch((error) => {
-      log("search_path failed", error && error.message);
-    });
   });
 
   let lost = 0;
@@ -161,9 +177,10 @@ export function createPool(options = {}) {
    */
   async function acquireInstanceLease({ holder = randomUUID() } = {}) {
     const client = await pool.connect();
+    const leaseKey = instanceLeaseKey(schema);
     let acquired = false;
     try {
-      const result = await client.query("SELECT pg_try_advisory_lock($1) AS locked", [INSTANCE_LOCK_KEY]);
+      const result = await client.query("SELECT pg_try_advisory_lock($1, $2) AS locked", leaseKey);
       acquired = result.rows[0].locked === true;
       if (!acquired) {
         const error = new Error("another game server already holds this database");
@@ -180,7 +197,7 @@ export function createPool(options = {}) {
     } catch (error) {
       // release exactly once: the lock never made it past `acquired`, so an
       // INSTANCE_LOCKED throw must not double-release the connection
-      if (acquired) await client.query("SELECT pg_advisory_unlock($1)", [INSTANCE_LOCK_KEY]).catch(() => {});
+      if (acquired) await client.query("SELECT pg_advisory_unlock($1, $2)", leaseKey).catch(() => {});
       client.release();
       throw error;
     }
@@ -216,7 +233,7 @@ export function createPool(options = {}) {
         released = true;
         try {
           await client.query("DELETE FROM instance_lease WHERE lease_key = $1 AND holder = $2", ["game-server", holder]);
-          await client.query("SELECT pg_advisory_unlock($1)", [INSTANCE_LOCK_KEY]);
+          await client.query("SELECT pg_advisory_unlock($1, $2)", leaseKey);
         } finally {
           client.release();
         }

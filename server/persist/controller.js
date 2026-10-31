@@ -43,6 +43,8 @@ const PUBLIC_CONFIG_KEYS = [
   "chatIntervalMs",
   "maxChatLength",
   "earlyFiveMaxCalls",
+  "claimWindowCalls",
+  "maxTicketsPerPlayer",
   "patterns",
   "multipleWinnersPerPattern",
 ];
@@ -593,6 +595,44 @@ export function createGameController({ store, sessions, registry: initialRegistr
     return registry.close(roomId, reason);
   }
 
+  /**
+   * A seat picks how many tickets it wants before the round begins.
+   *
+   * The engine decides the room ceiling and the WAITING-only lock; this method
+   * runs the memory intent and, in durable mode, records the chosen count on
+   * room_members.ticket_count so a restart restores the same selection. The
+   * ticket grids themselves are minted at selection time for live visibility,
+   * but only the COUNT is durable until start() (there is no games row for a
+   * round that has not begun), and start() re-mints to the stored count.
+   */
+  async function selectTickets({ room, playerId, count, socketId }) {
+    const blocked = refuseFrozen(room.roomId);
+    if (blocked) return blocked;
+    if (!durable) {
+      return room.selectTickets({
+        playerId,
+        count,
+        socketId,
+        playerToken: room.playerCredential(playerId),
+      });
+    }
+    return runExclusive(room.roomId, async () => {
+      const result = room.selectTickets({
+        playerId,
+        count,
+        socketId,
+        playerToken: room.playerCredential(playerId),
+      });
+      if (!result.ok) return result;
+      try {
+        await store.setTicketCount({ roomId: room.roomId, playerId, count: result.ticketCount });
+        return result;
+      } catch (error) {
+        return degrade(room.roomId, error, null);
+      }
+    });
+  }
+
   // ----------------------------------------------------------------- game flow
 
   async function start({ room, socketId, auth }) {
@@ -616,9 +656,13 @@ export function createGameController({ store, sessions, registry: initialRegistr
           gameNumber,
           drawSequence: room.draw,
           config: publicConfig(room.config),
-          tickets: [...room.players.values()]
-            .filter((player) => player.ticket)
-            .map((player) => ({ playerId: player.id, grid: player.ticket })),
+          tickets: [...room.players.values()].flatMap((player) =>
+            player.tickets.map((t) => ({ playerId: player.id, ticketNo: t.no, grid: t.grid }))
+          ),
+          ticketCounts: [...room.players.values()].map((player) => ({
+            playerId: player.id,
+            count: player.ticketCount,
+          })),
         });
         room.gameNumber = gameNumber;
         const nextDueAt = room.config.autoCall ? new Date(now() + Number(room.config.callIntervalMs)) : null;
@@ -636,7 +680,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
           ok: true,
           state: room.state,
           gameNumber,
-          ticketsIssued: room.players.size,
+          ticketsIssued: [...room.players.values()].reduce((n, p) => n + p.tickets.length, 0),
           snapshot: room.hostSnapshot(),
         };
       } catch (error) {
@@ -848,11 +892,11 @@ export function createGameController({ store, sessions, registry: initialRegistr
    * database decide exclusivity under a lock, only then award in memory. A
    * restart cannot undo a winner because the winner is a row, not a variable.
    */
-  async function claim({ room, playerId, pattern, socketId }) {
+  async function claim({ room, playerId, pattern, ticketNo, socketId }) {
     const blocked = refuseFrozen(room.roomId);
     if (blocked) return blocked;
     if (!durable) {
-      return room.claim({ playerId, pattern, socketId, playerToken: room.playerCredential(playerId) });
+      return room.claim({ playerId, pattern, ticketNo, socketId, playerToken: room.playerCredential(playerId) });
     }
 
     return runExclusive(room.roomId, async () => {
@@ -860,6 +904,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
       const prepared = room.prepareClaim({
         playerId,
         pattern,
+        ticketNo,
         socketId,
         playerToken: room.playerCredential(playerId),
       });
@@ -1010,6 +1055,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
     state,
     leave,
     closeRoom,
+    selectTickets,
     start,
     callNext,
     handleTick,

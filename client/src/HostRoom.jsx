@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { call, clearSession, on, resumeSession, socket } from "./net.js";
+import { call, clearSession, isSeatGone, on, resumeSession, socket } from "./net.js";
 import Header from "./Header";
 import Panel from "./components/Panel.jsx";
 import Button from "./components/Button.jsx";
 import PlayerRoster from "./components/PlayerRoster.jsx";
+import TicketPicker from "./components/TicketPicker.jsx";
+import TambolaTicket from "./components/TambolaTicket.jsx";
+import { INVITE_TEXT, INVITE_TITLE } from "./brand.js";
 
 const HostRoom = () => {
   const navigate = useNavigate();
@@ -13,13 +16,56 @@ const HostRoom = () => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [tickets, setTickets] = useState({ count: 1, max: 1 });
+  const [previews, setPreviews] = useState([]);
+
+  const pickCount = async (count) => {
+    const result = await call("tickets:select", { count });
+    if (result.ok) {
+      setTickets({ count: result.ticketCount, max: result.maxTickets });
+      setPreviews(Array.isArray(result.tickets) ? result.tickets : []);
+    } else setError(result.code === "TICKET_LIMIT" ? `This room allows at most ${result.max} tickets.` : result.error || "the server did not accept that");
+  };
 
   useEffect(() => {
+    let alive = true;
+    let resuming = false;
+
     const enter = (snapshot) => {
       if (!snapshot) return;
+      // The host view is the only snapshot carrying `hostConnected`. If the
+      // server answered with a player snapshot, this seat is not the room's
+      // host — keep the (valid) player session and move to the player room
+      // rather than showing host controls the server would refuse.
+      if (snapshot.hostConnected === undefined) {
+        navigate("/player/room", { replace: true });
+        return;
+      }
       setRoomCode(snapshot.roomId);
       setPlayers(snapshot.players || []);
+      setTickets({ count: snapshot.ticketCount ?? 1, max: snapshot.maxTickets ?? 1 });
+      setPreviews(Array.isArray(snapshot.tickets) ? snapshot.tickets : []);
       if (snapshot.state === "RUNNING") navigate("/host/game");
+    };
+
+    // Server-backed restoration: the saved host credential re-claims the room,
+    // at mount and again after any transport reconnect (a fresh socket carries
+    // no session). Only a definitively-dead seat drops the credential; a
+    // transient failure (still connecting, a timeout) keeps it and retries.
+    const resume = async () => {
+      if (resuming || !alive) return;
+      resuming = true;
+      try {
+        const resumed = await resumeSession();
+        if (!alive) return;
+        if (resumed.ok) enter(resumed.snapshot);
+        else if (isSeatGone(resumed.code)) {
+          clearSession();
+          navigate("/host");
+        }
+      } finally {
+        resuming = false;
+      }
     };
 
     const stopUpdated = on("room:updated", (data) => setPlayers(data.players || []));
@@ -30,18 +76,14 @@ const HostRoom = () => {
       clearSession();
       navigate("/host");
     });
+    const stopConnected = on("connect", () => resume());
 
-    // Server-backed restoration: the saved host credential re-claims the room.
-    resumeSession().then((resumed) => {
-      if (!resumed.ok) {
-        clearSession();
-        navigate("/host");
-        return;
-      }
-      enter(resumed.snapshot);
-    });
+    resume();
 
-    return () => [stopUpdated, stopStarted, stopClosed].forEach((stop) => stop());
+    return () => {
+      alive = false;
+      [stopUpdated, stopStarted, stopClosed, stopConnected].forEach((stop) => stop());
+    };
   }, [navigate]);
 
   const shareLink = `${window.location.origin}/player?id=${roomCode}`;
@@ -75,7 +117,7 @@ const HostRoom = () => {
 
   const nativeShare = () => {
     if (navigator.share) {
-      navigator.share({ title: "Tambola", text: "Join my Tambola room", url: shareLink }).catch(() => {});
+      navigator.share({ title: INVITE_TITLE, text: INVITE_TEXT, url: shareLink }).catch(() => {});
     } else {
       copyLink();
     }
@@ -123,6 +165,29 @@ const HostRoom = () => {
             </Button>
           </div>
         </Panel>
+
+        <div className="mt-4">
+          <TicketPicker value={tickets.count} max={tickets.max} disabled={busy} onPick={pickCount} />
+        </div>
+
+        {previews.length > 0 ? (
+          <div className="mt-5">
+            <div className="oh-eyebrow" style={{ marginBottom: 8, color: "var(--oh-text-faint)" }}>
+              Preview — these are the exact tickets you will play
+            </div>
+            <div className="flex flex-col gap-3">
+              {previews.map((t) => (
+                <TambolaTicket
+                  key={`pv-${t.no}`}
+                  ticket={t.grid}
+                  calledNumbers={[]}
+                  ticketNo={t.no}
+                  ticketTotal={previews.length}
+                />
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <div className="mt-4">
           <PlayerRoster players={players} leaderboard={[]} />

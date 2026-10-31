@@ -1,13 +1,19 @@
 /* eslint-disable react/prop-types */
 import { useState } from "react";
 import ConnectionIndicator from "./ConnectionIndicator.jsx";
-import { APP_NAME } from "../brand.js";
+import { APP_MARK, APP_NAME } from "../brand.js";
 
 /**
  * Compact game header: identity, the room code (selectable + copy), live
- * connection status and an honest opt-in announcement toggle.
+ * connection status and the honest opt-in announcement controls.
+ *
+ * The announcement layer has three independent, honestly-labelled surfaces:
+ *   • the master toggle (chime + voice together) — the big round button,
+ *   • a voice chip that mutes SPOKEN numbers alone and switches their language,
+ *   • a lag dot that appears only while the voice is behind the board, so the
+ *     header never implies the current number has been read when it has not.
  */
-const GameHeader = ({ roomId, sound, onToggleSound }) => {
+const GameHeader = ({ roomId, sound, onToggleSound, onToggleSpeech, onToggleSpeechLang }) => {
   const [copied, setCopied] = useState(false);
 
   const copyCode = async () => {
@@ -22,6 +28,13 @@ const GameHeader = ({ roomId, sound, onToggleSound }) => {
   };
 
   const soundOn = sound && (sound.speech || sound.chime);
+  const speechAvailable = Boolean(sound && sound.available && sound.available.speech);
+  const speechOn = Boolean(sound && sound.speech);
+  // The engine can die mid-round (autoplay policy, a crashed voice). The chip
+  // must not keep claiming "VOICE" while nothing is spoken: it turns into a
+  // RETRY that an explicit tap uses to start the queue again.
+  const speechDead = Boolean(sound && sound.dead);
+  const lang = (sound && sound.speechLang) === "hi" ? "hi" : "en";
 
   return (
     <header
@@ -43,11 +56,14 @@ const GameHeader = ({ roomId, sound, onToggleSound }) => {
           <div className="oh-display" style={{ fontSize: 18, letterSpacing: ".06em" }}>
             {APP_NAME}
           </div>
-          <div className="oh-eyebrow">Obsidian Hall</div>
+          <div className="oh-eyebrow">{APP_MARK}</div>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      {/* This group must be allowed to wrap on its own: at 390px the chips are
+          wider than the viewport, and the header is only as wide as its
+          padding. Without the wrap the connection pill was clipped at the edge. */}
+      <div className="flex items-center gap-3" style={{ flexWrap: "wrap", justifyContent: "flex-end", rowGap: 8 }}>
         {roomId ? (
           <button
             onClick={copyCode}
@@ -68,6 +84,59 @@ const GameHeader = ({ roomId, sound, onToggleSound }) => {
             </span>
             <span style={{ fontWeight: 700, letterSpacing: ".14em" }}>{roomId}</span>
           </button>
+        ) : null}
+
+        {speechAvailable ? (
+          <div
+            className="flex items-center"
+            style={{
+              border: "1px solid var(--oh-line)",
+              borderRadius: 999,
+              overflow: "hidden",
+              background: "var(--oh-inset)",
+            }}
+          >
+            <button
+              onClick={onToggleSpeech}
+              aria-pressed={speechOn}
+              title={
+                speechDead
+                  ? "Spoken numbers stopped in this browser — tap to try again"
+                  : speechOn
+                    ? "Spoken numbers on"
+                    : "Spoken numbers muted"
+              }
+              className="oh-eyebrow"
+              style={{
+                padding: "6px 9px",
+                color: speechDead
+                  ? "var(--oh-danger)"
+                  : speechOn
+                    ? "var(--oh-gold-bright)"
+                    : "var(--oh-text-faint)",
+                cursor: "pointer",
+                background: "transparent",
+                letterSpacing: ".12em",
+              }}
+            >
+              {speechDead ? "RETRY" : speechOn ? "VOICE" : "MUTED"}
+            </button>
+            <button
+              onClick={onToggleSpeechLang}
+              title={lang === "hi" ? "Announcements in Hindi — switch to English" : "Announcements in English — switch to Hindi"}
+              className="oh-eyebrow"
+              style={{
+                padding: "6px 9px",
+                color: "var(--oh-ivory)",
+                cursor: "pointer",
+                background: "transparent",
+                borderLeft: "1px solid var(--oh-line)",
+                letterSpacing: ".1em",
+              }}
+            >
+              {lang === "hi" ? "हिं" : "EN"}
+            </button>
+          </div>
         ) : null}
 
         {onToggleSound ? (

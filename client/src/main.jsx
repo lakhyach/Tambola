@@ -21,6 +21,18 @@ import AdminSettings from "./admin/AdminSettings.jsx";
 import "./index.css";
 import "./components.css";
 import "./admin/admin.css";
+import { applyTheme } from "./config.js";
+import { APP_NAME, APP_SUBTITLE } from "./brand.js";
+
+// Apply the client brand theme (accent colours) once, before first paint, so a
+// re-brand via VITE_* vars needs no CSS rebuild. See config.js.
+applyTheme();
+
+// The static shell in index.html cannot read build-time config, so the browser
+// tab and any shared preview take the configured product name here.
+document.title = APP_NAME;
+const metaDescription = document.querySelector('meta[name="description"]');
+if (metaDescription) metaDescription.setAttribute("content", APP_SUBTITLE);
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

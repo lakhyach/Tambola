@@ -25,7 +25,9 @@
  *
  * Configuration (environment):
  *  DATABASE_URL   required — the database to back up
- *  DB_SCHEMA      optional (default public) — the schema counted into the manifest
+ *  DB_SCHEMA      optional (default public) — the schema dumped AND counted into
+ *                 the manifest; the archive and the manifest always describe the
+ *                 same scope
  *  BACKUP_DIR     optional — where to write dumps (default <repo>/backups)
  *  PG_BIN         optional — directory holding pg client tools
  *  PG_CONTAINER   optional — container name/id to run the tools inside
@@ -73,7 +75,14 @@ async function main() {
   console.log(`[backup] writing to ${dumpPath}`);
 
   const args = [...connectionArgs(conn), "-d", conn.database, "--format=custom", "--compress=6", "--no-owner", "--no-privileges"];
-  if (schema !== "public") args.push("--schema", schema);
+  // The archive is scoped to the schema this app actually owns - including when
+  // that schema is `public`. An unscoped dump of a shared cluster (managed
+  // Postgres puts its own schemas beside ours) would back up tables this product
+  // never created, while the manifest below counts ONLY our schema - so the
+  // manifest would describe an archive that contains more than it promises, and
+  // the whole backup/restore guarantee would rest on a lie. It also takes locks
+  // across every schema, so unrelated DDL elsewhere makes the backup fail.
+  args.push("--schema", schema);
   const result = await runPgTool({
     tool: "pg_dump",
     args,

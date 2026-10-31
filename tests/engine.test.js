@@ -285,7 +285,7 @@ test("reset wipes game state but keeps the room and roster", () => {
   assert.deepEqual(h.room.claimLog, []);
   for (const player of h.room.players.values()) {
     assert.equal(player.points, 0);
-    assert.equal(player.ticket, null);
+    assert.deepEqual(player.tickets, []);
     assert.deepEqual(player.claims, []);
   }
   assert.equal(h.room.players.size, 2, "same roster");
@@ -296,7 +296,7 @@ test("reset wipes game state but keeps the room and roster", () => {
   assert.equal(again.ok, true);
   assert.equal(again.ticketsIssued, 2);
   for (const player of h.room.players.values()) {
-    assert.deepEqual(validateTicket(player.ticket).errors, [], "fresh legal ticket");
+    assert.deepEqual(validateTicket(player.tickets[0].grid).errors, [], "fresh legal ticket");
   }
 });
 
@@ -438,13 +438,13 @@ test("the engine ignores every field a client invents about itself", () => {
   assert.equal(sneaky.ok, true);
   const player = h.room.players.get(sneaky.playerId);
   assert.equal(player.points, 0);
-  assert.equal(player.ticket, null);
+  assert.deepEqual(player.tickets, []);
   assert.deepEqual(player.claims, []);
   assert.equal(player.isAdmin, undefined);
   assert.equal(h.room.hostPlayerId, host.playerId, "the host is still the host");
   h.room.start(HOST_AUTH(host));
   assert.equal(h.room.players.get(sneaky.playerId).points, 0, "start does not honour claimed points");
-  assert.notDeepEqual(h.room.players.get(sneaky.playerId).ticket, TICKET_A, "the server issues the ticket");
+  assert.notDeepEqual(h.room.players.get(sneaky.playerId).tickets[0].grid, TICKET_A, "the server issues the ticket");
 });
 
 test("a fabricated claim cannot award unearned points", () => {
@@ -484,7 +484,7 @@ test("tickets are assigned privately, one socket each", () => {
     assert.deepEqual(validateTicket(entry.payload.ticket).errors, []);
   }
   for (const p of players) {
-    assert.deepEqual(validateTicket(h.room.players.get(p.playerId).ticket).errors, []);
+    assert.deepEqual(validateTicket(h.room.players.get(p.playerId).tickets[0].grid).errors, []);
   }
   // no room-wide broadcast ever carried a ticket
   for (const event of h.events) {
@@ -499,14 +499,16 @@ test("a player snapshot only ever contains the requester's own ticket", () => {
   const bob = h.player("Bob", "sock-b");
   h.room.start(HOST_AUTH(host));
   const aliceView = h.room.playerSnapshot(alice.playerId);
-  assert.deepEqual(aliceView.ticket, h.room.players.get(alice.playerId).ticket);
+  assert.deepEqual(aliceView.ticket, h.room.players.get(alice.playerId).tickets[0].grid);
   const bobView = h.room.playerSnapshot(bob.playerId);
   assert.notDeepEqual(bobView.ticket, aliceView.ticket, "two different tickets");
   const publicView = h.room.publicSnapshot();
   assert.equal(publicView.ticket, undefined, "the broadcast view carries no ticket at all");
   for (const entry of publicView.players) {
-    assert.equal(entry.ticket, undefined, "the roster never ships tickets");
-    assert.equal(Object.keys(entry).sort().join(","), "connected,id,isHost,name,points");
+    assert.equal(entry.ticket, undefined, "the roster never ships a ticket");
+    assert.equal(entry.grid, undefined, "nor a grid under any other name");
+    assert.equal(typeof entry.tickets, "number", "only the count a seat holds");
+    assert.equal(Object.keys(entry).sort().join(","), "connected,id,isHost,name,points,tickets");
   }
 });
 

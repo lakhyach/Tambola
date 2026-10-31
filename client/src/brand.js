@@ -2,11 +2,40 @@
  * Product identity, kept in one place so the "OBSIDIAN HALL" direction can be
  * re-branded without touching a single component. These are display strings
  * only — nothing here affects gameplay, which stays entirely server-owned.
+ *
+ * The three headline strings now come from the configurable client layer (see
+ * config.js), so a purchasing client can re-brand via VITE_* env vars without
+ * editing this file. The named exports are preserved for every existing import
+ * site.
  */
-export const APP_NAME = "Tambola";
-export const APP_TAGLINE = "The Obsidian Hall of Ninety Numbers";
-export const APP_SUBTITLE =
-  "A free, fast, real-time multiplayer game of Tambola / Housie.";
+import { config } from "./config.js";
+
+export const APP_NAME = config.brand.name;
+export const APP_TAGLINE = config.brand.tagline;
+export const APP_SUBTITLE = config.brand.subtitle;
+
+/**
+ * The rest of the configurable identity. Every one of these is rendered
+ * somewhere — a switch in config.js that nothing reads is worse than no switch,
+ * because a purchasing client sets it and then sees nothing happen.
+ *
+ *   APP_LOGO      brand mark in the header (falls back to the gold dot if the
+ *                 path does not resolve, so a wrong VITE_APP_LOGO never leaves a
+ *                 broken image)
+ *   BRAND_LINKS   terms / privacy / support URLs; an empty string means the link
+ *                 is not rendered at all
+ *   FOOTER_NOTICE the one-line statement under the landing page (free to play)
+ *   APP_MARK      the house label beside the product name in the two headers
+ *   INVITE_*      share/invite copy, so it follows the product name
+ */
+export const APP_LOGO = config.brand.logoPath;
+export const APP_MARK = config.brand.mark;
+export const BRAND_LINKS = config.links;
+export const FOOTER_NOTICE = config.footer.notice;
+
+/** Share/invite copy, so a re-branded build never asks a friend to "join my Tambola room". */
+export const INVITE_TITLE = config.brand.name;
+export const INVITE_TEXT = `Join my ${config.brand.name} room`;
 
 /**
  * Winning-pattern display metadata. The *rules* live only on the server

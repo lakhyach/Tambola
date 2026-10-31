@@ -114,8 +114,10 @@ The safest supported configuration - and Supabase's own recommendation - is to
   dir. Rely on Supabase's own daily backup as the primary safety net, and/or run
   `npm run db:backup` on a schedule writing to object storage. `db:restore-check`
   needs host `pg_dump`/`pg_restore` and a role that can `CREATE/DROP DATABASE`.
-- **Migrations** 001/002/003 apply automatically on first boot - **wait for plan
-  approval before any deploy that would run them against Supabase.**
+- **Migrations** 001/002/003/004 apply automatically on first boot (004 is additive:
+  multi-ticket — `tickets.ticket_no`, `room_members.ticket_count`, and swapping the
+  tickets UNIQUE key) - **wait for plan approval before any deploy that would run
+  them against Supabase.**
 - No payments, entry fees, wagering, or prize payouts - free-to-play only.
 
 ## Per-provider quick steps

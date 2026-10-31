@@ -73,7 +73,15 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
     }
   }
 
-  const ticketsByPlayer = new Map((bundle.tickets || []).map((ticket) => [ticket.player_id, ticket.grid]));
+  // group every stored ticket by seat into the engine's canonical [{ no, grid }]
+  // list, ordered by ticket_no so a recovered seat sees the same numbering
+  const ticketsByPlayer = new Map();
+  for (const ticket of bundle.tickets || []) {
+    const list = ticketsByPlayer.get(ticket.player_id) || [];
+    list.push({ no: ticket.ticket_no || list.length + 1, grid: ticket.grid });
+    ticketsByPlayer.set(ticket.player_id, list);
+  }
+  for (const list of ticketsByPlayer.values()) list.sort((a, b) => a.no - b.no);
   const pointsByPlayer = new Map();
   const claimsByPlayer = new Map();
   for (const award of bundle.awards || []) {
@@ -86,7 +94,10 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
   const players = active.map((member) => ({
     id: member.player_id,
     name: member.display_name,
-    ticket: ticketsByPlayer.get(member.player_id) || null,
+    tickets: ticketsByPlayer.get(member.player_id) || [],
+    ticketCount: Number.isInteger(member.ticket_count) && member.ticket_count > 0
+      ? member.ticket_count
+      : (ticketsByPlayer.get(member.player_id) || []).length || 1,
     points: pointsByPlayer.get(member.player_id) || 0,
     claims: claimsByPlayer.get(member.player_id) || [],
     joinedAt: asMillis(member.joined_at),
@@ -100,7 +111,7 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
   }
 
   if (room.status !== GameState.WAITING) {
-    const withTickets = players.filter((player) => player.ticket).length;
+    const withTickets = players.filter((player) => player.tickets.length).length;
     if (withTickets !== players.length) {
       log("recovering a live game with", withTickets, "of", players.length, "seats ticketed", room.room_code);
     }

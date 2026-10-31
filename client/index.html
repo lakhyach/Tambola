@@ -3,49 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Product name and description are configurable (client/src/config.js) and
+      Vite cannot read build-time config from this static shell, so main.jsx
+      overwrites the title and this description with the configured brand at
+      boot. What is here is the un-configured default.
+
+      Link-preview tags are deliberately minimal: an og:url / og:image must be an
+      absolute URL, which belongs to the deployment, not the repository. If the
+      client wants rich previews, set PUBLIC_ORIGIN on the server and fill these
+      two in with the public origin at build time.
+    -->
     <meta
       name="description"
-      content="Play online multiplayer Tambola (bingo) game built with React and WebSocket. Enjoy real-time gaming experience with friends."
+      content="A free, fast, real-time multiplayer game of Tambola / Housie."
     />
-    <meta
-      name="keywords"
-      content="online tambola, multiplayer game, bingo, React, WebSocket, real-time game"
-    />
-    <meta name="author" content="sumeet umbalkar" />
-    <meta property="og:title" content="Online Tambola Multiplayer Game" />
+    <meta name="theme-color" content="#06070a" />
+    <meta property="og:title" content="Tambola" />
     <meta
       property="og:description"
-      content="Play online multiplayer Tambola (bingo) game built with React and WebSocket. Enjoy real-time gaming experience with friends."
+      content="A free, fast, real-time multiplayer game of Tambola / Housie."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://tambolagame.onrender.com" />
-    <meta property="og:image" content="https://tambolagame.onrender.com" />
-    <meta property="twitter:card" content="summary_large_image" />
-    <meta property="twitter:title" content="Online Tambola Multiplayer Game" />
-    <meta
-      property="twitter:description"
-      content="Play online multiplayer Tambola (bingo) game built with React and WebSocket. Enjoy real-time gaming experience with friends."
-    />
-    <meta property="twitter:image" content="https://tambolagame.onrender.com" />
-    <link
-      rel="apple-touch-icon"
-      sizes="180x180"
-      href="/icon/apple-touch-icon.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="32x32"
-      href="/icon/favicon-32x32.png"
-    />
-    <link
-      rel="icon"
-      type="image/png"
-      sizes="16x16"
-      href="/icon/favicon-16x16.png"
-    />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icon/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/icon/favicon-16x16.png" />
+    <link rel="icon" type="image/x-icon" href="/icon/favicon.ico" />
     <link rel="manifest" href="/icon/site.webmanifest" />
-    <title>Tambola | Bingo</title>
+    <title>Tambola</title>
   </head>
   <body>
     <div id="root"></div>

@@ -34,6 +34,8 @@
  *   SESSION_IDLE_MS     session idle window (default 7 days)
  *   SESSION_ABSOLUTE_MS session hard window (default 30 days)
  *   ALLOW_MEMORY_ONLY   must be 1 to start without a database
+ *   HTTP_REQUEST_TIMEOUT_MS  ms a client may take to finish one request before
+ *                       the server answers 408 and frees the socket (default 30000)
  * No secrets are read or logged here. DATABASE_URL is never printed.
  */
 
@@ -71,6 +73,24 @@ export function originList(raw = process.env.ALLOWED_ORIGINS) {
     .filter(Boolean);
 }
 
+/** A positive integer from an env string, else null. */
+function positiveInt(raw) {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+}
+
+// Hard ceiling on the app pool so a mistyped DB_POOL_MAX cannot exhaust the
+// database's connection slots. The single-instance lease holds one extra
+// connection outside the pool; keep the total comfortably under max_connections.
+const POOL_MAX_CEILING = 50;
+
+/** Clamp a requested pool size into a safe range, defaulting when unset. */
+function poolSizeFrom(raw, fallback) {
+  const n = positiveInt(raw);
+  if (!n) return fallback;
+  return Math.min(POOL_MAX_CEILING, Math.max(1, n));
+}
+
 /**
  * Durable plumbing, in one place: pool -> migrations -> store -> sessions ->
  * controller -> scheduler. Each step is skipped when its dependency is absent,
@@ -106,6 +126,13 @@ async function buildPersistence(options, log) {
   const db = createPool({
     connectionString,
     schema: options.schema || process.env.DB_SCHEMA || "public",
+    // Pool size is an operational dial so a deployment can match its database
+    // plan without a code change. Default 8. Keep (pool + the single lease
+    // connection + a little headroom) under the plan's usable max_connections,
+    // or every checkout beyond it queues and eventually times out. Clamped hard
+    // so a mis-set value cannot exhaust the server's connection slots.
+    max: poolSizeFrom(options.poolMax ?? process.env.DB_POOL_MAX, 8),
+    connectionTimeoutMillis: positiveInt(process.env.DB_POOL_ACQUIRE_TIMEOUT_MS) || 5000,
     log: (...args) => log("db", ...args),
   });
   await migrate({ db, log: (...args) => log("migrate", ...args) });
@@ -133,7 +160,18 @@ export async function createApp(options = {}) {
   const logger = options.logger || createLogger({ level: options.logLevel || process.env.LOG_LEVEL || "info", service: "tambola" });
   const log = options.log || logger.shim;
   const app = express();
+  // Express adds `X-Powered-By: Express` to every response by default. It
+  // advertises the stack to anyone scanning the port and buys nothing.
+  app.disable("x-powered-by");
   const server = http.createServer(app);
+  /**
+   * Node gives a client five minutes to finish one request. A caller that
+   * declares a body and then dribbles it (or never sends the rest) would hold a
+   * socket that long — a textbook slowloris shape. Thirty seconds is far longer
+   * than any honest browser needs on a cellular connection, and an unfinished
+   * request is answered 408 rather than held hostage.
+   */
+  server.requestTimeout = Number(process.env.HTTP_REQUEST_TIMEOUT_MS) || 30000;
   // Behind a real proxy (nginx, a PaaS) TRUST_PROXY=1 makes req.ip / req.protocol
   // reflect the client instead of the proxy. Off by default so a direct client
   // cannot spoof its own address.
@@ -178,7 +216,10 @@ export async function createApp(options = {}) {
     corsOrigin(req.headers.origin, (err, allow) => {
       if (err) return next(err);
       if (allow) {
-        res.setHeader("Access-Control-Allow-Origin", allow);
+        // `allow` is the verdict; the header must carry the ORIGIN. Writing the
+        // boolean here used to send `Access-Control-Allow-Origin: true`, which
+        // no browser accepts — the allow-list silently did nothing over HTTP.
+        res.setHeader("Access-Control-Allow-Origin", req.headers.origin);
         res.setHeader("Vary", "Origin");
         res.setHeader("Access-Control-Allow-Credentials", "false");
       } else if (allowedOrigins.length > 0) {
@@ -443,6 +484,36 @@ export async function createApp(options = {}) {
    */
   app.use((error, req, res, next) => {
     if (error && error.code === "ENOENT") return res.status(500).send("client build is missing");
+    if (res.headersSent) return next(error);
+    /**
+     * A body the client sent badly is the client's mistake, not an outage.
+     * `express.json` marks it entity.too.large (413) or entity.parse.failed
+     * (400); answering 500 would page an operator for someone's bad payload
+     * and would tell the caller nothing they can act on. The message stays
+     * generic, and the detail is logged rather than returned.
+     */
+    const status = Number(error && (error.status || error.statusCode));
+    if (status >= 400 && status < 500) {
+      const code =
+        error.type === "entity.too.large"
+          ? "PAYLOAD_TOO_LARGE"
+          : error.type === "entity.parse.failed"
+            ? "MALFORMED_BODY"
+            : "BAD_REQUEST";
+      logger.warn("request.refused", {
+        requestId: req.id || null,
+        method: req.method,
+        path: String(req.path || req.url || "").split("?")[0],
+        status,
+        code,
+      });
+      return res.status(status).json({
+        ok: false,
+        code,
+        error: status === 413 ? "that request body is too large" : "that request body could not be read",
+        requestId: req.id || null,
+      });
+    }
     logger.error("request.failed", {
       requestId: req.id || null,
       method: req.method,
@@ -450,7 +521,6 @@ export async function createApp(options = {}) {
       error: error && error.message,
       code: (error && error.code) || null,
     });
-    if (res.headersSent) return next(error);
     res.status(500).json({ ok: false, error: "internal error", requestId: req.id || null });
   });
 
