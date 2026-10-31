@@ -9,6 +9,86 @@ Format is roughly [Keep a Changelog](https://keepachangelog.com/) with the
 deliberate difference that each entry names the thing a reader would see, because
 this file doubles as the handover note for a paid build.
 
+## Phase 17 — the caller console (31 October 2026)
+
+Base commit `108c6aa`. This slice changes what the HOST sees and how a host runs a
+round. No winning rule changed, no player-facing screen was redesigned, nothing was
+deployed and no payment surface was added. Full behaviour in
+[`docs/CALLER-CONSOLE.md`](docs/CALLER-CONSOLE.md); numbers in
+[`TEST-REPORT.md`](TEST-REPORT.md).
+
+### Added
+
+- **A dedicated caller console at `/host/game`** (`client/src/components/caller/`):
+  the current number in the players' own ball, the previous number, a **sealed**
+  next slot that carries only a count, the full 1–90 board, the whole call sheet
+  with ordinals and NOW/PREV tags, the round's elapsed clock, the hall's roster
+  (seated / capacity / connected / away / tickets / per-seat state) and the room
+  chat. Three columns from 1180px, two from 820px, one scrolling column below
+  760px with the draw bar pinned to the bottom edge.
+- **`client/src/lib/caller.js`** — the console's whole view-model as pure
+  functions: the action matrix, the sealed next-call preview, the call-sheet rows,
+  the roster summary, the honest voice status, the hotkey map, the clock.
+- **Keyboard**: `C` call, `P` pause/resume, `R` repeat — single keys, never chords,
+  and never while the host is typing in chat or dragging a slider.
+- **A voice panel per device**: English/Hindi, a listed voice, rate (0.75–1.5×),
+  volume, chime, Voice on/off, **Repeat number**, a Retry after the engine stops,
+  and a sentence for the case where this browser has no speech engine or no Hindi
+  voice at all. Settings persist in `localStorage` and are clamped before use.
+- **A round clock the server owns** — `startedAt`, `elapsedMs`, `endedAt` on every
+  snapshot, advanced by one hook in the state machine, continuing across a process
+  restart from `games.started_at`. The browser ticks locally only while `RUNNING`.
+- **Three new test files** (39 tests) and a browser harness:
+  `tests/caller-console.test.js`, `tests/caller-voice.test.js`,
+  `tests/caller-realtime.test.js` (real sockets on an ephemeral port) and
+  `.preflight/tools/p17-caller.mjs` (headless Chrome over CDP at 1440×900,
+  820×1180, 390×844 and 360×740).
+- **`docs/CALLER-CONSOLE.md`** — what every control may do, what it deliberately
+  does not, and how each promise is verified.
+
+### Changed
+
+- **`client/src/components/HostControls.jsx` is deleted.** Its strip is fully
+  superseded; there is now exactly one surface a host operates a room from.
+- **A cadence change is visible room state**: `setAutoCall()` emits `game:state`,
+  so players' read-outs no longer keep an old interval until the next call.
+- **The interval control sends `{ intervalMs }` alone** — a pace change must not
+  switch auto-calling off. While running, the next call is re-timed from now; while
+  paused it applies on resume; an invalid value is refused and the pace is kept.
+- **Speech settings widened**: `announce.js` now stores voice, rate and volume, and
+  a saved voice is honoured only if the browser still lists it *and* it matches the
+  spoken language, falling back with a sentence that says so.
+- **The mobile console reserves room for its pinned bar**, so the draw controls and
+  the voice panel are never hidden behind it at 390px or 360px.
+
+### Fixed
+
+- **A host who refreshes mid-round no longer wonders what happened**: the round is
+  restored on the same route with its call sheet intact. Because the host socket
+  dropped, the room pauses (an unreachable owner is not a gone owner) and the
+  console says `PAUSED` until the host resumes — verified in the browser pass.
+- **A second host tab cannot double-drive a room**: resuming the host session there
+  moves live control, and the old tab receives `NOT_HOST` on every intent while
+  still being able to read the room.
+- **The console no longer promises a next call after the round ends** — the voice
+  line and the sealed slot both read "round complete".
+- **`utter` construction is guarded**: a browser that throws on
+  `new SpeechSynthesisUtterance` degrades to "failed" instead of breaking the
+  announcement queue.
+
+### Verified
+
+- `npm test`: **447 of 447**, `skipped 0`, 12.6 s.
+- `npm run verify`: tests + lint (0 warnings) + build + secret scan, all clean.
+- `npm run security-probe`: **51 of 51**.
+- `npm run e2e` and `npm run e2e:durable`: a full round to `COMPLETED` on both
+  stacks, with valid and refused claims.
+- `node .preflight/tools/p17-caller.mjs`: console, 90 tiles, three manual calls,
+  keyboard focus outlines, the `C` hotkey, pause (clock equal twice), resume,
+  cadence change to 5s, the voice panel, tablet/390/360 layouts with no horizontal
+  overflow, a reload during a live round, resume after it, and the two-click end of
+  the round — **0 page errors**.
+
 ## Phase 16B — deployment readiness and free-infrastructure research (31 October 2026)
 
 Base commit `0a4de55`. This slice adds no gameplay feature and changes no winning

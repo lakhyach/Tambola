@@ -46,6 +46,29 @@ has no ticket to claim with and picks tickets for the next round. Nobody — ear
 or late — can claim a pattern their own ticket does not complete, because the
 server checks it.
 
+## The caller console (the host's screen)
+
+A host does not get an admin dashboard; they get a **caller console** at
+`/host/game` — the desk a real caller sits at. It shows the number just called in
+the same ball the players see, the previous number, a deliberately **sealed** next
+slot that can only say how many numbers are left, the full 1–90 board, the whole
+call sheet with its ordinals, the round's elapsed clock, and the hall's roster with
+seated / connected / away / ticket counts. One primary control — *Call next number*
+— plus Pause, Resume, Auto, the calling cadence (3s–30s), End and Reset; the two
+destructive ones need a second click. `C`, `P` and `R` work from the keyboard
+outside text fields.
+
+Two rules make it trustworthy. **The console never decides anything**: it sends an
+intent and renders the snapshot that comes back, so the board, the call log, the
+host's screen and every phone cannot disagree, and the next number does not exist
+client-side until the server draws it. **Voice is per device**: the host can pick
+English or Hindi, a listed voice, a rate and a volume, repeat the current number,
+and the panel states plainly when the browser has no speech engine, no Hindi voice,
+or a voice that stopped — none of which can slow the calling clock.
+
+The full behaviour, including what happens on a refresh mid-round, a second host
+tab and a server restart, is in [`docs/CALLER-CONSOLE.md`](docs/CALLER-CONSOLE.md).
+
 ## Rules that are in play
 
 | Pattern | Points | What the server verifies |
@@ -145,6 +168,15 @@ npm run smoke -- --url http://127.0.0.1:4000 --full   # prove a running server, 
 npm run verify           # test + lint + build + secret-scan, in one command
 ```
 
+The caller console has its own driveable browser pass over the Chrome DevTools
+Protocol, which prints what the DOM said and what the layout measured at 1440,
+820, 390 and 360 pixels wide (it needs a server on `:4000` and writes
+`.preflight/p17_*.png`):
+
+```bash
+node .preflight/tools/p17-caller.mjs
+```
+
 `npm test` needs a reachable PostgreSQL for the durable and backup tests; without
 one those tests skip and say so instead of passing quietly. The results of the most
 recent full run are in [`TEST-REPORT.md`](TEST-REPORT.md).
@@ -168,6 +200,7 @@ setting.
 - [`docs/DEPLOYMENT-READINESS.md`](docs/DEPLOYMENT-READINESS.md) — the deploy gate, the smoke test, rollback, pool sizing and the exact approvals that remain.
 - [`docs/FREE-INFRASTRUCTURE-RESEARCH.md`](docs/FREE-INFRASTRUCTURE-RESEARCH.md) — every free-tier claim checked against the provider's own page, and the two architectures that actually cost $0.
 - [`deploy/README.md`](deploy/README.md) — Render / Fly.io / Railway steps, with the safety controls to preserve.
+- [`docs/CALLER-CONSOLE.md`](docs/CALLER-CONSOLE.md) — the caller console: every control, the sealed next slot, the round clock, voice honesty, and what each control refuses to do.
 - [`server/RUNBOOK.md`](server/RUNBOOK.md) — configuration, boot, recovery, backups, shutdown, load.
 - [`server/DATABASE.md`](server/DATABASE.md) — schema, the durability contract, how a room is rebuilt.
 - [`server/ADMIN.md`](server/ADMIN.md) — the owner control centre at `/admin` (accounts, MFA, audit trail).

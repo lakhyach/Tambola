@@ -25,6 +25,14 @@ pass 408 / fail 0 / skipped 0`; `security-probe` held 51 of 51; `e2e` and
 50 rooms × 250 players was re-measured **after** the dependency patch, so no figure
 below is carried over from before it. Details in §2, §4.4, §7 and §8.
 
+**Sixth pass, Phase 17, 31 October:** every gate in §1 was re-run on the Phase 17
+tree, which replaces the host strip with the caller console, adds a server round
+clock and three new test files (39 tests), and adds a browser harness
+(`.preflight/tools/p17-caller.mjs`). `npm test` printed `tests 447 / pass 447 /
+fail 0 / skipped 0`; `security-probe` held 51 of 51; `e2e` and `e2e:durable` each
+played a full game to `COMPLETED`; the browser pass reported `consoleErrors: []` at
+1440, 820, 390 and 360 pixels wide. Details in §10.
+
 **Fourth pass, later on 31 October:** every gate in §1 was re-run on the current
 tree after the security probe moved from `.preflight/tools/` (never scanned) to
 `scripts/` (scanned). `npm test` again printed `tests 383 / pass 383 / fail 0 /
@@ -52,6 +60,7 @@ npm run e2e              # a complete game through the real engine, in memory
 npm run e2e:durable      # the identical game against real Postgres persistence
 npm run db:backup        # pg_dump + manifest
 npm run db:restore-check # restores it into a throwaway database and proves it
+node .preflight/tools/p17-caller.mjs   # the caller console in a real browser (server on :4000)
 ```
 
 `npm test` needs a reachable PostgreSQL for the durable, persistence and backup
@@ -634,3 +643,111 @@ in the table above is an artificial burst, not an operating target.
   `DEPLOYMENT.md` lists as post-deploy checks for exactly that reason.
 - Chat is unmoderated beyond length and rate limits, and there are no player
   accounts; both are product boundaries, not test gaps.
+
+---
+
+## 10. Phase 17 — the caller console
+
+Recorded 31 October 2026 on this working tree (base `108c6aa`), server on
+`127.0.0.1:4000` with the durable database, one application instance.
+
+### 10.1 Automated suite — 447 of 447
+
+```
+ℹ tests 447
+ℹ suites 18
+ℹ pass 447
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 12648.8379
+```
+
+The 39 new tests are `tests/caller-console.test.js` (22), `tests/caller-voice.test.js`
+(9) and `tests/caller-realtime.test.js` (8). They cover, in the same order a
+reviewer would ask:
+
+- **The view-model** — every interval preset is inside the server's accepted range;
+  an invalid one is refused before it is sent; `intervalPayload()` carries
+  `{ intervalMs }` and no `enabled` key; `formatClock` and `elapsedAt` never go
+  negative and never advance a paused round; the action matrix in all four states;
+  `roomSummary` counts; `callRows` ordering and ordinals; the hotkey map.
+- **The sealed next slot** — for every state and for `remaining` in
+  `{null, 0, 1, 37, 90}`, `nextCallPreview()` returns exactly the keys
+  `label`, `remaining`, `sealed` and no `number` field.
+- **The engine behind it** — the snapshot carries the console's read-outs and still
+  reveals no future draw; pause stops the clock, resume continues it, end freezes
+  it, reset clears it; a non-host socket cannot pause; changing the cadence
+  mid-round re-times the next call without drawing twice; a cadence change while
+  paused applies on resume and a wild value is refused; rapid calls stay distinct.
+- **The voice queue** — settings round-trip and clamp; a browser with no engine
+  says so and refuses a repeat; a repeat never stutters, clears the backlog, and
+  leaves the official dedupe intact; a muted or dead queue refuses a repeat; the
+  watchdog scales with the speaking rate (a 0.5× voice is allowed longer than a
+  1× one before it is called dead).
+- **The real transport** — host-only cadence; ack, broadcast and snapshot agree;
+  illegal cadences are refused with the pace preserved; the round clock is the
+  server's and pause really stops it; a second start and a call after completion
+  are refused while the results stay readable; a player cannot move state; ten
+  simultaneous call intents draw ten distinct numbers; a second host tab takes live
+  control while the old tab is told `NOT_HOST`.
+
+### 10.2 Gates
+
+| Gate | Result |
+|---|---|
+| `npm run lint` | clean, `--max-warnings 0` |
+| `npm run build --prefix client` | 130 modules; CSS 42.76 kB, JS 376.63 kB |
+| `npm run secret-scan` | PASSED — 214 files inspected, no credential value or shape |
+| `npm run verify` | exit 0 (test + lint + build + secret scan) |
+| `npm run security-probe` | **RESULT: PASS — 51 of 51 checks held** |
+| `npm run e2e` | PASS — `COMPLETED` on call 82, 6 awards, John 40 pts |
+| `npm run e2e:durable` | PASS — `COMPLETED` on call 76, 6 awards, Ravi 60 pts, throwaway schema dropped |
+| `node .preflight/tools/p17-caller.mjs` | pass — `consoleErrors: []` |
+
+### 10.3 Browser pass — what the DOM actually said
+
+Headless Chrome launched by the harness, real clicks, real keys, real Socket.IO
+traffic at `Emulation.setDeviceMetricsOverride` viewports. **Browser-viewport
+simulation on a desktop OS — not a physical tablet or phone.** Transcribed:
+
+| Step | Measured |
+|---|---|
+| Desktop 1440×900 | `hasConsole/hero/controls/log/hall/voicePanel` all true; `gridColumns 457.328px 505.469px 409.203px`; `boardTiles 90`; `stateChip RUNNING`; `scrollWidth 1440 <= innerWidth 1440` |
+| Three manual calls | `callSheetRows 3`, `boardCalled 3`, hero strip `["86","?","87","3 / 90"]` — the sealed slot shows `?`, not a number |
+| Keyboard | four `Tab` presses; two controls with `outlineWidth 2px`, `outlineStyle solid`, `outlineColor rgb(239, 212, 154)`; `C` grew the sheet 3 → 4 |
+| Pause | chip `PAUSED`; clock `00:08` read twice, 1.4 s apart, identical |
+| Resume | chip `RUNNING`, clock `00:09` |
+| Cadence | `AUTO-CALL ON · 8S` → click `5s` → `AUTO-CALL ON · 5S` |
+| Voice | toggle `clicked`; settings `{"speech":true,"chime":true,"speechLang":"hi","voiceURI":null,"rate":1.25,"volume":0.6}`; `speechSynthesis` present, 22 voices listed; line `VOICE READY … Repeat number R` |
+| Tablet 820×1180 | `gridColumns 385.969px 385.969px`; `scrollWidth 820 <= innerWidth 820` |
+| Phone 390×844 | `gridColumns 370px`; bar `display flex`, `barBottom 0`; `scrollWidth 390 <= innerWidth 390` |
+| Phone 360×740 | bar pinned; `scrollWidth 360 <= innerWidth 360` |
+| Refresh mid-round | route `/host/game`, chip `PAUSED`, call sheet `6 → 6` rows, 2 seats — nothing lost |
+| Resume after refresh | `Resume` clicked; chip `RUNNING`, clock `00:20`, rows still 6 |
+| End round | first click armed it (`Click again to confirm.`), second click → chip `COMPLETED`, call sheet still 6, `Reset room` offered |
+| Page errors | `[]` on the host and on the guest |
+
+Images: `.preflight/p17_01_player_waiting_390.png` … `p17_15_player_results_390.png`
+(desktop console before and after calls, keyboard focus, paused, voice panel,
+tablet, 390, 360, call sheet at 390, after-reload, player screen, host final
+results, completed console, player results). The machine-readable transcript is
+`.preflight/p17-caller.json`.
+
+### 10.4 What this pass does not prove
+
+- **Speech was configured, not heard.** Headless Chrome exposes
+  `speechSynthesis` and 22 voices, and the harness proves the settings persist, the
+  queue state is honest and a repeat is accepted — but no audio device was listened
+  to, so audibility on a real laptop or phone is unverified here.
+- **Two host tabs were proven over sockets, not in two browser windows.** The
+  `NOT_HOST` behaviour is asserted in `tests/caller-realtime.test.js` against the
+  real server; the browser pass uses one host tab.
+- **Contrast was measured through the design tokens, not by a contrast tool.** The
+  console reuses the existing OBSIDIAN HALL palette; no automated ratio audit was
+  run in this phase.
+- **The widths are emulation.** 820, 390 and 360 px are
+  `Emulation.setDeviceMetricsOverride` viewports in a desktop Chrome: no iOS
+  Safari, no touch, no on-screen keyboard.
+

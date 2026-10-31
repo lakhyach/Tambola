@@ -1,9 +1,10 @@
 # Final product gap report
 
 Phase 16 · 31 October 2026 · build `2063f0b` (pushed to `origin/main`) · **updated in Phase 16B**,
-base `0a4de55` · evidence in `TEST-REPORT.md`, `docs/MARKET-BENCHMARK.md`, `docs/RULES-DECISIONS.md`,
-`docs/CLIENT-REQUIREMENTS.md`, `docs/CLIENT-SIGNOFF.md`, `docs/HOSTING-OPTIONS.md`,
-`docs/FREE-INFRASTRUCTURE-RESEARCH.md`, `docs/DEPLOYMENT-READINESS.md`
+base `0a4de55` · **updated in Phase 17**, base `108c6aa` · evidence in `TEST-REPORT.md`,
+`docs/MARKET-BENCHMARK.md`, `docs/RULES-DECISIONS.md`, `docs/CLIENT-REQUIREMENTS.md`,
+`docs/CLIENT-SIGNOFF.md`, `docs/HOSTING-OPTIONS.md`, `docs/FREE-INFRASTRUCTURE-RESEARCH.md`,
+`docs/DEPLOYMENT-READINESS.md`, `docs/CALLER-CONSOLE.md`
 
 Every status below is either **verified by a gate that ran in this release** or marked as not done.
 Nothing is "probably fine".
@@ -13,13 +14,18 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 > Phase 16B closed the deployment, monitoring and measurement gaps that were open here. The rows
 > below carry the new evidence; §7 lists what changed in this phase and §8 what it deliberately did
 > not do. No winning rule changed, and nothing was deployed.
+>
+> **Phase 17** gives the host a real caller console (current/previous number, a sealed next slot,
+> the call sheet, a server round clock, cadence control, a per-device voice panel, the hall roster)
+> and closes the host-experience gap that the matrix below used to leave out. §9 and §10 record what
+> that changed and what it did not. No winning rule changed, nothing was deployed.
 
 ## 1. Gap matrix
 
 | Area | Current status | Remaining work | Priority | Client approval required |
 | --- | --- | --- | --- | --- |
 | **Gameplay** | Full 90-number round runs to COMPLETED on both the in-memory and the durable stack; 383/383 tests; 800 sequential room lifecycles with 0 errors | None for the current rules. Every rules change waits on `docs/RULES-DECISIONS.md` | — | No (unless rules change) |
-| **Voice** | Web Speech EN + हिं, per device, 7/7 scenarios with `problems=[]` and `maxOverlapMs=0`; watchdog + RETRY chip; honest about engine blocks | Voice picker (male/female/pitch) is not available portably; custom call phrases are not built | P2 | No |
+| **Voice** | Web Speech EN + हिं, per device, 7/7 scenarios with `problems=[]` and `maxOverlapMs=0`; watchdog + RETRY chip; honest about engine blocks. **Phase 17** adds a chosen voice (from those the browser lists), rate 0.75–1.5×, volume, Repeat-current-number, and a sentence for every way speech can be missing (no engine, no Hindi voice, voice stopped) | A voice can only be picked from the browser's own list (OS-dependent); no pitch control; custom call phrases are not built | P2 | No |
 | **Tickets** | 1–4 default, cap 12, per-ticket tab rail, server-minted grids (CSPRNG), roster promises what the round issues, tested | Default should be 3 to match the market (configuration only) | P1 (config) | **Yes** — tickets per player |
 | **Winning rules** | Six patterns, exclusive, completion ordinal on every one, late-claim window enforced at prepare *and* commit; boundaries pinned by tests | Five deferred patterns need written definitions. **Early Seven now has one** — exact rule, six fixtures, unregistered (`server/game/proposed-patterns.js`) — and needs only a points value and an approval. Star/Middle Number is still the riskiest | P1 | **Yes** |
 | **Celebrations** | Overlay on award, host and player views, verified in browser; end-of-game standings and final results both sides | Winner reactions and out-of-app notifications are not built | P2 | No |
@@ -29,9 +35,10 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 | **Security** | 51/51 live probe (headers, CORS origin echo, CSRF, body limits, socket contract, rate budgets); secret scan clean and now run in CI; admin boundary tested; production dependency audit **0 vulnerabilities** after the `socket.io`/`ws` patch upgrades; **L3 deep security review run before the 16B push, `findings_count: 0`** | No third-party pentest and no review by anyone outside this project. Client bundle still carries **2 moderate `react-router-dom` 6.x advisories** whose fix is the 7.x major (SSR-only paths this app does not use) | P1 (before public launch) | No |
 | **Performance** | 400 concurrent joins, 0 failures; call-to-screen p95 53 ms; call ack p95 70 ms; event-loop p99 32 ms; 800 room lifecycles, 0 errors. **Phase 16B, durable PostgreSQL, 50 rooms × 250 players**: 250 joins, 0 failures, 750 acks, ack p50 44.6 / p95 84.8 ms with the default pool, p95 65.0 ms at `DB_POOL_MAX=16`, 150/150 room syncs, 50/50 reconnects, **0 duplicate calls**, RSS 143 MB, and a database profiler proving the queue was pool checkout (peak 7 active, longest query 23 ms, cache hit 100%, 0 deadlocks) | No hours-long soak, no test above 250 concurrent players, no slow-phone profiling | P1 | No |
 | **Deployment** | Docker image, compose, Render/Fly/Railway manifests, Supabase TLS pinning verified, runbook complete. **Phase 16B adds**: `npm run env:check` (production gate), `npm run smoke -- --full` (live proof, 11/11 against a running server), a CI workflow that runs every gate and builds the image, rollback and pool-sizing procedures, and `docs/DEPLOYMENT-READINESS.md` | **Nothing is deployed.** A host, a domain and the account owner must be chosen; the zero-cost options are a workstation behind a Quick Tunnel (URL changes on restart) or Oracle Always Free (card required) | P0 | **Yes** |
-| **Mobile** | 390×844 verified: `scrollWidth 390`, zero overflow, tabbed tickets, header wrap fixed; mid-round join explained on screen | No real hardware, no iOS Safari, no touch-gesture testing; no PWA install | P1 | No |
+| **Host experience** | A dedicated caller console at `/host/game`: current/previous number, sealed next slot, 1–90 board, full call sheet, server round clock, start/pause/resume/end with two-click confirmation, cadence control, voice panel, hall roster; `C`/`P`/`R` hotkeys; desktop/tablet/390/360 verified with 0 page errors. **Phase 17** | No in-room moderation controls (no kick/ban/approve exists server-side); no caller notes or per-round commentary; no printable call sheet | P1 (moderation) / P2 (print) | **Yes** (admission policy) |
+| **Mobile** | 390×844 verified: `scrollWidth 390`, zero overflow, tabbed tickets, header wrap fixed; mid-round join explained on screen. **Phase 17** adds the caller console at 390×844 and 360×740 with a pinned draw bar, `scrollWidth 390/360`, no overflow | No real hardware, no iOS Safari, no touch-gesture testing; no PWA install | P1 | No |
 | **Monitoring** | `/livez`, `/readyz`, `/healthz` (now with **scheduler heartbeat** and **pool pressure**), draining signal, structured logs, health check in the image, a scheduled `uptime.yml` that opens and closes an issue, and a smoke test that fails if a guest does not receive a call | No external uptime account (UptimeRobot needs an account), no error-tracking account (Sentry), no alert recipient, no scheduled backup — all of it needs a human, see `docs/DEPLOYMENT-READINESS.md` §10 | P1 | **Yes** — who is on call |
-| **Documentation** | README, RUNBOOK, ADMIN, DATABASE, CONTRACT, DEPLOYMENT, TEST-REPORT, CHANGELOG, market benchmark, rules decisions, requirements, hosting paper, **free-infrastructure research, deployment readiness, client sign-off, this report** | Nothing blocking; keep the runbook current | — | No |
+| **Documentation** | README, RUNBOOK, ADMIN, DATABASE, CONTRACT, DEPLOYMENT, TEST-REPORT, CHANGELOG, market benchmark, rules decisions, requirements, hosting paper, **free-infrastructure research, deployment readiness, client sign-off, this report**, **caller-console paper** | Nothing blocking; keep the runbook current | — | No |
 | **Legal / privacy** | No policy, no terms, no support contact in the product | Privacy policy, terms (incl. no-cash-prizes), support contact, retention statement | P0 | **Yes** |
 | **Monetisation** | None. Free-to-play only; nothing processes payments | Decide free-to-play in writing; anything else is a different, regulated product | P0 (decision) / — (build) | **Yes** |
 
@@ -124,6 +131,18 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 | `npm audit --omit=dev` (client) | 2 moderate — `react-router-dom` 6.x; the fix is the 7.x major, not taken |
 | Production deployment | **Not performed** (by instruction). No account, card, domain or URL was created. |
 
+### Phase 17 (base `108c6aa`)
+
+| Gate | Result |
+| --- | --- |
+| `npm run verify` (447 tests + lint + build + secret scan) | PASS, exit 0 — 447 pass, 0 fail, 0 skipped, 12.6 s |
+| `npm run security-probe` | PASS — 51/51 |
+| `npm run e2e` (in-memory) | PASS — `COMPLETED` on call 82, 6 awards, John 40 pts |
+| `npm run e2e:durable` (PostgreSQL, throwaway schema) | PASS — `COMPLETED` on call 76, 6 awards, Ravi 60 pts, schema dropped |
+| Browser pass, headless Chrome over CDP (`.preflight/tools/p17-caller.mjs`) | PASS — console, 90 tiles, three calls, focus outlines, `C` hotkey, pause clock frozen at `00:08`, resume `00:09`, cadence 8s → 5s, voice panel (Hindi, 1.25×, volume 0.6, Repeat), 820/390/360 with no overflow, reload → `PAUSED` → resume → `RUNNING`, two-click end → `COMPLETED`; **0 page errors**. Screenshots `.preflight/p17_01..15_*.png` |
+| Speaker audibility | **Not verified** — no audio device was listened to; the settings, the queue state and the repeat were. Listed in `TEST-REPORT.md` §10.4 |
+| Production deployment | **Not performed** (by instruction). |
+
 ## 7. What Phase 16B closed
 
 | Gap (§1 row) | What closed it |
@@ -148,3 +167,27 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
   this machine alone.
 - **No database touched that was not disposable.** Load tests ran against a throwaway schema behind
   `TEST_DATABASE_URL`; the live configuration was read, never written.
+
+## 9. What Phase 17 closed
+
+| Gap (§1 row) | What closed it |
+| --- | --- |
+| **Host experience** did not exist as a designed surface | A dedicated caller console replaces the pre-Phase-17 host strip (`HostControls.jsx` is deleted): current/previous number, a **sealed** next slot that carries a count and never a number, the 1–90 board, the full call sheet with ordinals, the server's round clock, start/pause/resume/end with a two-click confirm, the cadence chips, the hall roster and the chat |
+| **Voice** was on/off, English or Hindi, at one speed | A per-device panel: a chosen voice from those the browser lists, rate 0.75–1.5×, volume, Repeat-current-number (the only deliberate re-speak, and it cannot overlap), a Retry after the engine stops, and a distinct sentence for no-engine, no-listed-voice and saved-voice-missing |
+| **The host's clock was invisible** | `startedAt`/`elapsedMs`/`endedAt` on every snapshot, advanced by one hook in the state machine, frozen by pause, frozen by completion, cleared by reset, and continued across a restart from `games.started_at` |
+| **Reliability** was known only from the player's side | Browser-proven now: refresh mid-round restores the console and its call sheet (and pauses, because the owner became unreachable), Resume continues the clock, a cadence change lands on the console; the second-tab `NOT_HOST` case is proven over real sockets |
+| **Mobile host** was untested | Caller console verified at 820×1180, 390×844 and 360×740: `scrollWidth` equal to `innerWidth` at each, draw bar pinned to the bottom edge |
+| **Documentation** had nothing about the host's screen | `docs/CALLER-CONSOLE.md` — every control, what it may do, what it refuses, and how each promise is re-verified |
+
+## 10. What Phase 17 deliberately did not do
+
+- **No winning-rule change, no player redesign.** The players' screens and the six patterns are
+  untouched; the console reuses the same ball, board and chat components the players see.
+- **No client-side number.** The next slot is sealed in `lib/caller.js` and asserted to have no
+  numeric field; the draw sequence never leaves the server.
+- **No moderation controls invented.** The authorization model has no kick/ban/approve event, so the
+  roster shows state and nothing else; adding it is a server feature with an audit trail, not a
+  button.
+- **No claim of physical-device testing, and no claim of heard audio.** Every width is an emulated
+  viewport in desktop Chrome, and speech was configured and inspected, not listened to.
+- **No deployment, no purchase, no payment surface.** Unchanged from Phase 16B.

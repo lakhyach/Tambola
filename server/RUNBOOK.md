@@ -334,6 +334,22 @@ Memory mode answers ready with `durable: false` and an explicit note; in
 production, absence of a database is reported **not-ready** unless
 `ALLOW_MEMORY_ONLY=1` was set on purpose.
 
+### A round that pauses itself
+
+A `PAUSED` room with nobody at the keyboard is usually correct, not a fault. When
+the **host's socket drops while the round is RUNNING**, the room stops its calling
+clock and pauses on purpose: an unreachable owner is not a gone owner, and nobody
+else may drive a game they did not start. The host's audit trail records
+`host-lost`, the snapshot reports `PAUSED` with its `elapsedMs` frozen, and the
+room resumes — same clock, same call sheet — when the host reconnects and presses
+Resume. The same rule covers a host who simply reloads the page.
+
+What it is *not*: a scheduler fault. `game:call-next` still works for the
+reconnected host, `/healthz` still shows the room live, and no number is lost or
+replayed. If a room is stuck in `PAUSED` with **no** host seat connected at all,
+treat it as an abandoned room and close it from the owner control centre rather
+than forcing it to run.
+
 ## 9. Graceful shutdown
 
 On `SIGTERM` or `SIGINT` the server:
