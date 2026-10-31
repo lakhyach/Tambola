@@ -38,7 +38,16 @@
 
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { generateTicket, validateTicket } from "./ticket.js";
-import { evaluateClaimAcrossTickets, getPattern, enabledPatternIds, PATTERNS } from "./patterns.js";
+import {
+  PATTERNS,
+  enabledPatternIds,
+  evaluateClaimAcrossTickets,
+  getPattern,
+  optionalPatternIds,
+  patternCatalog,
+  patternExampleTicket,
+  patternViews,
+} from "./patterns.js";
 
 export const GameState = Object.freeze({
   WAITING: "WAITING",
@@ -389,6 +398,12 @@ export class TambolaRoom {
         playerId: award.playerId,
         name: award.name,
         points: award.points,
+        // The winning ticket has to survive a restart, or a rule that reads
+        // past awards (Second Full House may never pay the ticket that already
+        // took the first one) would silently start disagreeing with itself.
+        ticketNo: Number.isInteger(award.ticketNo) ? award.ticketNo : null,
+        ticketNos: Array.isArray(award.ticketNos) ? award.ticketNos.slice() : null,
+        ordinal: Number.isInteger(award.ordinal) ? award.ordinal : winners.length + 1,
         callIndex: award.callIndex,
         at: award.at,
       });
@@ -1214,6 +1229,47 @@ export class TambolaRoom {
     return ok({ autoCall: this.config.autoCall, callIntervalMs: this.config.callIntervalMs });
   }
 
+  /**
+   * Which OPTIONAL prizes this room plays.
+   *
+   * The five extra categories are off until a room asks for them, and only the
+   * host may ask, only before the first call: turning a prize on mid-round would
+   * mean paying for numbers that were called while nobody could claim them.
+   *
+   * The standard prizes cannot be touched here at all. The six approved rules
+   * are not a host preference; an operator changes them per room through the
+   * admin control centre, and `patterns.js` still refuses any claim for a
+   * pattern this room never enabled.
+   */
+  setPatterns({ patterns, socketId, hostToken } = {}) {
+    const denied = this.assertHost({ socketId, hostToken });
+    if (denied) return denied;
+    if (this.state !== GameState.WAITING) {
+      return fail(ErrorCodes.INVALID_STATE, "prizes can only be chosen before the round starts, it is " + this.state, {
+        state: this.state,
+      });
+    }
+    if (!patterns || typeof patterns !== "object" || Array.isArray(patterns)) {
+      return fail(ErrorCodes.BAD_PAYLOAD, "patterns must be a map of pattern id to true or false");
+    }
+    const optional = optionalPatternIds();
+    const keys = Object.keys(patterns);
+    const refused = keys.filter((id) => !optional.includes(id));
+    if (refused.length) {
+      return fail(ErrorCodes.BAD_PAYLOAD, "these prizes are not optional and cannot be changed here: " + refused.join(", "));
+    }
+    for (const id of keys) {
+      if (typeof patterns[id] !== "boolean") {
+        return fail(ErrorCodes.BAD_PAYLOAD, "patterns." + id + " must be true or false");
+      }
+    }
+    // a NEW object, never a mutation of the shared default config
+    this.config.patterns = { ...this.config.patterns, ...patterns };
+    this.record({ type: "patterns", patterns: this.config.patterns });
+    this.emit("game:state", this.stateView());
+    return ok({ patterns: this.config.patterns, enabledPatterns: enabledPatternIds(this.config) });
+  }
+
   // ------------------------------------------------------------------- claims
 
   /**
@@ -1273,9 +1329,13 @@ export class TambolaRoom {
     // Verify against this player's actual tickets. A claim may name one ticket
     // (a targeted claim) or leave it open, in which case the server picks the
     // ticket that completed the pattern earliest. It never trusts a client hint
-    // about which ticket won - the grids here are the server's own.
+    // about which ticket won - the grids here are the server's own. The awards
+    // already on the board go in too, because two of the rules (Second Full
+    // House, Half Sheet) can only be judged against them or across tickets.
     const verdict = evaluateClaimAcrossTickets(pattern, player.tickets, this.calledNumbers, this.config, {
       ticketNo,
+      awards: this.awardList(),
+      claimantId: player.id,
     });
     this.claimLog.push({
       at: this.now(),
@@ -1294,6 +1354,11 @@ export class TambolaRoom {
       return fail(code, "invalid claim: " + verdict.reason, {
         pattern,
         reason: verdict.reason,
+        // a refusal a player can act on: which of their own numbers are still
+        // short, or how many more tickets the seat needs. Nothing about anybody
+        // else's ticket, and nothing about the future draw.
+        ...(Array.isArray(verdict.missing) && verdict.missing.length ? { missing: verdict.missing.slice(0, 15) } : {}),
+        ...(Number.isInteger(verdict.needed) ? { needed: verdict.needed } : {}),
         ...(verdict.late ? { late: true } : {}),
       });
     }
@@ -1305,6 +1370,7 @@ export class TambolaRoom {
         label: known.label,
         points: known.points,
         ticketNo: verdict.ticketNo,
+        ticketNos: verdict.ticketNos ?? null,
         completedOnCall: verdict.completedOnCall ?? null,
         callIndex: this.cursor,
       },
@@ -1362,6 +1428,10 @@ export class TambolaRoom {
       name: player.name,
       points: known.points,
       ticketNo: prepared.ticketNo ?? null,
+      ticketNos: prepared.ticketNos ?? null,
+      // 1 for the first winner of a pattern, 2 for the next: the number the
+      // prize is remembered by, and the column the database writes back
+      ordinal: awarded.length + 1,
       callIndex: prepared.callIndex ?? this.cursor,
       at: this.now(),
     });
@@ -1376,6 +1446,7 @@ export class TambolaRoom {
       name: player.name,
       points: known.points,
       ticketNo: prepared.ticketNo ?? null,
+      ticketNos: prepared.ticketNos ?? null,
       leaderboard: this.leaderboard(),
       awards: this.awardList(),
     };
@@ -1388,7 +1459,40 @@ export class TambolaRoom {
   claimability(playerId, pattern) {
     const player = this.players.get(playerId);
     if (!player || !player.tickets.length) return { valid: false, reason: "no ticket" };
-    return evaluateClaimAcrossTickets(pattern, player.tickets, this.calledNumbers, this.config, {});
+    // the same inputs the claim itself uses, so the panel can never offer a
+    // claim the evaluator would refuse, nor withhold one it would pay
+    return this.evaluateForSeat(player, pattern);
+  }
+
+  /**
+   * One seat's claim verdict, with the board's awards as context. Both the
+   * live claim path and the read-only eligibility view go through here.
+   */
+  evaluateForSeat(player, pattern, ticketNo) {
+    return evaluateClaimAcrossTickets(pattern, player.tickets, this.calledNumbers, this.config, {
+      ticketNo,
+      awards: this.awardList(),
+      claimantId: player.id,
+    });
+  }
+
+  /**
+   * Per-pattern eligibility for one seat, in the order the room plays them.
+   * Presentation only: it decides nothing, and a claim is still re-checked from
+   * the authoritative history the moment it arrives.
+   */
+  claimStates(playerId) {
+    const player = this.players.get(playerId);
+    if (!player) return [];
+    return enabledPatternIds(this.config).map((pattern) => {
+      const verdict = this.evaluateForSeat(player, pattern);
+      return {
+        pattern,
+        valid: Boolean(verdict.valid),
+        ticketNo: verdict.ticketNo ?? null,
+        ...(!verdict.valid ? { reason: verdict.reason } : {}),
+      };
+    });
   }
 
   leaderboard() {
@@ -1408,6 +1512,8 @@ export class TambolaRoom {
           name: winner.name,
           points: winner.points,
           ticketNo: winner.ticketNo ?? null,
+          ticketNos: winner.ticketNos ?? null,
+          winnerOrdinal: winner.ordinal ?? null,
           callIndex: winner.callIndex,
         });
       }
@@ -1485,6 +1591,11 @@ export class TambolaRoom {
       players: this.playersList(),
       awards: this.awardList(),
       leaderboard: this.leaderboard(),
+      // The prize charts the room actually plays. Coordinates come from the
+      // server because they are the cells the evaluator checks - the browser
+      // draws what it is told and adds no rule of its own.
+      patternViews: patternViews(this.config),
+      patternExample: patternExampleTicket(),
     };
   }
 
@@ -1503,6 +1614,9 @@ export class TambolaRoom {
       tickets: player.tickets.map(publicTicket),
       ticketCount: player.ticketCount,
       maxTickets: this.ticketCeiling(),
+      // this seat's own eligibility per prize, computed from the same verdict
+      // the claim path uses. Never another player's.
+      claimStates: this.claimStates(player.id),
     };
   }
 
@@ -1514,6 +1628,9 @@ export class TambolaRoom {
       roomId: this.roomId,
       recentEvents: this.audit.slice(-50),
       claimLog: this.claimLog.slice(-50),
+      // Every pattern the server knows, switched on or off: this is the host's
+      // prize picker, so only the host needs to see the prizes that are OFF.
+      patternCatalog: patternCatalog(this.config),
     };
   }
 

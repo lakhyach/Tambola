@@ -9,6 +9,49 @@ Format is roughly [Keep a Changelog](https://keepachangelog.com/) with the
 deliberate difference that each entry names the thing a reader would see, because
 this file doubles as the handover note for a paid build.
 
+## Five new winning patterns, opt-in (31 October 2026)
+
+Base commit `093e58f`. This slice adds **Star, Second Full House, Early Seven,
+Half Sheet and Box** as winning categories. None of the six approved rules or
+their point values changed, no ambiguous name was switched on with a guessed
+coordinate set, and every new pattern is **off by default** — a room only plays
+for it if its host opts in before the round, so no existing game behaves
+differently. Full definitions and evidence in
+[`docs/NEW-WINNING-PATTERNS.md`](docs/NEW-WINNING-PATTERNS.md); the decision
+record in [`docs/RULES-DECISIONS.md`](docs/RULES-DECISIONS.md) §0.
+
+### Added
+
+- **Server-authoritative predicates** (`server/game/patterns.js`) for the five,
+  each `optional: true, enabledByDefault: false`, so `getPattern` still refuses a
+  claim for a pattern the room never enabled (`UNKNOWN_PATTERN`). Ticket-cell
+  geometry moved to one module (`server/game/pattern-geometry.js`) so the diagram
+  and the evaluator cannot disagree.
+- **Exact coordinates, machine-defined.** Star = corners + the middle row's 3rd
+  filled number (well defined on every ticket, not Laddu); Box = the middle three
+  columns (a variable 3–9 cells, distinct from Corners); Early Seven completion is
+  pinned to the 7th hit so an 8th cannot un-earn or duplicate it; Second Full House
+  is its own pattern key that excludes the ticket that won the first Full House
+  (persisted via migration `005_award_ticket.sql`); Half Sheet is a seat-level rule
+  across three tickets and names all three on the award.
+- **A host prize picker in the waiting room** (`client/src/HostRoom.jsx`,
+  `room:set-patterns`) and a **server-driven Winning Patterns panel** on the player
+  board: each row shows the server's name, points, explanation, a real ticket-grid
+  diagram, this seat's own eligibility, and — once settled — the winner and ticket
+  attribution. All five render in the OBSIDIAN HALL identity with no local rule.
+- **Tests:** a geometry suite plus five in-memory suites and 12 durable
+  PostgreSQL tests covering qualify / near-miss / wrong-shape / multi-ticket /
+  multi-player / simultaneous / duplicate / post-completion / reconnect /
+  attribution / the 6-7-8 boundary / first-vs-second Full House, and cross-process
+  atomic claim arbitration. Full suite 626 tests green.
+
+### Fixed
+
+- A host who resumed into a round that was already RUNNING, PAUSED or COMPLETED
+  used to land back on the waiting room with a live "Start Game" button and
+  editable prize toggles the server would only refuse. The waiting room now hands
+  any non-WAITING round to the caller console.
+
 ## Phase 18 — the player's tickets and gameplay (31 October 2026)
 
 Base commit `e5c6e99`. This slice changes what a PLAYER sees and can do: how

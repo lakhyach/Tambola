@@ -183,11 +183,15 @@ automated test in this repository, **✔b** verified in a real browser (Phase B/
 | Multiple winners per prize | Platform-dependent | Yes — several players may claim the same condition (D) | Not stated | Configurable, multiple winners per achievement (D) | Exclusive: first valid claim closes the pattern (O); flag `multipleWinnersPerPattern` exists but defaults false | Off for ≤10 seats; recommend enabling for large public rooms. |
 | Early Five / Jaldi 5 | Any 5 called on the ticket | Early five (D) | Jaldi 5 (D) | Early Five (D) | `earlyFive`, completion ordinal recorded; optional call window (O) | On. |
 | Jaldi 3 | Any 3 called | ✘ | Jaldi 3 (D) | ✘ | ✘ | Optional (fast party opener). |
-| Early Seven | Seven called | ✘ | Early 7 (D) | Early Seven (D) | **Deferred by design** — `DEFERRED_PATTERNS.earlySeven` (O) | Add, defined as "seventh ticket number called". |
+| Early Seven | Seven called | ✘ | Early 7 (D) | Early Seven (D) | **Implemented, opt-in** — `earlySeven`, off by default; `getPattern` refuses a claim unless the room enabled it (O ✔a). Definition + evidence: `NEW-WINNING-PATTERNS.md` §5. | Off by default; host opts in. |
 | Top / Middle / Bottom line | All 5 of a row | Yes (D) | Rows (D) | Yes (D) | All three, exclusive (O) | On. |
 | Corners | Four corner numbers | "1st and last numbers of top and bottom rows" (D) | Corners (D) | Four Corners (D) | Leftmost/rightmost numbered cell of top and bottom row (O) | Keep ours — it is the correct reading of a ticket whose outer cells can be blank. |
 | Full House | All 15 | Yes (D) | Full House (D) | Full House (D) | Yes, exclusive (O) | On. |
-| Indian variants | Star, Pyramid, 143, Temperature, Breakfast/Lunch/Dinner, CID, Lockdown, … | ✘ | 80+ named dividends (D) | Custom achievements (D) | Not implemented; ambiguities documented in `DEFERRED_PATTERNS` (O) | Add 3–5 after a written definition is agreed; never guess. |
+| Second Full House | Next ticket to finish all 15 after the first (runner-up) | ~ "2 Full Houses" possible (D) | 2 Full Houses (D) | Side prize (I) | **Implemented, opt-in** — `secondFullHouse`, off by default. Own pattern key with `winner_ordinal`; excludes the ticket that won the first so no ticket is paid twice; persists the winning `ticket_no` (O ✔a). See `NEW-WINNING-PATTERNS.md` §6. | Off by default; host opts in. |
+| Star | Corners + middle-row centre (nLife lists it; S3's Laddu is the centre value alone) | ✘ | Star, name only (D) | ✘ | **Implemented, opt-in** — `star`, off by default. Corners plus the middle row's 3rd *filled* number (`[[0,0],[0,8],[2,0],[2,8],[1,5]]`), well defined on every ticket (O ✔a). Not Laddu. See `NEW-WINNING-PATTERNS.md` §3. | Off by default; host opts in. |
+| Box | The central 3×3 block ("Box of 9") | ✘ | listed among dividends (D) | ✘ | **Implemented, opt-in** — `box`, off by default. Every numbered cell of the middle three columns 3-4-5; a variable 3–9 cells, distinct from Corners (O ✔a). See `NEW-WINNING-PATTERNS.md` §4. | Off by default; host opts in. |
+| Half Sheet | Shared across half a sheet of six | ✘ | similar seat prizes named (D) | ✘ | **Implemented, opt-in, flagged ambiguous** — `halfSheet`, off by default. Two of a ticket's own numbers on each of three of a seat's tickets; competing wordings exist, so it stays off until the host approves this one (O ✔a). See `NEW-WINNING-PATTERNS.md` §7. | Off by default; explicit host approval. |
+| Indian variants | Pyramid, 143, Temperature, Breakfast/Lunch/Dinner, CID, Lockdown, … (Star and Box are now shipped — see their rows) | ✘ | 80+ named dividends (D) | Custom achievements (D) | Still not implemented; no written definition to code against. `server/game/proposed-patterns.js` is an approval ledger marking them `approval` (unbuilt) | Add 3–5 after a written definition is agreed; never guess. |
 | Pause | Host pauses the draw | ✘ | Yes (D) | Yes (D) | Yes (O ✔b) | On. |
 | Voice | Spoken numbers | Yes (D) | Yes (D) | Silent / beep / device voice (D) | EN + HI, per device, retry on engine failure (O ✔b) | On by default after first gesture; document the gesture requirement in host onboarding. |
 
@@ -199,7 +203,10 @@ operator settings — it needs a *value*, not a design.
 
 One row per rule that a client must confirm before a paid or public room is opened. "Ours today" is
 what the engine actually does in `2063f0b`; "Recommended" is the default this report argues for.
-Nothing in this matrix is a silent engine change — every "add" row is unimplemented on purpose.
+Nothing in this matrix is a silent engine change. The five new categories (Star, Box,
+Early Seven, Second Full House, Half Sheet) are now implemented but **off by default** —
+a room only plays for them if its host opts in before the round, so shipping them changed
+no existing room's behaviour. Middle Number, 143 and Pyramid stay unimplemented on purpose.
 
 | Decision | Market options | Evidence | Ours today | Recommended default | Owner |
 | --- | --- | --- | --- | --- | --- |
@@ -210,9 +217,10 @@ Nothing in this matrix is a silent engine change — every "add" row is unimplem
 | Marking | Player taps/strikes | D, all three | Derived from official calls; taps are display-only | Keep — removes mis-mark disputes | Engineering |
 | Late join | Allowed mid-game (S2, S4) | D | Spectator for the round in play; ticketed next round | Keep | Client (confirm wording) |
 | Early Five window | No competitor publishes a call window | D | `earlyFiveMaxCalls: 0` (no window) | 0 | Client |
-| Early Seven | Present (nLife "Early 7", Tambola Board "Early Seven") | D, S2 + S4 | Deferred — `DEFERRED_PATTERNS.earlySeven` | Add as "seventh ticket number called" | **Client sign-off required** |
-| Star / Middle Number | nLife lists Star; S3 defines Laddu as "middle number of second line" | D, S2 + S3 | Deferred — value-vs-cell ambiguity | Add only after a written definition | **Client sign-off required** |
-| 143 / Pyramid | nLife lists 143; both appear in "80+ variations" | D, S2 (names only) | Deferred | Add 3–5 named dividends after definitions | **Client sign-off required** |
+| Early Seven | Present (nLife "Early 7", Tambola Board "Early Seven") | D, S2 + S4 | **Implemented, off by default** — "seventh ticket number called", completion pinned to the 7th hit | Host opts in per room; 25 pts | Shipped (opt-in) |
+| Star | nLife lists Star; S3 defines Laddu as "middle number of second line" | D, S2 + S3 | **Implemented, off by default** — corners + middle row's 3rd filled number; not Laddu | Host opts in per room; 25 pts | Shipped (opt-in) |
+| Box / Second Full House / Half Sheet | Named side prizes; Half Sheet wordings vary | D, S2 + I | **Implemented, off by default** — see `NEW-WINNING-PATTERNS.md` §4/§6/§7. Half Sheet is the flagged-ambiguous one | Host opts in per room; Half Sheet needs an explicit wording approval | Shipped (opt-in) |
+| Middle Number / 143 / Pyramid | nLife lists 143; all appear in "80+ variations" | D, S2 (names only) | Deferred — no written definition | Add 3–5 named dividends after definitions | **Client sign-off required** |
 | Calling interval | 5/10/15 s presets (Tambola Board), host-variable (nLife) | D | 8 s default, 0.5–120 s range | 8 s | Client |
 | Pause | Available (nLife, Tambola Board) | D | Available | Keep | Engineering |
 | Room size | 60 (Tambola Board), "hundreds" (nLife) | D | 100 default, `maxPlayers` configurable | 100 | Client |

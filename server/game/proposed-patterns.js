@@ -1,74 +1,94 @@
 /**
- * Proposed winning patterns - evaluated, tested, and deliberately NOT registered.
+ * Winning-pattern approval ledger.
  *
- * Nothing here can award a prize. A claim is only accepted for an id in
- * `PATTERNS` (server/game/patterns.js), and none of these ids is in it, so the
- * live engine answers "unknown or disabled pattern" exactly as before. This
- * module exists so that the day a client approves one of these rules, enabling
- * it is a two-line change with fixtures already proven, instead of a rewrite
- * done under deadline pressure against a live game.
+ * A name in the registry and a name the client has approved are two different
+ * things, and this file keeps them apart. It used to hold a proposed Early Seven
+ * predicate that the live registry could not award; the client's instruction to
+ * build five new categories moved that rule (and Star, Second Full House, Half
+ * Sheet and Box) into `server/game/patterns.js`, switched off by default, so the
+ * predicate is gone - one definition, evaluated by the server, drawn for the
+ * player, asserted by the same fixtures.
  *
- * Why a separate module rather than a flag on PATTERNS:
- *   the admin console derives its pattern toggles from the client's metadata
- *   map, and the room form defaults to "every pattern we know". Registering a
- *   pattern - even with `enabledByDefault: false` - would make it one checkbox
- *   away from paying points in a game whose owner never asked for it. Phase 16B
- *   had no client approval for that, so the rules stay outside the registry
- *   until they are approved (docs/RULES-DECISIONS.md carries the sign-off).
+ * What remains is the maturity of every rule name this project has looked at, so
+ * a reader cannot mistake "implemented" for "approved for production":
  *
- * Evidence for `earlySeven` (see docs/MARKET-BENCHMARK.md §4a):
- *   S3 (nLife dividends) defines the sibling dividend "Jaldi 5" as any five
- *   called numbers, and S2/S4 both name an "Early 7 / Early Seven" milestone.
- *   No source publishes a call WINDOW for it, and none makes it positional.
- *   "Seven of the ticket's fifteen numbers have been called" is therefore the
- *   only reading consistent with every published sibling definition, and it is
- *   unambiguous: no cell layout, no column, no arrangement.
+ *   live          approved winning rules, on in every room (the shipped six)
+ *   live-optional implemented and exact, but only for rooms that opt in - the
+ *                 definition is published by real rule pages yet is not universal,
+ *                 so nobody's game pays for it unless its host asks for it
+ *   approval      still no written definition. Do NOT implement on a guess; the
+ *                 blocker says precisely what is unresolved
+ *
+ * Evidence, cell coordinates and the sign-off questions are in
+ * docs/NEW-WINNING-PATTERNS.md; docs/RULES-DECISIONS.md carries the decisions.
  */
 
-import { ticketNumbers } from "./ticket.js";
+/** States of the ledger, in the order a reviewer should read them. */
+export const APPROVAL_STATES = Object.freeze(["live", "live-optional", "approval"]);
 
-/** Index (1-based call ordinal) at which a number was called, or Infinity. */
-function callOrdinal(calledNumbers, value) {
-  const at = calledNumbers.indexOf(value);
-  return at === -1 ? Infinity : at + 1;
-}
+export const PROPOSAL_STATUS = Object.freeze({
+  earlyFive: { state: "live", blocker: "" },
+  topLine: { state: "live", blocker: "" },
+  middleLine: { state: "live", blocker: "" },
+  bottomLine: { state: "live", blocker: "" },
+  corners: { state: "live", blocker: "" },
+  fullHouse: { state: "live", blocker: "" },
 
-export const PROPOSED_PATTERNS = Object.freeze({
+  // The five this project was asked to add. Implemented, tested, off by default.
   earlySeven: {
-    id: "earlySeven",
-    label: "Early Seven",
-    /** Proposed weight; a product decision, not a rule decision. */
-    proposedPoints: 25,
-    exclusive: true,
-    definition:
-      "Seven of the fifteen numbers on the player's own ticket have been called. Position on the ticket never " +
-      "matters - it is the seventh of that ticket's numbers to be called. Completing it cannot be undone by an " +
-      "eighth call, so the prize stays claimable within the room's claim window.",
-    evidence: "S3 Jaldi 5 definition (any five called) + S2/S4 'Early 7 / Early Seven' dividend names",
-    check(ticket, calledNumbers) {
-      const called = new Set(calledNumbers);
-      const hits = ticketNumbers(ticket).filter((n) => called.has(n));
-      if (hits.length < 7) {
-        return { valid: false, reason: "fewer than seven ticket numbers called", needed: 7 - hits.length };
-      }
-      // the ordinal of the SEVENTH hit: later calls never move it, which is what
-      // makes the claim window (config.claimWindowCalls) measurable at all
-      const ordinals = hits.map((n) => callOrdinal(calledNumbers, n)).sort((a, b) => a - b);
-      return { valid: true, completedOnCall: ordinals[6], hits: hits.length };
-    },
+    state: "live-optional",
+    blocker:
+      "definition is unambiguous (seven of the ticket's own numbers); the points weight and whether a room should " +
+      "get it without asking are the client's call",
+  },
+  star: {
+    state: "live-optional",
+    blocker:
+      "built as corners-plus-middle-row-third over the row's filled cells (S1 chart). The alternative reading - the " +
+      "literal centre CELL, which can be blank - is rejected because it needs a fallback rule nobody publishes",
+  },
+  secondFullHouse: {
+    state: "live-optional",
+    blocker:
+      "definition is exact (the next ticket to finish, the first winner's ticket excluded); the prize weight and " +
+      "whether the round is held open for it are client decisions",
+  },
+  halfSheet: {
+    state: "live-optional",
+    blocker:
+      "four published meanings. Implemented as two numbers called on each of three tickets of one seat; a real " +
+      "sheet is six tickets, and this game deals independent ones, so the seat stands in for the sheet - the client " +
+      "must approve that deviation or replace the rule",
+  },
+  box: {
+    state: "live-optional",
+    blocker:
+      "built as the middle three columns (the 'Box of 9' block). Some chart pages use 'Box' for the four corners, " +
+      "which this game already awards as Corners, so the name is not free - client confirmation needed",
+  },
+
+  // Never implemented, never will be on a guess.
+  middleNumber: {
+    state: "approval",
+    blocker:
+      "S3 defines Laddu as the middle number of the second line; whether the prize is that VALUE or a CELL, and " +
+      "what happens when the cell is blank, is unresolved",
+  },
+  oneFourThree: {
+    state: "approval",
+    blocker: "no source explains 1-4-3 beyond row counts; call-order semantics are unknown",
+  },
+  pyramid: {
+    state: "approval",
+    blocker: "no source publishes the cell diagram; the old code counted marks only",
   },
 });
 
-/**
- * Maturity of each proposal, so a reader cannot mistake "tested" for "approved".
- *   defined   : the rule is unambiguous and covered by fixtures
- *   points    : the rule is exact; the prize weight still needs the client
- *   approval  : a written definition is still missing; do not implement
- */
-export const PROPOSAL_STATUS = Object.freeze({
-  earlySeven: { state: "points", blocker: "client sign-off on the points value and whether it is enabled by default" },
-  star: { state: "approval", blocker: "whether the centre is a CELL (row 2, col 5, may be blank) or a VALUE" },
-  middleNumber: { state: "approval", blocker: "S3 defines Laddu as the middle number of the second line; cell vs value is unresolved" },
-  oneFourThree: { state: "approval", blocker: "no source explains 1-4-3 beyond row counts; call-order semantics are unknown" },
-  pyramid: { state: "approval", blocker: "no source publishes the cell diagram; the old code counted marks only" },
-});
+/** The optional five: registered, and refused until a room asks for them. */
+export const OPTIONAL_PATTERN_IDS = Object.freeze([
+  "earlySeven",
+  "star",
+  "secondFullHouse",
+  "halfSheet",
+  "box",
+]);

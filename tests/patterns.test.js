@@ -189,7 +189,16 @@ test("patterns can be disabled per room", () => {
   assert.equal(getPattern("corners", config), null);
   assert.equal(evaluateClaim("corners", TICKET_A, CORNERS, config).valid, false);
   assert.equal(enabledPatternIds(config).includes("corners"), false);
-  assert.equal(enabledPatternIds({}).length, Object.keys(PATTERNS).length);
+  // The default set is every APPROVED rule and nothing else. An optional prize
+  // is in the registry so the server can judge it, and stays out of the default
+  // set so a room never pays for a rule its host never picked - which is why
+  // this asserts against the optional flag rather than a hard-coded count.
+  const approved = Object.values(PATTERNS).filter((pattern) => !pattern.optional).map((pattern) => pattern.id);
+  const optional = Object.values(PATTERNS).filter((pattern) => pattern.optional).map((pattern) => pattern.id);
+  assert.equal(approved.length, 6, "the six shipped rules are still here, and no rule became approved quietly");
+  assert.equal(optional.length, 5, "exactly the five new categories are opt-in");
+  assert.deepEqual(enabledPatternIds({}).slice().sort(), approved.slice().sort());
+  for (const id of optional) assert.equal(enabledPatternIds({}).includes(id), false, id + " is off by default");
 });
 
 // -------------------------------------------------------------- arbitration

@@ -885,6 +885,32 @@ export function createGameController({ store, sessions, registry: initialRegistr
     });
   }
 
+  /**
+   * Opt the room into additional winning patterns.
+   *
+   * Same shape as setAutoCall: the engine decides whether the request is legal
+   * (host credential, WAITING only, known optional pattern ids), and in durable
+   * mode the resulting config is written to the room row before the change is
+   * acknowledged, so a restart cannot quietly drop back to the default pattern
+   * set while players still see the extra prizes.
+   */
+  async function setPatterns({ room, socketId, patterns, auth }) {
+    const blocked = refuseFrozen(room.roomId);
+    if (blocked) return blocked;
+    const hostAuth = auth || { socketId };
+    const result = room.setPatterns({ patterns, ...hostAuth });
+    if (!result.ok || !durable) return result;
+
+    return runExclusive(room.roomId, async () => {
+      try {
+        await store.saveConfig({ roomId: room.roomId, config: publicConfig(room.config) });
+        return result;
+      } catch (error) {
+        return degrade(room.roomId, error, null);
+      }
+    });
+  }
+
   // -------------------------------------------------------------------- claims
 
   /**
@@ -933,6 +959,11 @@ export function createGameController({ store, sessions, registry: initialRegistr
           pattern: prepared.prepared.pattern,
           points: prepared.prepared.points,
           callIndex: prepared.prepared.callIndex,
+          // Which ticket won. `secondFullHouse` refuses the ticket that took the
+          // first Full House, so this is not decoration: lose it and a restart
+          // makes the rule forget.
+          ticketNo: prepared.prepared.ticketNo ?? null,
+          ticketNos: prepared.prepared.ticketNos ?? null,
           exclusive: !room.config.multipleWinnersPerPattern,
         });
         if (!award.ok) {
@@ -1061,6 +1092,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
     handleTick,
     transition,
     setAutoCall,
+    setPatterns,
     claim,
     detachSocket,
     rehydrate,

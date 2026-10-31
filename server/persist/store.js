@@ -342,11 +342,21 @@ export function createStore({ db, log = () => {} } = {}) {
    * Award an exclusive pattern. Exclusivity is decided here, under a lock, not
    * in the caller's memory, so it also survives a restart.
    */
-  async function recordAward({ roomId, gameNumber, playerId, pattern, points, callIndex, exclusive = true } = {}) {
+  async function recordAward({
+    roomId,
+    gameNumber,
+    playerId,
+    pattern,
+    points,
+    callIndex,
+    ticketNo = null,
+    ticketNos = null,
+    exclusive = true,
+  } = {}) {
     return db.withTransaction(async (client) => {
       await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [roomId + ":" + gameNumber + ":" + pattern]);
       const existing = await client.query(
-        "SELECT player_id, winner_ordinal FROM awards WHERE room_code = $1 AND game_number = $2 AND pattern = $3 ORDER BY winner_ordinal",
+        "SELECT player_id, winner_ordinal, ticket_no FROM awards WHERE room_code = $1 AND game_number = $2 AND pattern = $3 ORDER BY winner_ordinal",
         [roomId, gameNumber, pattern]
       );
       const rows = existing.rows;
@@ -358,17 +368,17 @@ export function createStore({ db, log = () => {} } = {}) {
       }
       const ordinal = rows.length + 1;
       await client.query(
-        `INSERT INTO awards (room_code, game_number, player_id, pattern, points, call_index, winner_ordinal)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [roomId, gameNumber, playerId, pattern, points, callIndex, ordinal]
+        `INSERT INTO awards (room_code, game_number, player_id, pattern, points, call_index, winner_ordinal, ticket_no, ticket_nos)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [roomId, gameNumber, playerId, pattern, points, callIndex, ordinal, ticketNo, ticketNos ?? null]
       );
       await client.query(
         `INSERT INTO claims (room_code, game_number, player_id, pattern, status, reason, call_index)
          VALUES ($1, $2, $3, $4, 'AWARDED', 'complete', $5)`,
         [roomId, gameNumber, playerId, pattern, callIndex]
       );
-      await audit(client, { roomId, gameNumber, playerId, type: "claim", detail: { pattern, points, ordinal } });
-      return { ok: true, ordinal, pattern, points };
+      await audit(client, { roomId, gameNumber, playerId, type: "claim", detail: { pattern, points, ordinal, ticketNo, ticketNos } });
+      return { ok: true, ordinal, pattern, points, ticketNo };
     });
   }
 
@@ -452,7 +462,7 @@ export function createStore({ db, log = () => {} } = {}) {
         [roomId, gameNumber]
       );
       const awards = await client.query(
-        `SELECT a.player_id, a.pattern, a.points, a.call_index, a.winner_ordinal, a.awarded_at, p.display_name
+        `SELECT a.player_id, a.pattern, a.points, a.call_index, a.winner_ordinal, a.ticket_no, a.ticket_nos, a.awarded_at, p.display_name
            FROM awards a
            JOIN players p ON p.player_id = a.player_id
           WHERE a.room_code = $1 AND a.game_number = $2

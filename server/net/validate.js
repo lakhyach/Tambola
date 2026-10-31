@@ -82,6 +82,24 @@ export function asBoolean(value) {
   return typeof value === "boolean" ? value : undefined;
 }
 
+/**
+ * `patterns` for the host's prize opt-in. This validates SHAPE only: which ids
+ * may be switched at all is the engine's decision, so a browser can never use
+ * this field to turn one of the approved rules off.
+ */
+export function asPatternSwitches(value) {
+  if (!isPlainObject(value)) return null;
+  const keys = Object.keys(value);
+  if (!keys.length || keys.length > 16) return null;
+  const out = {};
+  for (const key of keys) {
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,31}$/.test(key)) return null;
+    if (typeof value[key] !== "boolean") return null;
+    out[key] = value[key];
+  }
+  return out;
+}
+
 export function asInteger(value, { min, max }) {
   if (value === undefined) return undefined;
   if (!Number.isInteger(value) || value < min || value > max) return null;

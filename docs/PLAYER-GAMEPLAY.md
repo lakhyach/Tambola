@@ -147,9 +147,15 @@ second is refused with `ALREADY_AWARDED`. Duplicate awards are impossible becaus
 the award set is keyed by pattern, and a replayed `claim:submit` is refused before
 it reaches the evaluator.
 
-**Not implemented, on purpose:** Early Seven, Star, Middle Number, 1 2 3 / 143 and
-Pyramid. They have no approved predicate, so they have no button. Adding one is a
-rules decision (`RULES-DECISIONS.md`), not a UI change.
+**Opt-in prizes, off by default:** Star, Box, Early Seven, Second Full House and
+Half Sheet now exist in the registry, but only a room whose host switched them on
+before the round shows buttons for them. Each carries a server-drawn ticket-grid
+diagram in the Winning Patterns panel and the host's prize picker, so the shape a
+player claims from is exactly the shape the engine checks. Their definitions, the
+evidence behind each, and why they stay off until approved are in
+`docs/NEW-WINNING-PATTERNS.md`. **Still not implemented, on purpose:** Middle
+Number, 1 2 3 / 143 and Pyramid — they have no written definition, so they have no
+predicate and no button.
 
 ## 6. Several tickets
 

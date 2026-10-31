@@ -979,3 +979,76 @@ and 12 tickets — the hard ceiling, because the room was configured with
   what the DOM and CSSOM expose; it does not hear a screen reader speak.
 - **Chat remains in memory.** A server restart keeps the game and empties the room's
   chat, which is deliberate and documented in `docs/PLAYER-GAMEPLAY.md` §7.
+
+## 12. Five new winning patterns — Star, Box, Early Seven, Second Full House, Half Sheet
+
+Base commit `093e58f`. This slice adds five opt-in categories (off by default) without
+touching the six approved rules. Definitions and coordinates: `docs/NEW-WINNING-PATTERNS.md`.
+
+### 12.1 Automated suite — 626 of 626 (19 suites)
+
+`npm test` runs 626 tests, 626 pass, 0 fail, with `DATABASE_URL` present (durable) and
+again clean with it absent (the durable file skips and says so). The new coverage:
+
+- **`tests/pattern-geometry.js`/`.test.js`** — every required coordinate of Star, Box and
+  Half Sheet on the example ticket, plus near-misses, and that `patternViews`/
+  `patternCatalog`/`patternExample` publish the server's cells (the diagram and the
+  evaluator read one source).
+- **Five in-memory suites** (`pattern-star`, `pattern-box`, `pattern-early-seven`,
+  `pattern-second-full-house`, `pattern-half-sheet`) — qualify / one cell short /
+  unrelated cells / wrong ticket / multi-ticket / multi-player / simultaneous /
+  duplicate / invalid / after-completion / the **6-7-8 Early Seven boundary** / first-vs-
+  second Full House exclusion / attribution / the completion call.
+- **`tests/pattern-durable.test.js` — 12 tests against real PostgreSQL** on throwaway
+  schemas: opt-in persists and diagrams are byte-identical after a rebuild; a
+  non-opted-in room stays `UNKNOWN_PATTERN`; award row shape (`player_id, pattern,
+  points, call_index, winner_ordinal, ticket_no, ticket_nos`); duplicate and late
+  refusals; REJECTED claims + `claim-rejected` audit; **Second Full House ticket
+  exclusion surviving a cold restart** (the reason `005_award_ticket.sql` exists);
+  Half Sheet naming three tickets; and **two processes sharing one DB paying exactly one
+  Star** under `pg_advisory_xact_lock`.
+
+### 12.2 Browser evidence — observed in a live browser
+
+Driven through the real UI at `http://127.0.0.1:4000` (durable mode), host + player in
+separate tabs, screenshots in `.preflight/vp_*.png`:
+
+- **Host "Extra prizes" panel — PASS.** All five appear with name, points, explanation
+  and diagram. Cells highlighted (`data-pattern="true"`) matched the server exactly:
+  Star = 4, 85, 9, 90 + centre 56; Box = 34, 38, 41, 56, 59; Second Full House = all 15;
+  Half Sheet = its two example cells + the italic note; Early Seven = an "Any 7" badge,
+  no grid. Toggling all five on worked, persisted across a tab restart, and locked once
+  the round started.
+- **Player "Winning Patterns" panel — PASS.** With the room opted in, the board lists the
+  five with the same diagrams and the server's own eligibility text ("star incomplete",
+  "fewer than seven ticket numbers called", "the first Full House has not been claimed
+  yet", "half sheet needs three tickets, this seat holds 2"). A completed row flipped to
+  "You've completed this — claim it" with a gold Claim button; incomplete rows keep the
+  button disabled with the reason beside it — no dead controls.
+- **Reconnect — PASS.** Reloading mid-round silently resumed the seat, restored both
+  tickets with server-true marks and the full panel.
+- **Console — no errors** recorded on the host form, waiting room (after all five
+  toggles) or player board pages checked.
+
+### 12.3 What this pass does not prove (browser)
+
+- **A live AWARDED attribution screenshot was not captured.** The evaluator reached
+  "claim too late" because the room's default `claimWindowCalls: 0` must be beaten by a
+  manual claim, and the browser automation drive-one-tab-at-a-time limitation let the
+  host connection drop (auto-pause). The awarded state, winner and ticket attribution
+  (including Half Sheet's `ticket_nos` and Second Full House's `winner_ordinal`) are
+  fully proven by the durable and in-memory suites in §12.1, and the panel renders those
+  exact fields, but the end-to-end click-to-award was not photographed in the browser.
+- **Mobile 390×844 of the new panel was not screenshotted** for the same reason (the
+  session's Chrome tab group was lost mid-run). Mobile behaviour of the shared ticket CSS
+  is otherwise established in §9/§11.
+- Re-running those two sub-checks needs a fresh browser window (the automation bridge was
+  left disconnected); no code is known to be wrong, only not yet photographed.
+
+### 12.4 Defect found by browser testing, and closed
+
+- **Paused host showed live waiting-room controls.** A host resuming into a
+  RUNNING/PAUSED/COMPLETED round landed back on `/host/room` with "Start Game" and the
+  prize toggles enabled — controls the server refuses outside WAITING. Fixed in
+  `client/src/HostRoom.jsx`: any non-WAITING snapshot routes to the caller console. Found
+  by the browser pass, not by a simulated test.

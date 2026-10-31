@@ -6,7 +6,9 @@
  * dashboard must never show a number or timestamp the server did not send.
  */
 
-import { PATTERN_META } from "../brand.js";
+import { PATTERN_META, OPTIONAL_PATTERNS } from "../brand.js";
+
+const OPTIONAL_BY_ID = Object.fromEntries(OPTIONAL_PATTERNS.map((p) => [p.id, p]));
 
 const DATE_TIME = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -110,7 +112,7 @@ export function claimTone(status) {
 /** Cosmetic label for a winning pattern; the rules remain server-side only. */
 export function patternLabel(id) {
   if (!id) return "—";
-  const meta = PATTERN_META[id];
+  const meta = PATTERN_META[id] || OPTIONAL_BY_ID[id];
   return meta ? meta.label : id;
 }
 

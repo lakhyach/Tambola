@@ -111,14 +111,30 @@ reconnect semantics, is in [`docs/PLAYER-GAMEPLAY.md`](docs/PLAYER-GAMEPLAY.md).
 
 Each pattern is awarded once, to the first valid claim (`multipleWinnersPerPattern`
 is off by default). Rules live in [`server/game/patterns.js`](server/game/patterns.js)
-and nowhere else — the client's pattern labels are cosmetic and are filtered
-against what the server says is enabled for the room.
+and nowhere else — the browser is handed the server's own diagrams and eligibility,
+so what a player claims from is exactly what the engine checks.
 
-**Not implemented, on purpose:** Early Seven, Star, Middle Number, 1 2 3 / 143 and
-Pyramid. They were on the old UI as buttons with no server rule behind them, so
-they were removed instead of left as controls that cannot be honoured. They are
-listed in `DEFERRED_PATTERNS` with the reason, so nobody re-adds a tile without a
-predicate.
+**Opt-in prizes (off by default).** Five more categories are implemented in the same
+registry but only a room that switches them on before the round plays for them — the
+host ticks them in the waiting room's "Extra prizes" panel:
+
+| Pattern | Points | What the server verifies |
+|---|---:|---|
+| Star | 25 | the four corner cells plus the middle row's third number |
+| Box | 25 | every number in the three middle columns (the "Box of 9") |
+| Early Seven | 25 | seven of one ticket's fifteen numbers called |
+| Second Full House | 15 | the next ticket to finish all fifteen, after the first Full House |
+| Half Sheet | 20 | two of a ticket's own numbers called on each of three of your tickets |
+
+Their definitions, the evidence for each reading, and the competing wordings that were
+not chosen are in [`docs/NEW-WINNING-PATTERNS.md`](docs/NEW-WINNING-PATTERNS.md).
+Half Sheet in particular is genuinely ambiguous across publishers, so it stays off
+until a host approves this one wording on purpose.
+
+**Still not implemented, on purpose:** Middle Number, 1 2 3 / 143 and Pyramid. They
+have no written definition to code against, so they have no predicate and no button
+— recorded as `approval` state in
+[`server/game/proposed-patterns.js`](server/game/proposed-patterns.js).
 
 ## Defaults and limits
 

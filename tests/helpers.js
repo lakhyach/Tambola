@@ -49,6 +49,48 @@ export const BOTTOM_LINE = [36, 57, 66, 74, 85];
 export const CORNERS = [3, 50, 36, 85];
 export const ALL_FIFTEEN = ticketNumbers(TICKET_A);
 
+/**
+ * A legal ticket whose three middle columns are full, so its Box is the deepest
+ * one a Tambola ticket can hold: nine cells.
+ *
+ *   top    2  --  -- | 30 40 50 | 60 --  --
+ *   middle -- 11  -- | 31 41 51 | -- 70 --
+ *   bottom --  -- 21 | 39 49 59 | -- -- 80
+ */
+export const TICKET_PACKED = [
+  [2, null, null, 30, 40, 50, 60, null, null],
+  [null, 11, null, 31, 41, 51, null, 70, null],
+  [null, null, 21, 39, 49, 59, null, null, 80],
+];
+
+/**
+ * A legal ticket holding exactly one number in each middle column, so its Box is
+ * the shallowest one a ticket can have: three cells.
+ *
+ *   top    1  10 20 | 35 --  -- | 60 --  --
+ *   middle 2  11 -- | -- 45 -- | -- 70 80
+ *   bottom 3  12 21 | -- -- 55 | 61 --  --
+ */
+export const TICKET_SHALLOW = [
+  [1, 10, 20, 35, null, null, 60, null, null],
+  [2, 11, null, null, 45, null, null, 70, 80],
+  [3, 12, 21, null, null, 55, 61, null, null],
+];
+
+/**
+ * A legal ticket whose Star differs from TICKET_A's in exactly one cell (5
+ * instead of 3), so a seat holding both can show which ticket the server picked.
+ *
+ *   top    5  13 24 32 --  50 --  --  --
+ *   middle 8  16 28 --  44 --  62 --  --
+ *   bottom --  --  -- 36 --  57 66 74 85
+ */
+export const TICKET_STAR = [
+  [5, 13, 24, 32, null, 50, null, null, null],
+  [8, 16, 28, null, 44, null, 62, null, null],
+  [null, null, null, 36, null, 57, 66, 74, 85],
+];
+
 export function makeRoom(options = {}) {
   const events = [];
   const direct = [];

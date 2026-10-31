@@ -19,6 +19,33 @@ Evidence classes are the same as `docs/MARKET-BENCHMARK.md`: **O** observed in t
 
 ---
 
+## 0. Status — what has since been built
+
+This file was written while none of these names had a committed definition. It
+remains the decision trail for the ones still open (Middle Number, 143, Pyramid),
+but two things have changed since:
+
+* **Five categories are now implemented** as opt-in patterns, off by default:
+  **Star, Second Full House, Early Seven, Half Sheet, Box**. Each has one
+  server-enforced definition, exact ticket coordinates, the diagram the client
+  draws, and pinned tests (in-memory and durable). The committed wording and the
+  evidence live in **`docs/NEW-WINNING-PATTERNS.md`** — that file, not this one,
+  is now the authority for what these five mean in this game.
+* **`server/game/patterns.js` has changed** — it is no longer frozen (the line
+  above saying "No line of `patterns.js` changed" described Phase 16B, not this
+  phase). The five entered the registry as `optional: true,
+  enabledByDefault: false`, so no room plays for them unless its host opts in
+  before the round. **The six approved rules and their point values are
+  unchanged.** `server/game/proposed-patterns.js` is now an approval *ledger*
+  (live / live-optional / approval), not a staging area for an unbuilt predicate.
+
+Star's historic blocker — "the middle row's centre cell may be blank" — was
+resolved by defining the centre as the middle row's **3rd filled number**, which
+always exists on a legal ticket, so no fallback rule is needed. Early Seven's
+blocker was the points value, not the rule.
+
+---
+
 ## 1. The five deferred winning patterns
 
 These were offered by an older version of this app and were **removed rather than guessed at**,
@@ -177,6 +204,9 @@ These already work. They are decisions, not work items; the shipping default is 
 - It does not add, rename, or re-weight any pattern. `server/game/patterns.js` is unchanged by Phase 16
   and by Phase 16B: the Early Seven proposal lives in a separate module that the claim path never
   imports, and a test asserts the live registry still refuses it.
+  **(Superseded — see §0. As of this phase the five categories are implemented in
+  `patterns.js` as opt-in patterns, off by default; the six approved rules and their
+  points are untouched.)**
 - It does not promise that a competitor's implementation is correct; it records only what the vendor
   published (see `docs/MARKET-BENCHMARK.md` §1 evidence classes).
 - It does not resolve the Star/Middle-Number value-versus-cell question. That is the client's call,

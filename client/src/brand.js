@@ -51,3 +51,21 @@ export const PATTERN_META = {
   corners: { label: "Corners", points: 20, hint: "The four corner numbers" },
   fullHouse: { label: "Full House", points: 30, hint: "All fifteen numbers on the ticket" },
 };
+
+/**
+ * The OPTIONAL prizes a host may add. These are display metadata only — the
+ * authoritative definition, coordinates and verdict for each live on the server
+ * (server/game/patterns.js) and reach the board through `snapshot.patternViews`.
+ *
+ * Deliberately kept OUT of `PATTERN_META`: the admin create-room form seeds its
+ * default selection from `Object.keys(PATTERN_META)`, so listing a pattern there
+ * would switch it on for every new room. The approved rules stay on and these
+ * stay off until a host ticks one on purpose. Labels/hints mirror the server.
+ */
+export const OPTIONAL_PATTERNS = [
+  { id: "star", label: "Star", points: 25, hint: "The four corners plus the middle row's third number" },
+  { id: "box", label: "Box", points: 25, hint: "Every number in the middle three columns" },
+  { id: "earlySeven", label: "Early Seven", points: 25, hint: "Any seven of the ticket's fifteen numbers called" },
+  { id: "secondFullHouse", label: "Second Full House", points: 15, hint: "The next ticket to finish all fifteen, after the first Full House" },
+  { id: "halfSheet", label: "Half Sheet", points: 20, hint: "Two numbers called on each of three of your tickets" },
+];

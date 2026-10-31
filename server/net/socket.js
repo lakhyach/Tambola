@@ -25,6 +25,7 @@ import {
   asRoomId,
   asToken,
   asPatternId,
+  asPatternSwitches,
   asChatText,
   asBoolean,
   asInteger,
@@ -235,6 +236,24 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
         const intervalMs = asInteger(payload.intervalMs, { min: 500, max: 120000 });
         if (intervalMs === null) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "intervalMs must be 500-120000");
         reply(ack, await controller.setAutoCall({ room, socketId: socket.id, enabled, intervalMs }));
+      },
+      { requiresRoom: true, hostOnly: true }
+    );
+
+    /**
+     * Prizes this room plays for. Host-only, and the engine refuses it once the
+     * round has started - a player must be able to see the full prize list before
+     * they buy into a game. Only optional pattern ids are accepted; the approved
+     * six cannot be switched off from a browser.
+     */
+    on(
+      "room:set-patterns",
+      async ({ socket, room, payload, ack }) => {
+        const patterns = asPatternSwitches(payload.patterns);
+        if (!patterns) {
+          return rejected(ack, ErrorCodes.BAD_PAYLOAD, "patterns must be a map of pattern id to true or false");
+        }
+        reply(ack, await controller.setPatterns({ room, socketId: socket.id, patterns }));
       },
       { requiresRoom: true, hostOnly: true }
     );

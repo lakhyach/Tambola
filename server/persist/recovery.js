@@ -164,6 +164,12 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
       name: award.display_name,
       points: award.points,
       callIndex: award.call_index,
+      // Ticket attribution and the award's place in the pattern's own history.
+      // Rows written before migration 005 have neither, which the engine reads
+      // as "unknown" rather than inventing ticket 1 or ordinal 1.
+      ticketNo: Number.isInteger(award.ticket_no) ? award.ticket_no : null,
+      ticketNos: Array.isArray(award.ticket_nos) ? award.ticket_nos.slice() : null,
+      ordinal: Number.isInteger(award.winner_ordinal) ? award.winner_ordinal : null,
       at: asMillis(award.awarded_at),
     })),
     claimLog: [],

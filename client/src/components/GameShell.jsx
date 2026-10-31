@@ -191,7 +191,9 @@ const GameShell = ({ role, view }) => {
             />
           )}
           <WinningPatterns
-            patterns={view.enabledPatterns}
+            patterns={view.patternViews}
+            example={view.patternExample}
+            claimStates={view.claimStates}
             awards={view.awards}
             note={claimNote({ state: view.state, sheets: tickets })}
             canClaim={claimable}

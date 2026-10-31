@@ -324,6 +324,198 @@
   color: rgba(20, 16, 10, 0.65);
 }
 
+/* ------------------------------------------------- winning-pattern display (§7) */
+/* A pattern drawn on the ticket grid, in the OBSIDIAN HALL identity. The
+   coordinates are the server's own, so this is a picture of what the evaluator
+   checks — never a shape the client invented. */
+.oh-pattern-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--oh-inset);
+  border: 1px solid var(--oh-line);
+}
+.oh-pattern-item[data-awarded="true"] {
+  border-color: var(--oh-line-gold);
+}
+.oh-pattern-item[data-eligible="true"] {
+  border-color: var(--oh-gold);
+}
+.oh-pattern-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.oh-pattern-side {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.oh-pattern-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.oh-pattern-name {
+  font-weight: 600;
+  color: var(--oh-ivory);
+}
+.oh-pattern-points {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--oh-gold);
+}
+.oh-pattern-hint {
+  margin: 2px 0 8px;
+  font-size: 12px;
+  color: var(--oh-text-muted);
+  line-height: 1.35;
+}
+.oh-pattern-count {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--oh-text-faint);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--oh-void);
+  border: 1px dashed var(--oh-line);
+}
+.oh-pattern-requires {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--oh-text-faint);
+  font-style: italic;
+}
+.oh-pattern-elig {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--oh-text-faint);
+}
+.oh-pattern-elig--ready {
+  color: var(--oh-gold-bright);
+  font-weight: 600;
+}
+.oh-pattern-awards {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: right;
+}
+.oh-pattern-award {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.oh-pattern-award__who {
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--oh-gold-bright);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.oh-pattern-award__meta {
+  font-size: 11px;
+  color: var(--oh-text-faint);
+}
+
+/* The mini ticket the diagram is drawn on — a scaled-down grid, same tokens. */
+.oh-pattern-diagram {
+  margin-top: 2px;
+  max-width: 320px;
+}
+.oh-pattern-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.oh-pattern-row {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 3px;
+}
+.oh-pattern-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--oh-r-sm);
+  font-family: var(--oh-font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-weight: 600;
+  font-size: clamp(8px, 1.9vw, 12px);
+  user-select: none;
+  background: linear-gradient(180deg, #20242f, #171b23);
+  border: 1px solid var(--oh-line);
+  color: var(--oh-text-muted);
+}
+.oh-pattern-cell[data-empty="true"] {
+  background: repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.02) 0 4px,
+      transparent 4px 8px
+    ),
+    var(--oh-void);
+  border-style: dashed;
+  border-color: var(--oh-line);
+  color: transparent;
+}
+.oh-pattern-cell[data-pattern="true"] {
+  background: radial-gradient(120% 120% at 30% 18%, var(--oh-gold-bright), var(--oh-gold) 58%, var(--oh-gold-deep));
+  color: #14100a;
+  border-color: transparent;
+}
+.oh-pattern-cell[data-hit="true"] {
+  box-shadow: 0 0 0 2px var(--oh-ivory);
+}
+.oh-pattern-diagramnote {
+  margin-top: 4px;
+  font-size: 10px;
+  color: var(--oh-text-faint);
+  font-style: italic;
+}
+
+/* Host prize opt-in (WAITING room). */
+.oh-prize {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--oh-inset);
+  border: 1px solid var(--oh-line);
+}
+.oh-prize[data-on="true"] {
+  border-color: var(--oh-gold);
+}
+.oh-prize__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+.oh-prize__toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--oh-gold);
+}
+.oh-prize__name {
+  font-weight: 600;
+  color: var(--oh-ivory);
+  margin-right: 8px;
+}
+.oh-prize__points {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--oh-gold);
+}
+.oh-prize__hint {
+  margin: 6px 0 8px;
+  font-size: 12px;
+  color: var(--oh-text-muted);
+  line-height: 1.35;
+}
+
 /* Ticket tabs: a tablist a keyboard can actually drive (roving tabindex). */
 .oh-ticket-tabs {
   display: flex;

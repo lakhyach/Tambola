@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Button from "../components/Button.jsx";
-import { PATTERN_META } from "../brand.js";
+import { PATTERN_META, OPTIONAL_PATTERNS } from "../brand.js";
 import { api } from "./api.js";
 import { useAdmin } from "./useAdmin.js";
 import { formatDateTime, formatNumber, formatRelative, statusLabel } from "./format.js";
@@ -163,6 +163,29 @@ export default function AdminGames() {
                   <span>
                     {PATTERN_META[id].label}
                     <span className="adm-check__hint">{PATTERN_META[id].points} pts</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset className="adm-fieldset">
+            <legend className="adm-field__label">Optional prizes (off by default)</legend>
+            <p className="adm-check__hint" style={{ margin: "0 0 8px" }}>
+              Ambiguous or unapproved rules. Tick one only if you want this room to play for it.
+            </p>
+            <div className="adm-checks">
+              {OPTIONAL_PATTERNS.map((pattern) => (
+                <label key={pattern.id} className="adm-check">
+                  <input
+                    type="checkbox"
+                    checked={form.patterns.includes(pattern.id)}
+                    onChange={() => togglePattern(pattern.id)}
+                    disabled={creating}
+                  />
+                  <span>
+                    {pattern.label}
+                    <span className="adm-check__hint">{pattern.points} pts</span>
                   </span>
                 </label>
               ))}

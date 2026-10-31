@@ -27,6 +27,14 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 > empty ticket preview in the waiting room, and the quietest ink failing WCAG AA at 3.86:1) and one
 > hole nobody could see: tickets replayed from PostgreSQL were never re-validated before being dealt
 > back to a seat. §11 and §12 record what it changed and what it deliberately did not.
+>
+> **Winning-patterns follow-on** (base `093e58f`) builds on Phase 18 without touching a single
+> approved rule. Five more categories — **Star, Box, Early Seven, Second Full House, Half Sheet** —
+> are now implemented in the same server-authoritative registry but ship **off by default**: a room
+> only plays for them if its host opts in, in the waiting room, before the round starts. Each has a
+> written definition, exact ticket-grid coordinates and evidence in `docs/NEW-WINNING-PATTERNS.md`, and
+> each is tested against both the in-memory and the durable PostgreSQL stack (§13). The six original
+> patterns are unchanged; Middle Number, 1 2 3 / 143 and Pyramid are still unbuilt on purpose.
 
 ## 1. Gap matrix
 
@@ -35,7 +43,7 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 | **Gameplay** | Full 90-number round runs to COMPLETED on both the in-memory and the durable stack; 383/383 tests; 800 sequential room lifecycles with 0 errors | None for the current rules. Every rules change waits on `docs/RULES-DECISIONS.md` | — | No (unless rules change) |
 | **Voice** | Web Speech EN + हिं, per device, 7/7 scenarios with `problems=[]` and `maxOverlapMs=0`; watchdog + RETRY chip; honest about engine blocks. **Phase 17** adds a chosen voice (from those the browser lists), rate 0.75–1.5×, volume, Repeat-current-number, and a sentence for every way speech can be missing (no engine, no Hindi voice, voice stopped) | A voice can only be picked from the browser's own list (OS-dependent); no pitch control; custom call phrases are not built | P2 | No |
 | **Tickets** | 1–4 default, cap 12, server-minted grids (CSPRNG), per-ticket tab rail, roster promises what the round issues, tested. **Phase 18** makes the picker show the real grids, keeps 1–12 inside one tab rail on a phone, re-validates every replayed grid, and adds 69 tests across four suites (integrity, properties, view model, multi-ticket play), including a 20 000-ticket statistical sweep and a 5 000-ticket invariant sweep | Default should be 3 to match the market (configuration only) | P1 (config) | **Yes** — tickets per player |
-| **Winning rules** | Six patterns, exclusive, completion ordinal on every one, late-claim window enforced at prepare *and* commit; boundaries pinned by tests | Five deferred patterns need written definitions. **Early Seven now has one** — exact rule, six fixtures, unregistered (`server/game/proposed-patterns.js`) — and needs only a points value and an approval. Star/Middle Number is still the riskiest | P1 | **Yes** |
+| **Winning rules** | Six approved patterns, exclusive, completion ordinal on every one, late-claim window enforced at prepare *and* commit; boundaries pinned by tests. **Five more (Star, Box, Early Seven, Second Full House, Half Sheet) are now implemented, opt-in and off by default** — the host ticks them in the waiting room before the round, `getPattern` refuses a claim for any that is not enabled, and the browser only renders the server's own diagrams and eligibility. Definitions + coordinates + evidence: `docs/NEW-WINNING-PATTERNS.md` | Middle Number, 1 2 3 / 143 and Pyramid still need written definitions before they can be coded; Half Sheet ships flagged ambiguous and stays off until a host explicitly approves this one wording | P1 | **Yes** — prize values, and opt-in approval per room |
 | **Celebrations** | Overlay on award, host and player views, verified in browser; end-of-game standings and final results both sides | Winner reactions and out-of-app notifications are not built | P2 | No |
 | **Chat** | Room chat, EN + HI content, rate-limited, not persisted; sits in a panel, never over the hero number | Profanity filter, report flow, host broadcast banner, kick/ban | P1 (public rooms) / P2 (banner) | Partly |
 | **Administration** | Owner sign-in with TOTP MFA, room audit, health snapshot, durable history, backup/restore verification | No in-room host moderation (kick/ban); no player approval or ticket approval | P1 | **Yes** — admission policy |
@@ -85,8 +93,9 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 
 ## 4. Optional future enhancements (P2)
 
-- Early Seven (low cost, strong market presence — recommended first).
-- Star / Middle Number / 143 / Pyramid — only with written definitions.
+- ~~Early Seven (low cost, strong market presence — recommended first).~~ **Shipped opt-in** — see `docs/NEW-WINNING-PATTERNS.md` §5.
+- ~~Star / Box / Second Full House.~~ **Shipped opt-in** — same paper §3, §4, §6.
+- Middle Number / 143 / Pyramid — only with written definitions; still unimplemented.
 - QR join on the host screen; host broadcast banner; winner reactions.
 - Voice picker (male/female/pitch) where the device exposes voices.
 - Out-of-app notifications (lock screen / Dynamic Island equivalents).
@@ -255,3 +264,37 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 - **No new persistence writes for marking.** A call still writes two rows (`draw_calls`,
   `audit_events`) and zero ticket rows, because marks are derived, not stored.
 - **No deployment, no purchase, no payment surface.** Unchanged from Phase 16B.
+
+## 13. Winning-patterns follow-on — verification (base `093e58f`)
+
+Five new categories (Star, Box, Early Seven, Second Full House, Half Sheet) shipped **opt-in and off
+by default**, on top of Phase 18, without altering the six approved rules. Every status here was a
+gate that ran on this working tree; anything that did not run is named as such. Definitions and
+coordinates: `docs/NEW-WINNING-PATTERNS.md`.
+
+| Gate | Result |
+| --- | --- |
+| `npm run verify` (lint + build + tests + secret scan) | **PASS** — lint clean, build green, `tests 626 / suites 19 / pass 626 / fail 0 / skipped 0`, secret scan clean over 234 files |
+| `npm run security-probe` | **PASS — 51 of 51**, including the two the new surface depends on: #45 *a pattern the server has no rule for is refused* (the `UNKNOWN_PATTERN` gate) and #47 *a round that has started cannot be re-configured* (the WAITING-only host opt-in) |
+| `npm run e2e` (in-memory) | **PASS** — `COMPLETED` on call 71, 6 awards; premature, invented and duplicate claims all refused. The five new patterns stayed off in default config, proving shipping them changed no existing room |
+| `npm run e2e:durable` (PostgreSQL, throwaway schema) | **PASS** — `COMPLETED` on call 82, 6 awards, throwaway schema `tambola_e2e_*` dropped cleanly |
+| Durable pattern suite (`tests/pattern-durable.test.js`) | **12 tests green** inside the 626 — host opt-in persists across a rebuild, a paid Star is one award row with its winning ticket that survives the restart, one-corner-short refused and audited, Box and Star paid separately to one seat, Early 7's six-refused/seven-paid/eighth-cannot-duplicate, Second Full House's exclusion survives the process that paid the first, Half Sheet's three named tickets outlive the process, two servers sharing one database still pay one Star, and a post-close claim refused |
+| `npm run db:backup` + `db:restore-check` | **PASSED** — 18 tables, 12 952 rows, ledger 5 entries; restored faithfully into an isolated database, invariants match, scratch database dropped |
+| Browser pass (headless Chrome over the extension bridge) | **PARTIAL** — see `TEST-REPORT.md` §12.2. Verified in a live browser: all five appear in the host "Extra prizes" panel with diagrams matching the server exactly, toggling works/persists/locks on start, the player panel renders the server's diagrams + eligibility reasons, disabled buttons and refusal feedback work, reconnect preserved state, **0 console errors**. A real defect was found and fixed (a host resuming into a `PAUSED` round saw live waiting-room controls the server refuses). **Not captured in-browser** (the Chrome extension tab group broke mid-session and needs the user to reopen a normal window): a screenshot of a live `AWARDED` attribution row, and the 390 px mobile layout of the new panels. Both are covered by the in-memory and durable tests above, but that is a *test* guarantee, not a browser observation — the distinction is deliberate. |
+| Production deployment | **Not performed** (by instruction). |
+
+## 14. What the winning-patterns follow-on deliberately did not do
+
+- **No change to the six approved patterns**, their points, their geometry or their claim rules.
+  The new five are additive and inert until a room opts in.
+- **No guessed coordinates for an ambiguous name.** Half Sheet ships flagged ambiguous and stays off
+  until a host explicitly approves this one wording; `docs/NEW-WINNING-PATTERNS.md` records the
+  competing readings rather than picking silently.
+- **No browser-side winning logic.** The client renders the server's `patternViews`, `patternExample`
+  and `claimStates` and submits only intent; eligibility and the award are decided server-side.
+- **No admin default-enable path.** The five are kept out of `PATTERN_META` and offered only through
+  a display-only `OPTIONAL_PATTERNS` list, so the existing `Object.keys(PATTERN_META)` default cannot
+  turn them on without an explicit opt-in.
+- **No new pattern beyond the five**, and no Phase 19 work. Middle Number, 1 2 3 / 143 and Pyramid
+  remain unbuilt pending written definitions.
+- **No deployment, no purchase, no payment surface.** Unchanged.

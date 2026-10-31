@@ -7,6 +7,7 @@ import Button from "./components/Button.jsx";
 import PlayerRoster from "./components/PlayerRoster.jsx";
 import TicketPicker from "./components/TicketPicker.jsx";
 import TambolaTicket from "./components/TambolaTicket.jsx";
+import PatternDiagram from "./components/PatternDiagram.jsx";
 import { INVITE_TEXT, INVITE_TITLE } from "./brand.js";
 
 const HostRoom = () => {
@@ -18,6 +19,27 @@ const HostRoom = () => {
   const [copied, setCopied] = useState(false);
   const [tickets, setTickets] = useState({ count: 1, max: 1 });
   const [previews, setPreviews] = useState([]);
+  // The host's prize picker. `patternCatalog` (hostSnapshot only) lists every
+  // pattern the server knows with its live on/off state; `patternExample` is the
+  // ticket the diagram coordinates are drawn on. Optional prizes can only be
+  // switched before the round starts, so this surface is WAITING-only by design.
+  const [catalog, setCatalog] = useState([]);
+  const [patternExample, setPatternExample] = useState(null);
+  const [patternBusy, setPatternBusy] = useState(false);
+
+  const togglePattern = async (id, next) => {
+    if (patternBusy) return;
+    setPatternBusy(true);
+    setError("");
+    const result = await call("room:set-patterns", { patterns: { [id]: next } });
+    if (result.ok && Array.isArray(result.enabledPatterns)) {
+      const on = new Set(result.enabledPatterns);
+      setCatalog((prev) => prev.map((p) => (p.optional ? { ...p, enabled: on.has(p.id) } : p)));
+    } else {
+      setError(result.error || "the server would not change that prize");
+    }
+    setPatternBusy(false);
+  };
 
   const pickCount = async (count) => {
     const result = await call("tickets:select", { count });
@@ -45,7 +67,15 @@ const HostRoom = () => {
       setPlayers(snapshot.players || []);
       setTickets({ count: snapshot.ticketCount ?? 1, max: snapshot.maxTickets ?? 1 });
       setPreviews(Array.isArray(snapshot.tickets) ? snapshot.tickets : []);
-      if (snapshot.state === "RUNNING") navigate("/host/game");
+      setCatalog(Array.isArray(snapshot.patternCatalog) ? snapshot.patternCatalog : []);
+      setPatternExample(Array.isArray(snapshot.patternExample) ? snapshot.patternExample : null);
+      // The waiting room is only honest while the round is WAITING. Once it has
+      // started - RUNNING, PAUSED, or even COMPLETED - the caller console is the
+      // surface that reports that truth and offers the controls the server will
+      // actually accept. Leaving a host on here shows "Start Game" and editable
+      // prize toggles for a round already under way, which the server would only
+      // refuse, so route to the console for any non-WAITING state.
+      if (snapshot.state && snapshot.state !== "WAITING") navigate("/host/game");
     };
 
     // Server-backed restoration: the saved host credential re-claims the room,
@@ -70,7 +100,7 @@ const HostRoom = () => {
 
     const stopUpdated = on("room:updated", (data) => setPlayers(data.players || []));
     const stopStarted = on("game:state", (data) => {
-      if (data.state === "RUNNING") navigate("/host/game");
+      if (data.state && data.state !== "WAITING") navigate("/host/game");
     });
     const stopClosed = on("room:closed", () => {
       clearSession();
@@ -187,6 +217,51 @@ const HostRoom = () => {
               ))}
             </div>
           </div>
+        ) : null}
+
+        {catalog.some((p) => p.optional) ? (
+          <Panel className="p-5 mt-4">
+            <div className="oh-eyebrow" style={{ color: "var(--oh-text-faint)" }}>
+              Extra prizes
+            </div>
+            <h2 className="oh-display" style={{ fontSize: 18, margin: "2px 0 4px" }}>
+              What this room plays for
+            </h2>
+            <p style={{ color: "var(--oh-text-muted)", fontSize: 13, margin: "0 0 12px", maxWidth: "52ch" }}>
+              The approved rules are always played. These extras stay off until
+              you switch one on, and can be changed only before the round starts.
+              Each shows the exact cells the server checks.
+            </p>
+            <ul className="flex flex-col gap-3" style={{ listStyle: "none", margin: 0, padding: 0 }}>
+              {catalog
+                .filter((p) => p.optional)
+                .map((p) => (
+                  <li key={p.id} className="oh-prize" data-on={String(Boolean(p.enabled))}>
+                    <div className="oh-prize__head">
+                      <label className="oh-prize__toggle">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(p.enabled)}
+                          disabled={patternBusy || busy}
+                          onChange={() => togglePattern(p.id, !p.enabled)}
+                          aria-label={`Play for ${p.label}`}
+                        />
+                        <span>
+                          <span className="oh-prize__name">{p.label}</span>
+                          <span className="oh-num oh-prize__points">+{p.points}</span>
+                        </span>
+                      </label>
+                    </div>
+                    <p className="oh-prize__hint">{p.hint}</p>
+                    {p.cells ? (
+                      <PatternDiagram cells={p.cells} example={patternExample} note={p.diagramNote} label={p.label} />
+                    ) : (
+                      <div className="oh-pattern-count">Any {p.need} of the ticket&rsquo;s 15 numbers</div>
+                    )}
+                  </li>
+                ))}
+            </ul>
+          </Panel>
         ) : null}
 
         <div className="mt-4">

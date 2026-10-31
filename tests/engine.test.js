@@ -753,7 +753,13 @@ test("the state view advertises only the enabled patterns", () => {
   const enabled = h.room.stateView().enabledPatterns;
   assert.equal(enabled.includes("corners"), false);
   assert.equal(enabled.includes("fullHouse"), true);
-  assert.deepEqual(enabled.slice().sort(), Object.keys(PATTERNS).filter((id) => id !== "corners").sort());
+  // the approved rules minus the one this room switched off - and none of the
+  // optional prizes, which appear only when a host opts in (setPatterns)
+  const approved = Object.values(PATTERNS)
+    .filter((pattern) => !pattern.optional)
+    .map((pattern) => pattern.id)
+    .filter((id) => id !== "corners");
+  assert.deepEqual(enabled.slice().sort(), approved.sort());
 });
 
 test("claimability is a read-only preview of the real verdict", () => {

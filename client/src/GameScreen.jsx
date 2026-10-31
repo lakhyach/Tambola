@@ -389,6 +389,12 @@ const GameScreen = ({ role }) => {
     lastCall: snap?.lastCall ?? null,
     autoCall: Boolean(snap?.autoCall),
     enabledPatterns: snap?.enabledPatterns || [],
+    // The server's own prize charts and this seat's per-prize eligibility.
+    // Diagrams/coordinates and the claim verdict both originate here, so the
+    // panel can neither invent a shape the engine refuses nor hide one it pays.
+    patternViews: snap?.patternViews || [],
+    patternExample: snap?.patternExample || null,
+    claimStates: snap?.claimStates || [],
     calledNumbers: snap?.calledNumbers || [],
     awards: snap?.awards || [],
     leaderboard: snap?.leaderboard || [],
