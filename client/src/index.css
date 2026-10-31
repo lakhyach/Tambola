@@ -36,7 +36,13 @@
   /* text */
   --oh-text: #e9e4d8;
   --oh-text-muted: #9aa0ad;
-  --oh-text-faint: #6b717e;
+  /* The quietest ink that still passes WCAG AA on every surface it is used on.
+     The previous value (#6b717e) measured 3.86:1 on a chip and 4.3:1 on a panel
+     in the Phase 18 audit — legible-looking, but below the 4.5:1 floor for the
+     9–13px labels it paints. This one measures 4.9:1 on a panel, 5.4:1 on an
+     inset chip and 6.1:1 on the void, so it can keep doing the de-emphasis job
+     without ever being the reason a label cannot be read. */
+  --oh-text-faint: #828997;
 
   /* semantics */
   --oh-ok: #64b78f;

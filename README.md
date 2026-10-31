@@ -16,7 +16,10 @@ unfinished feature.
    (`E99YSN4A`) plus a share link. The code alphabet deliberately excludes the
    look-alikes `I`, `O`, `0` and `1`.
 2. **Players** join with the code or the link and pick how many tickets they want
-   (1–4 by default). Tickets are issued by the server, never typed in.
+   (1–4 by default, 12 at most). Tickets are issued by the server, never typed in:
+   the picker shows the grids the round will actually deal, one at a time behind a
+   tab rail, and the moment the room's ceiling is reached the control says so and
+   stops accepting taps.
 3. **Host starts.** Ticket selection locks, and the server has already fixed the
    order of all 90 numbers for the round.
 4. **Numbers are called** on the server's clock (8 seconds apart by default), or
@@ -29,7 +32,10 @@ unfinished feature.
 5. **Players claim patterns** by pressing a tile. The claim is only an intent: the
    server re-checks the ticket against its own call history and either awards it
    or refuses with the reason ("line incomplete", "no ticket number 7 belongs to
-   you", …). Nothing a browser says can create a winner.
+   you", …). Nothing a browser says can create a winner. A ticket marks itself as
+   numbers are called — marks come from the official history, so there is nothing
+   to tap and nothing to un-tap, and a refresh cannot leave a ticket looking fuller
+   than it is.
 6. **Chat** works during the game — free text plus quick messages in English and
    Hindi, so a table that mixes languages still plays together. A seat that arrives
    mid-round is given the last few messages it missed, from memory, so nobody joins
@@ -68,6 +74,29 @@ or a voice that stopped — none of which can slow the calling clock.
 
 The full behaviour, including what happens on a refresh mid-round, a second host
 tab and a server restart, is in [`docs/CALLER-CONSOLE.md`](docs/CALLER-CONSOLE.md).
+
+## The player's screen
+
+A player never types a number. The waiting room shows **the ticket the round will
+deal** — the grids come from the server, the count control states the room's
+ceiling in words (*4 of 4 selected · room maximum*) and disables itself there, and
+every count is a real radio button, so a keyboard or screen-reader user jumps
+straight to "3 tickets". One ticket at a time sits behind a tab rail, because four
+stacked tickets push the game off a phone; the ticket itself is a 3×9 ARIA grid
+whose every cell speaks its position and state (*"Number 47, row 2 column 4,
+called"*).
+
+During the round the ticket **marks itself** from the official call history: called
+cells fill gold, the number just called carries a ring, and the header and each row
+carry their own count (`9/15`, `R1 3/5`) so "is the top line close?" is a glance
+rather than arithmetic. There is no tap-to-mark by design — a local mark could never
+be evidence, and two disagreeing notions of "marked" is how real products lose
+disputes. A claim is an intent sent with its ticket number; the server re-checks it
+against its own history, awards once, and names the ticket that won. A refresh — in
+the waiting room or mid-round — re-claims the seat and returns the same tickets.
+
+The full behaviour, including every refusal message, the marking model and the
+reconnect semantics, is in [`docs/PLAYER-GAMEPLAY.md`](docs/PLAYER-GAMEPLAY.md).
 
 ## Rules that are in play
 
@@ -168,14 +197,22 @@ npm run smoke -- --url http://127.0.0.1:4000 --full   # prove a running server, 
 npm run verify           # test + lint + build + secret-scan, in one command
 ```
 
-The caller console has its own driveable browser pass over the Chrome DevTools
-Protocol, which prints what the DOM said and what the layout measured at 1440,
-820, 390 and 360 pixels wide (it needs a server on `:4000` and writes
-`.preflight/p17_*.png`):
+The caller console and the player's screens each have their own driveable browser
+pass over the Chrome DevTools Protocol, which prints what the DOM said and what the
+layout measured at 1440, 820, 430, 390 and 360 pixels wide (each needs a server on
+`:4000` and writes `.preflight/p17_*.png` and `.preflight/p18_*.png`):
 
 ```bash
-node .preflight/tools/p17-caller.mjs
+node .preflight/tools/p17-caller.mjs   # the host's console
+node .preflight/tools/p18-player.mjs   # the whole player journey, 78 checks
+node .preflight/tools/p18-audit.mjs    # accessibility + cost of one call to the screen
 ```
+
+The player pass is deliberately not just a screenshot run: it walks the journey
+through the real socket contract (join, pick 1/2/3/4 tickets, the ceiling, marking on
+every ticket, all six awards, a refused early claim, a reload mid-round, chat,
+results), and the audit checks roles, accessible names, heading order, 44px touch
+targets and computed WCAG contrast rather than trusting the CSS.
 
 `npm test` needs a reachable PostgreSQL for the durable and backup tests; without
 one those tests skip and say so instead of passing quietly. The results of the most
@@ -201,6 +238,7 @@ setting.
 - [`docs/FREE-INFRASTRUCTURE-RESEARCH.md`](docs/FREE-INFRASTRUCTURE-RESEARCH.md) — every free-tier claim checked against the provider's own page, and the two architectures that actually cost $0.
 - [`deploy/README.md`](deploy/README.md) — Render / Fly.io / Railway steps, with the safety controls to preserve.
 - [`docs/CALLER-CONSOLE.md`](docs/CALLER-CONSOLE.md) — the caller console: every control, the sealed next slot, the round clock, voice honesty, and what each control refuses to do.
+- [`docs/PLAYER-GAMEPLAY.md`](docs/PLAYER-GAMEPLAY.md) — the player's game: the journey, why tickets are issued rather than chosen by number, the marking model, claims, multiple tickets, recovery and accessibility.
 - [`server/RUNBOOK.md`](server/RUNBOOK.md) — configuration, boot, recovery, backups, shutdown, load.
 - [`server/DATABASE.md`](server/DATABASE.md) — schema, the durability contract, how a room is rebuilt.
 - [`server/ADMIN.md`](server/ADMIN.md) — the owner control centre at `/admin` (accounts, MFA, audit trail).
@@ -228,6 +266,10 @@ Written plainly, because they are the things a client will ask about:
 - **Six patterns.** The five deferred ones (Early Seven, Star, Middle Number,
   1 2 3 / 143, Pyramid) have neither a server rule nor a button — see
   [`CHANGELOG.md`](CHANGELOG.md) for why.
+- **No tap-to-mark.** A ticket is marked because the official call history contains
+  the number, not because someone tapped a cell. It is a deliberate difference, and
+  the client should sign it off rather than "fix" it (see
+  [`docs/PLAYER-GAMEPLAY.md`](docs/PLAYER-GAMEPLAY.md) §4).
 - **Rooms are closed on a clean stop.** `SIGTERM` closes the live rooms durably; a hard
   crash leaves them open for the next boot's recovery pass, which rebuilds every
   room the database still calls open. There is no automatic age-out of abandoned

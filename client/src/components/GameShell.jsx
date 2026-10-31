@@ -13,7 +13,9 @@ import GameChat from "./GameChat.jsx";
 import Panel from "./Panel.jsx";
 import Toast from "./Toast.jsx";
 import CallerConsole from "./caller/CallerConsole.jsx";
+import YourResult from "./YourResult.jsx";
 import { canClaim, claimNote, ticketPanel } from "../lib/playerview.js";
+import { callAnnouncement } from "../lib/ticketview.js";
 
 /**
  * Shown to a participant who joined while a round was already in progress. The
@@ -99,8 +101,18 @@ const GameShell = ({ role, view }) => {
 
       <Toast message={view.message} />
 
+      {/*
+        The board is visual; this is its spoken twin. A screen-reader user hears
+        each official call once, in the same words the chime announces, instead
+        of having to poll a 90 tile grid. It is polite and not atomic per tile,
+        so a fast auto-call queue cannot interrupt itself.
+      */}
+      <div className="oh-sr-only" role="status" aria-live="polite" aria-atomic="true" data-call-announcer="true">
+        {callAnnouncement(view.lastCall, view.remaining)}
+      </div>
+
       {/* shared hero: the current call + progress, with host controls beneath */}
-      <Panel className="p-4 sm:p-5 mt-4">
+      <Panel className="p-4 sm:p-5 mt-4" data-hero="true">
         <div
           className="flex flex-col items-center gap-5"
           style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}
@@ -155,6 +167,15 @@ const GameShell = ({ role, view }) => {
         data-oh-grid="true"
       >
         <div className="flex flex-col gap-4 oh-col">
+          <YourResult
+            state={view.state}
+            leaderboard={view.leaderboard}
+            awards={view.awards}
+            myPlayerId={view.playerId}
+            playerName={view.name}
+            tickets={tickets}
+            calledNumbers={view.calledNumbers}
+          />
           {panel === "spectator" ? (
             <SpectatorNotice />
           ) : panel === "choose" ? (
@@ -165,6 +186,8 @@ const GameShell = ({ role, view }) => {
               calledNumbers={view.calledNumbers}
               currentNumber={view.lastCall}
               playerName={view.name}
+              roomId={view.roomId}
+              state={view.state}
             />
           )}
           <WinningPatterns

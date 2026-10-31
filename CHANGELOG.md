@@ -9,6 +9,81 @@ Format is roughly [Keep a Changelog](https://keepachangelog.com/) with the
 deliberate difference that each entry names the thing a reader would see, because
 this file doubles as the handover note for a paid build.
 
+## Phase 18 — the player's tickets and gameplay (31 October 2026)
+
+Base commit `e5c6e99`. This slice changes what a PLAYER sees and can do: how
+tickets are chosen and read, how a ticket marks itself, how claims name the ticket
+that won, and what a phone actually shows. No winning rule changed, no ticket
+format changed, nothing was deployed and no payment surface was added. Full
+behaviour in [`docs/PLAYER-GAMEPLAY.md`](docs/PLAYER-GAMEPLAY.md); numbers in
+[`TEST-REPORT.md`](TEST-REPORT.md) §11.
+
+### Added
+
+- **A real ticket experience** (`TicketRail`, `TambolaTicket`, `TicketCell`,
+  `client/src/lib/ticketview.js`): the seat's tickets behind an ARIA tab rail
+  (`tablist`/`tab`/`tabpanel`, roving tabindex, `Left/Right/Home/End`), one ticket
+  at readable size, a `9/15` header, a per-row chip (`R1 3/5`) that turns gold the
+  moment a line completes, a 3×9 ARIA grid whose every cell speaks its position
+  and state, and the same component in the waiting room as in the round.
+- **A picker that says where the ceiling is**: "4 of 4 selected · room maximum",
+  a `+` that disables itself at the ceiling, every count as a real radio
+  (`radiogroup`, arrow keys, `Home`/`End`), and the server's own refusal shown
+  under the control when a host lowers the limit mid-wait.
+- **Your result** (`YourResult.jsx`): after the round a seat sees its own points,
+  its awards with the ticket number that won them, and the final standings —
+  instead of a board that simply stops.
+- **Ticket integrity on recovery** — `recovery.js` now runs the generator's own
+  `validateTicket` over every persisted grid and refuses a room with a duplicate
+  `(player, ticketNo)`; `integrityErrors()` does the same in memory. A hand-edited
+  database row freezes the room (visible on `/healthz`) instead of being dealt.
+- **Four new test files**: `ticket-integrity` (12), `ticket-properties` (20),
+  `ticket-view` (18) and `ticket-play` (19) — generator invariants, a 20 000-ticket
+  statistical sweep, persistence/recovery, the 1/2/3/max multi-ticket lifecycle,
+  claim attribution, cross-room isolation and reconnect behaviour.
+
+### Changed
+
+- The waiting room previews **the tickets the seat will actually play**, not a
+  decorative sample, and asks the server for the default count once on entry so
+  the preview is real rather than empty.
+- On a phone the ticket now sits directly under the count control and above the
+  hall roster: the whole ticket, its tabs and its row chips fit in the first 844px
+  of a 390px screen.
+- Every touch target a player uses to play is 44px tall at every width — ticket
+  tabs, count steppers, count radios and claim buttons — not only on phones.
+- `--oh-text-faint` was raised from `#6b717e` to `#828997` after an automated
+  audit measured 3.86:1 on the chip it painted. It is now 4.9:1 on a panel and
+  5.4:1 on an inset chip.
+
+### Fixed
+
+- A refresh in the waiting room showed an empty preview area even though the seat
+  held tickets (the server stores a count, not grids, until the round starts).
+- The picker's live region kept repeating a confirmation sentence after a
+  successful pick instead of announcing the new count.
+- Claim buttons were 32px tall — under the 44px minimum — and ticket tabs were
+  40px; both are now 44px.
+
+### Verified
+
+`npm test` printed **516 tests / 516 pass / 0 fail** (18 suites); `npm run lint`
+clean at `--max-warnings 0`; production build 132 modules, CSS 46.53 kB (gzip
+9.75), JS 385.05 kB (gzip 116.07); `secret-scan` clean over 220 files;
+`security-probe` **51 of 51**; `e2e` and `e2e:durable` each played a full game to
+`COMPLETED` with valid, premature, invented and duplicate claims; the browser
+harness held **78 of 78** checks with **0** console errors across 360, 390, 430,
+768 and 1440 pixel viewports; the accessibility and call-cost audit held **35 of
+35** (123 of 123 measurable text samples pass WCAG AA, 27/27 grid cells carry
+direction, 0 long tasks, 4 tickets settle 9 ms at p95 against 14 ms for one);
+and 12 durable calls wrote **2 rows each** with **0** ticket-row updates.
+
+### Not done
+
+Early Seven, Star, Middle Number, 1 2 3 / 143 and Pyramid are still not claimable:
+no approved predicate exists for them. No physical phone was used — every mobile
+figure is a Chromium viewport emulation, and the report says so where it matters.
+
 ## Phase 17 — the caller console (31 October 2026)
 
 Base commit `108c6aa`. This slice changes what the HOST sees and how a host runs a

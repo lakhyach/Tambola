@@ -1,87 +1,173 @@
 /* eslint-disable react/prop-types */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Panel from "./Panel.jsx";
 
 /**
- * Choose how many tickets this seat wants before the round begins.
+ * How many tickets this seat plays. The control only asks; the server decides.
  *
- * The control only asks; the server decides. `max` is the room's per-seat
- * ceiling from the snapshot, so the + button never offers more than the room
- * allows, and a race where the host changes the rule is still caught server
- * side (TICKET_LIMIT) and surfaced back through onPick's returned result.
+ * Everything here reads from the snapshot: `max` is the room's own ceiling, and
+ * a pick that the server refuses (a host changing the rule mid-wait) comes back
+ * through onPick and is shown under the controls rather than silently undone.
+ *
+ * Three details matter more than the look:
+ *  - the count always reads as "3 of 4", never a bare "3", so the limit is
+ *    visible before it is hit;
+ *  - every count is a real radio, so a keyboard or screen-reader user picks a
+ *    number directly instead of pressing + four times;
+ *  - the live region says what changed, including "maximum reached", because a
+ *    disabled + button on its own is not feedback.
  */
 const TicketPicker = ({ value = 1, max = 1, disabled = false, onPick }) => {
   const [busy, setBusy] = useState(false);
-  const current = Math.max(1, Number(value) || 1);
-  const ceiling = Math.max(1, Number(max) || 1);
+  const [note, setNote] = useState("");
+  const radios = useRef([]);
+
+  const ceiling = Math.max(1, Math.floor(Number(max)) || 1);
+  const current = Math.min(ceiling, Math.max(1, Math.floor(Number(value)) || 1));
+  const atMax = current >= ceiling;
 
   const pick = async (next) => {
-    if (busy || disabled) return;
+    if (disabled) {
+      setNote("The round has started, so your tickets are locked.");
+      return;
+    }
+    if (busy) return;
     const wanted = Math.min(ceiling, Math.max(1, next));
-    if (wanted === current) return;
+    if (wanted === current) {
+      setNote(wanted >= ceiling ? `That is the room maximum: ${ceiling} tickets.` : "");
+      return;
+    }
     setBusy(true);
+    setNote("");
     try {
-      await onPick(wanted);
+      const result = await onPick?.(wanted);
+      if (result && result.ok === false) {
+        setNote(
+          result.code === "TICKET_LIMIT"
+            ? `This room allows at most ${result.max ?? ceiling} tickets.`
+            : result.error || "The server did not accept that count."
+        );
+      } else {
+        // The status line already recomputes from the new value ("2 of 4
+        // selected"); leaving a confirmation note there would keep the live
+        // region repeating a sentence the count itself states more precisely.
+        setNote("");
+      }
+    } catch {
+      setNote("The server did not answer — try again.");
     } finally {
       setBusy(false);
     }
   };
 
+  const onKeyDown = (event, index) => {
+    const keys = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+    let target = null;
+    if (Object.prototype.hasOwnProperty.call(keys, event.key)) {
+      target = (index + keys[event.key] + ceiling) % ceiling;
+    } else if (event.key === "Home") {
+      target = 0;
+    } else if (event.key === "End") {
+      target = ceiling - 1;
+    }
+    if (target === null) return;
+    event.preventDefault();
+    radios.current[target]?.focus();
+    pick(target + 1);
+  };
+
+  const status = disabled
+    ? "Locked — the round has started"
+    : `${current} of ${ceiling} selected${atMax ? " · room maximum" : ""}`;
+
   return (
-    <Panel className="p-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
+    <Panel className="p-4" data-ticket-picker="true">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="leading-tight">
-          <div className="oh-display" style={{ fontSize: 15, letterSpacing: ".1em" }}>
+          <h2 className="oh-display" style={{ fontSize: 15, letterSpacing: ".1em", margin: 0 }}>
             Your Tickets
-          </div>
-          <div className="oh-eyebrow" style={{ marginTop: 2, color: "var(--oh-text-faint)" }}>
-            {disabled
-              ? "Locked — the round has started"
-              : `Pick 1–${ceiling}. Each is a fresh set of 15 numbers.`}
-          </div>
+          </h2>
+          {/* One line by design: a second line here pushes the actual tickets
+              below the fold of a 390px phone before the round has even begun. */}
+          <p className="oh-eyebrow" style={{ marginTop: 4, color: "var(--oh-text-faint)" }}>
+            {disabled ? "Locked for this round" : "15 numbers per ticket"}
+          </p>
         </div>
 
+        <div className="flex items-center gap-2" aria-hidden="true">
+          <span className="oh-num" style={{ fontSize: 26, fontWeight: 700, color: "var(--oh-gold-bright)" }}>
+            {current}
+          </span>
+          <span className="oh-num" style={{ fontSize: 14, color: "var(--oh-text-muted)" }}>
+            / {ceiling}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 mt-3 flex-wrap">
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="oh-num"
+            className="oh-step"
             aria-label="Fewer tickets"
             disabled={disabled || busy || current <= 1}
             onClick={() => pick(current - 1)}
-            style={{
-              width: 40, height: 40, borderRadius: 12, fontSize: 20, fontWeight: 700, cursor: "pointer",
-              color: "var(--oh-ivory)", background: "var(--oh-inset)", border: "1px solid var(--oh-line)",
-              opacity: disabled || busy || current <= 1 ? 0.4 : 1,
-            }}
           >
             −
           </button>
-          <span
-            className="oh-num"
-            role="spinbutton"
-            aria-valuenow={current}
-            aria-valuemin={1}
-            aria-valuemax={ceiling}
-            style={{ minWidth: 64, textAlign: "center", fontSize: 22, fontWeight: 700, color: "var(--oh-gold-bright)" }}
-          >
-            {current}
-          </span>
           <button
             type="button"
-            className="oh-num"
+            className="oh-step"
             aria-label="More tickets"
-            disabled={disabled || busy || current >= ceiling}
+            disabled={disabled || busy || atMax}
             onClick={() => pick(current + 1)}
-            style={{
-              width: 40, height: 40, borderRadius: 12, fontSize: 20, fontWeight: 700, cursor: "pointer",
-              color: "var(--oh-ivory)", background: "var(--oh-inset)", border: "1px solid var(--oh-line)",
-              opacity: disabled || busy || current >= ceiling ? 0.4 : 1,
-            }}
           >
             +
           </button>
         </div>
+
+        <div
+          className="oh-ticket-choice"
+          role="radiogroup"
+          aria-label="Tickets to play"
+          aria-describedby="ticket-picker-status"
+        >
+          {Array.from({ length: ceiling }, (_, i) => {
+            const count = i + 1;
+            const selected = count === current;
+            return (
+              <button
+                key={count}
+                ref={(el) => {
+                  radios.current[i] = el;
+                }}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                aria-label={`${count} ${count === 1 ? "ticket" : "tickets"}`}
+                tabIndex={selected ? 0 : -1}
+                disabled={disabled || busy}
+                onClick={() => pick(count)}
+                onKeyDown={(event) => onKeyDown(event, i)}
+                className="oh-ticket-choice__item oh-num"
+                data-selected={String(selected)}
+              >
+                {count}
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      <p
+        id="ticket-picker-status"
+        role="status"
+        aria-live="polite"
+        className="mt-3"
+        style={{ fontSize: 12, margin: 0, color: atMax && !disabled ? "var(--oh-gold)" : "var(--oh-text-muted)" }}
+      >
+        {note || status}
+      </p>
     </Panel>
   );
 };

@@ -177,7 +177,11 @@ const GameScreen = ({ role }) => {
       on("claim:result", (data) => {
         if (!alive) return;
         if (data.won) {
-          flash(data.name + " won " + data.label, 3500);
+          // The winning ticket is part of the server's verdict (commitClaim
+          // records it), so the toast can say WHICH ticket took the prize
+          // instead of leaving a multi-ticket player to guess.
+          const onTicket = Number.isInteger(data.ticketNo) ? " on ticket " + data.ticketNo : "";
+          flash(data.name + " won " + data.label + onTicket, 3500);
           enqueueCelebration(patternEvent(data, roomIdRef.current, CELEBRATE_LANG));
         }
         refresh();
@@ -274,7 +278,8 @@ const GameScreen = ({ role }) => {
         return;
       }
       if (result.won) {
-        flash("You completed " + result.label + " · +" + result.points, 3500);
+        const onTicket = Number.isInteger(result.ticketNo) ? "Ticket " + result.ticketNo + " · " : "";
+        flash(onTicket + "you completed " + result.label + " · +" + result.points, 3500);
       }
       await refresh();
     },

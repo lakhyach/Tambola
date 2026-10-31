@@ -22,6 +22,12 @@ const WinningPatterns = ({ patterns = [], awards = [], note = null, canClaim = f
           </span>
         ) : null}
       </div>
+      {canClaim ? (
+        <p style={{ margin: "-4px 0 12px", fontSize: 12, color: "var(--oh-text-faint)" }}>
+          A claim is checked against every ticket you hold, and the award names the
+          ticket it came from.
+        </p>
+      ) : null}
 
       <ul className="flex flex-col gap-2" style={{ listStyle: "none", margin: 0, padding: 0 }}>
         {patterns
@@ -48,23 +54,37 @@ const WinningPatterns = ({ patterns = [], awards = [], note = null, canClaim = f
 
                 {award ? (
                   <span
-                    className="oh-num"
+                    className="oh-num text-right"
                     style={{
                       fontWeight: 700,
                       fontSize: 12,
                       color: wonByMe ? "var(--oh-gold-bright)" : "var(--oh-text-muted)",
                       textTransform: "uppercase",
                       letterSpacing: ".08em",
-                      maxWidth: 120,
-                      textAlign: "right",
+                      maxWidth: 140,
                     }}
                   >
-                    {wonByMe ? "You won" : award.name}
+                    <span style={{ display: "block" }}>{wonByMe ? "You won" : award.name}</span>
+                    {Number.isInteger(award.ticketNo) ? (
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: 2,
+                          fontSize: 10,
+                          letterSpacing: ".12em",
+                          fontWeight: 600,
+                          color: wonByMe ? "var(--oh-gold)" : "var(--oh-text-faint)",
+                        }}
+                      >
+                        Ticket {award.ticketNo}
+                      </span>
+                    ) : null}
                   </span>
                 ) : (
                   <Button
                     variant="ghost"
                     size="sm"
+                    className="oh-claim"
                     disabled={!canClaim}
                     onClick={() => onSubmit(id)}
                     aria-label={`Claim ${meta.label}`}

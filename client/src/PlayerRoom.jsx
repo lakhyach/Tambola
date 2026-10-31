@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { call, clearSession, isSeatGone, on, resumeSession } from "./net.js";
 import Header from "./Header";
@@ -18,6 +18,12 @@ const PlayerRoom = () => {
   const [tickets, setTickets] = useState({ count: 1, max: 1 });
   const [previews, setPreviews] = useState([]);
   const [note, setNote] = useState("");
+  // A seat joins with a ticket count but no minted grids (the server stores the
+  // count, not the tickets, until play starts). Asking once for the count the
+  // seat already holds materialises its real tickets, so the waiting room shows
+  // what will actually be played instead of an empty preview area. The call is
+  // idempotent — the engine only mints while the seat is short of its count.
+  const previewed = useRef(false);
 
   const applyCounts = (snapshot) => {
     if (!snapshot) return;
@@ -51,6 +57,11 @@ const PlayerRoom = () => {
       applyCounts(snapshot);
       if (snapshot.state === "RUNNING" || snapshot.state === "PAUSED") {
         navigate("/player/game");
+        return;
+      }
+      if (!previewed.current && !(snapshot.tickets || []).length) {
+        previewed.current = true;
+        pickCount(Math.max(1, snapshot.ticketCount || 1));
       }
     };
 
@@ -103,15 +114,14 @@ const PlayerRoom = () => {
           style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)", alignItems: "start" }}
         >
           <div className="flex flex-col gap-4">
-            <Panel className="p-6">
+            <Panel className="p-4 sm:p-6">
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                   <h1 className="oh-display" style={{ fontSize: 24, margin: 0 }}>
                     You’re Seated
                   </h1>
                   <p style={{ color: "var(--oh-text-muted)", fontSize: 14, margin: "2px 0 0" }}>
-                    Your seat is held. Choose how many tickets to play — the host starts
-                    when everyone’s ready.
+                    Choose your tickets — the host starts when everyone’s ready.
                   </p>
                 </div>
                 {roomCode ? (
@@ -135,7 +145,20 @@ const PlayerRoom = () => {
               </p>
             ) : null}
 
-            <PlayerRoster players={players} leaderboard={[]} />
+            {previews.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                {/* A caption, not a heading: the tracked eyebrow style turned this
+                    sentence into two shouting lines above the tabs on a phone. It sits
+                    right above the tickets because on a phone those have to reach the
+                    first screen — above the roster, not below it. */}
+                <p style={{ color: "var(--oh-text-muted)", fontSize: 13, margin: 0 }}>
+                  Exactly what the server dealt you — a tab only changes what you see.
+                </p>
+                {/* one ticket at a time behind tabs, exactly as it is played: four
+                    stacked previews pushed the hall and the status line off-screen */}
+                <TicketRail tickets={previews} calledNumbers={NO_CALLS} roomId={roomCode} state="WAITING" />
+              </div>
+            ) : null}
 
             <p
               className="oh-eyebrow text-center"
@@ -144,25 +167,17 @@ const PlayerRoom = () => {
             >
               Waiting for the host to start the game…
             </p>
+
           </div>
 
-          {previews.length > 0 ? (
-            <div className="flex flex-col gap-3">
-              {/* A caption, not a heading: the tracked eyebrow style turned this
-                  sentence into two shouting lines above the tabs on a phone. */}
-              <p style={{ color: "var(--oh-text-muted)", fontSize: 13, margin: 0 }}>
-                These are the exact tickets you’ll play.
-              </p>
-              {/* one ticket at a time behind tabs, exactly as it is played: four
-                  stacked previews pushed the hall and the status line off-screen */}
-              <TicketRail tickets={previews} calledNumbers={NO_CALLS} />
-            </div>
-          ) : null}
+          {/* The hall is the second column on a wide screen and the last thing on
+              a phone: the seat's own tickets come first. */}
+          <PlayerRoster players={players} leaderboard={[]} />
         </div>
 
         <style>{`
           @media (min-width: 900px) {
-            [data-oh-room-grid="true"] { grid-template-columns: minmax(0, 1fr) minmax(0, 400px) !important; }
+            [data-oh-room-grid="true"] { grid-template-columns: minmax(0, 1fr) minmax(0, 340px) !important; }
           }
         `}</style>
       </main>

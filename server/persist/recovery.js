@@ -20,6 +20,7 @@
  */
 
 import { GameState, IntegrityError } from "../game/engine.js";
+import { validateTicket } from "../game/ticket.js";
 
 const KNOWN_STATES = new Set(Object.values(GameState));
 
@@ -74,9 +75,31 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
   }
 
   // group every stored ticket by seat into the engine's canonical [{ no, grid }]
-  // list, ordered by ticket_no so a recovered seat sees the same numbering
+  // list, ordered by ticket_no so a recovered seat sees the same numbering.
+  // Every stored grid is checked with the same independent validator the
+  // generator uses: a row that is not a legal Tambola ticket cannot be played,
+  // so the room is frozen here instead of at the next claim.
   const ticketsByPlayer = new Map();
-  for (const ticket of bundle.tickets || []) {
+  const ticketRows = bundle.tickets || [];
+  const storedIds = new Set();
+  for (const ticket of ticketRows) {
+    const key = String(ticket.player_id) + "#" + String(ticket.ticket_no);
+    if (storedIds.has(key)) {
+      throw new IntegrityError(
+        "seat " + ticket.player_id + " has two tickets both numbered " + ticket.ticket_no,
+        { roomId: room.room_code }
+      );
+    }
+    storedIds.add(key);
+
+    const check = validateTicket(ticket.grid);
+    if (!check.valid) {
+      throw new IntegrityError(
+        "stored ticket " + ticket.ticket_no + " for seat " + ticket.player_id + " is not a legal Tambola ticket: " + check.errors[0],
+        { roomId: room.room_code, playerId: ticket.player_id, ticketNo: ticket.ticket_no, problems: check.errors }
+      );
+    }
+
     const list = ticketsByPlayer.get(ticket.player_id) || [];
     list.push({ no: ticket.ticket_no || list.length + 1, grid: ticket.grid });
     ticketsByPlayer.set(ticket.player_id, list);

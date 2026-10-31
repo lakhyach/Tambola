@@ -468,6 +468,42 @@ export class TambolaRoom {
         }
       }
     }
+
+    // Tickets are durable rows replayed into a live game, so they get the same
+    // independent check the generator gets. Whatever wrote a grid - this
+    // process, an older build, a half-finished migration, a hand-edited row -
+    // a grid that is not a legal Tambola ticket is never played, because a
+    // score derived from it would be a score from a different game. An empty
+    // list is allowed on purpose: a WAITING seat only persists its chosen
+    // count until start re-mints the grids, and a seat that joined a running
+    // round is a deliberate spectator.
+    for (const player of this.players.values()) {
+      if (!Number.isInteger(player.ticketCount) || player.ticketCount < TICKET_MIN || player.ticketCount > TICKET_MAX) {
+        push(player.name + " has an impossible ticket count (" + player.ticketCount + ")");
+      }
+      if (player.tickets.length > player.ticketCount) {
+        push(player.name + " holds " + player.tickets.length + " tickets but chose " + player.ticketCount);
+      }
+      const seenNumbers = new Set();
+      const seenGrids = new Set();
+      for (const ticket of player.tickets) {
+        if (!ticket || !Number.isInteger(ticket.no) || ticket.no < 1) {
+          push(player.name + " holds a ticket without a valid number");
+          continue;
+        }
+        if (seenNumbers.has(ticket.no)) push(player.name + " holds two tickets numbered " + ticket.no);
+        seenNumbers.add(ticket.no);
+
+        const check = validateTicket(ticket.grid);
+        if (!check.valid) {
+          push(player.name + "'s ticket " + ticket.no + " is not a legal Tambola ticket: " + check.errors[0]);
+          continue;
+        }
+        const fingerprint = ticketFingerprint(ticket.grid);
+        if (seenGrids.has(fingerprint)) push(player.name + " holds the same 15 numbers on two tickets");
+        seenGrids.add(fingerprint);
+      }
+    }
     return problems;
   }
 

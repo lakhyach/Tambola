@@ -275,6 +275,173 @@
   box-shadow: 0 0 0 2px var(--oh-ivory);
 }
 
+/* ------------------------------------------------- ticket experience (§18) */
+/* A real 3x9 grid: three ARIA rows, nine cells each. The wrappers exist so the
+   grid has rows to announce, not just 27 loose cells. */
+.oh-ticket-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.oh-ticket-row {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 6px;
+}
+
+/* Per-row progress: the read-out a line claim depends on. */
+.oh-ticket-rowstats {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.oh-ticket-rowstat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: var(--oh-font-num);
+  font-variant-numeric: tabular-nums lining-nums;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--oh-text-muted);
+  background: var(--oh-inset);
+  border: 1px solid var(--oh-line);
+}
+.oh-ticket-rowstat__label {
+  font-family: var(--oh-font-ui);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--oh-text-faint);
+}
+.oh-ticket-rowstat[data-complete="true"] {
+  color: #14100a;
+  background: linear-gradient(180deg, var(--oh-gold-bright), var(--oh-gold));
+  border-color: transparent;
+}
+.oh-ticket-rowstat[data-complete="true"] .oh-ticket-rowstat__label {
+  color: rgba(20, 16, 10, 0.65);
+}
+
+/* Ticket tabs: a tablist a keyboard can actually drive (roving tabindex). */
+.oh-ticket-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+.oh-ticket-tab {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--oh-text-muted);
+  background: var(--oh-inset);
+  border: 1px solid var(--oh-line);
+  transition: color var(--oh-fast) var(--oh-ease), border-color var(--oh-fast) var(--oh-ease),
+    background var(--oh-fast) var(--oh-ease);
+}
+.oh-ticket-tab:hover {
+  color: var(--oh-text);
+  border-color: var(--oh-silver-dim);
+}
+.oh-ticket-tab[data-selected="true"] {
+  color: var(--oh-gold-bright);
+  background: rgba(207, 171, 99, 0.14);
+  border-color: var(--oh-line-gold);
+}
+.oh-ticket-tab__count {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--oh-text-faint);
+}
+.oh-ticket-tab[data-selected="true"] .oh-ticket-tab__count {
+  color: var(--oh-gold);
+}
+.oh-ticket-tabpanel:focus-visible {
+  outline: 2px solid var(--oh-gold);
+  outline-offset: 4px;
+  border-radius: var(--oh-r-lg);
+}
+
+/* Ticket count controls: 44px targets at every width (a tablet is a tablet). */
+.oh-step {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  font-family: var(--oh-font-num);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--oh-ivory);
+  background: var(--oh-inset);
+  border: 1px solid var(--oh-line);
+  transition: border-color var(--oh-fast) var(--oh-ease), background var(--oh-fast) var(--oh-ease),
+    opacity var(--oh-fast) linear;
+}
+.oh-step:hover:not(:disabled) {
+  border-color: var(--oh-line-gold);
+  background: rgba(207, 171, 99, 0.1);
+}
+.oh-step:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.oh-ticket-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.oh-ticket-choice__item {
+  min-width: 40px;
+  height: 44px;
+  padding: 0 8px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--oh-text-muted);
+  background: var(--oh-inset);
+  border: 1px solid var(--oh-line);
+  transition: color var(--oh-fast) var(--oh-ease), border-color var(--oh-fast) var(--oh-ease),
+    background var(--oh-fast) var(--oh-ease);
+}
+.oh-ticket-choice__item:hover:not(:disabled) {
+  color: var(--oh-text);
+  border-color: var(--oh-silver-dim);
+}
+.oh-ticket-choice__item[data-selected="true"] {
+  color: #14100a;
+  background: linear-gradient(180deg, var(--oh-gold-bright), var(--oh-gold));
+  border-color: transparent;
+  box-shadow: 0 6px 16px -10px rgba(207, 171, 99, 0.9);
+}
+.oh-ticket-choice__item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* A claim is the one irreversible tap in a round, so it keeps a full 44px target
+   at every width rather than the compact 32px of a small button. */
+.oh-claim {
+  min-height: 44px;
+  min-width: 88px;
+}
+
 /* ---------------------------------------------------------------- reveal */
 .oh-reveal {
   display: grid;
@@ -1058,6 +1225,58 @@
   }
   50% {
     opacity: 0.35;
+  }
+}
+
+/*
+ * Phase 18: on a phone the ticket is the screen. The big reveal is compacted
+ * to a badge so the ticket header and grid start within the first screen, tap
+ * targets grow to 44px, and the cell grid tightens to keep 9 columns legible.
+ */
+@media (max-width: 430px) {
+  .oh-reveal {
+    width: 88px;
+    border-radius: 20px;
+  }
+  .oh-reveal__num {
+    font-size: 46px;
+  }
+  [data-hero="true"] {
+    padding: 12px;
+  }
+  .oh-ticket-grid,
+  .oh-ticket-row {
+    gap: 4px;
+  }
+  .oh-ticket-cell {
+    font-size: clamp(12px, 4vw, 17px);
+    border-radius: 6px;
+  }
+  .oh-step {
+    width: 44px;
+    height: 44px;
+  }
+  .oh-step,
+  .oh-ticket-choice__item,
+  .oh-ticket-tab {
+    min-height: 44px;
+  }
+  .oh-ticket-rowstats {
+    gap: 4px;
+  }
+  .oh-ticket-rowstat {
+    padding: 2px 6px;
+  }
+}
+
+/* Landscape phones are short: the hero must not eat the ticket's height. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .oh-reveal {
+    width: 84px;
+    border-radius: 18px;
+  }
+  .oh-reveal__num {
+    font-size: 44px;
   }
 }
 

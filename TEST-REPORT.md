@@ -33,6 +33,16 @@ fail 0 / skipped 0`; `security-probe` held 51 of 51; `e2e` and `e2e:durable` eac
 played a full game to `COMPLETED`; the browser pass reported `consoleErrors: []` at
 1440, 820, 390 and 360 pixels wide. Details in §10.
 
+**Seventh pass, Phase 18, 31 October:** every gate in §1 was re-run on the Phase 18
+tree, which rebuilds the player's ticket and gameplay surface, validates persisted
+tickets on recovery, and adds four test files (69 tests) plus three browser
+harnesses (`.preflight/tools/p18-player.mjs`, `p18-audit.mjs`, `p18-perf.mjs`).
+`npm test` printed `tests 516 / pass 516 / fail 0 / skipped 0`; `security-probe`
+held 51 of 51; `e2e` and `e2e:durable` each played a full game to `COMPLETED`; the
+player journey harness held 78 of 78 checks with `consoleErrors: []` at 360, 390,
+430, 768 and 1440 pixels wide; the accessibility and call-cost audit held 35 of 35.
+Details in §11.
+
 **Fourth pass, later on 31 October:** every gate in §1 was re-run on the current
 tree after the security probe moved from `.preflight/tools/` (never scanned) to
 `scripts/` (scanned). `npm test` again printed `tests 383 / pass 383 / fail 0 /
@@ -751,3 +761,184 @@ results, completed console, player results). The machine-readable transcript is
   `Emulation.setDeviceMetricsOverride` viewports in a desktop Chrome: no iOS
   Safari, no touch, no on-screen keyboard.
 
+
+
+## 11. Phase 18 — the player's tickets and gameplay
+
+Seventh pass. Everything below was printed by a command or read out of a live page
+on 31 October 2026; nothing is inferred from source. The server was the durable
+build (`/healthz` reporting `mode: durable`, `migrations 004_multi_ticket.sql`,
+`pool 2/8`, one live instance) and the client was served from `client/dist` by that
+same process.
+
+### 11.1 Gates
+
+| Gate | Command | Result |
+|---|---|---|
+| Unit + integration | `npm test` | `tests 516 / suites 18 / pass 516 / fail 0 / skipped 0 / todo 0`, 11 599 ms |
+| Lint | `npm run lint` | clean, `--max-warnings 0` |
+| Production build | `npm run build --prefix client` | 132 modules, `index.css` 46.53 kB (gzip 9.75), `index.js` 385.05 kB (gzip 116.07), 1.68 s |
+| Secret scan | `npm run secret-scan` | 220 files inspected, 2 `.env` values and 7 credential shapes checked, `SECRET SCAN PASSED` |
+| Security probe | `npm run security-probe` | `RESULT: PASS — 51 of 51 checks held` |
+| Full game, in memory | `npm run e2e` | `PASS`, 77 calls, 6 awards, 6 rejected claims, engine integrity assertion passed |
+| Full game, durable | `npm run e2e:durable` | `PASS`, 74 calls, 6 awards, 6 rejected claims, throwaway schema dropped |
+
+The suite grew from 447 to 516 with four files that did not exist before Phase 18:
+
+| File | Tests | What it pins |
+|---|---:|---|
+| `tests/ticket-integrity.test.js` | 12 | a persisted grid is re-validated on recovery; duplicate ticket numbers, duplicate grids, out-of-range counts and a tampered cell each freeze the room instead of being dealt |
+| `tests/ticket-properties.test.js` | 20 | 3×9/15/5-per-row/1–3-per-column/decade/ascending/unique invariants over a 20 000-ticket sweep, plus a 5 000-ticket distribution check |
+| `tests/ticket-view.test.js` | 18 | the derived view (called set, row chips, progress, empty cells) never invents a mark the history does not contain |
+| `tests/ticket-play.test.js` | 19 | the 1/2/3/max lifecycle, refusal of a change after start, claim attribution, hydrated-round restoration, reconnect after a claim, spectator semantics, cross-room isolation |
+
+### 11.2 The player journey in a browser
+
+`.preflight/tools/p18-player.mjs` drives a real Chromium against the real server:
+it creates a room as a host, joins as a player at 390×844, picks one, two and four
+tickets, reads every ticket, starts the round from the host, calls numbers, claims,
+reloads, drops the network, reconnects, measures five viewports, has the host end
+the round and reads the personal result.
+
+**78 of 78 checks held, `consoleErrors: []` on both surfaces.** Selected lines as
+they printed:
+
+```
+  ok picker states the count against the room maximum          1 of 4 selected
+  ok the ticket the seat will play is already previewed        cells 27, ticket 1
+  ok keyboard picks two tickets and the server dealt two
+  ok count reads 4 of 4 with the maximum stated
+  ok tabs are a tablist with aria-controls
+  ok each tab advertises its own progress                      "Ticket 3, 7 of 15 numbers called"
+  ok a refresh keeps all four tickets
+  ok the ticket is a 3x9 ARIA grid                             3 rows, aria-colcount 9, 27 cells
+  ok every cell carries a spoken label                          27/27
+  ok the board and the ticket agree on the history              board 12 == bar 12
+  ok a refused claim says why                                   "Not this time - full house incomplete"
+  ok a real win is awarded and names its ticket                 "Ticket 1 · you completed Bottom Line · +10"
+  ok the call history survives a refresh
+  ok a dropped connection catches up on the calls it missed
+  ok chat history is not duplicated by the reconnect
+  ok 360/390/430/tablet/desktop: no horizontal overflow
+  ok host arms the end of the round / the armed second press ends it
+  ok a personal result panel appears at the end
+  ok claims are closed once the round is over
+  ok no console or runtime errors on either surface
+```
+
+Two of those deserve a footnote. The winning claim is not chosen by the harness: it
+polls the visible board to find a pattern the engine has actually completed, presses
+that button, and waits for the server's verdict — the award in the transcript is the
+engine's decision. And the chat check exists because history is fetched on every
+reconnect; the feed dedupes by the server's message id, so the probe message is
+present exactly once after an offline/online cycle.
+
+**Viewport measurements** (Chromium `Emulation.setDeviceMetricsOverride`; the ticket
+cells and boxes are `getBoundingClientRect()` of the live elements):
+
+| Viewport | scrollWidth / innerWidth | Ticket cell | Ticket box | Board box | Ticket tabs | Claim button |
+|---|---|---|---|---|---|---|
+| 360×780 | 360 / 360 | 30×30 | 336×232 | 302×271 | 117×44 | 88×44 |
+| 390×844 | 366 / 390 | 33×33 | 366×242 | 332×298 | 117×44 | 88×44 |
+| 430×932 | 430 / 430 | 38×38 | 404×255 | 370×333 | 117×44 | 88×44 |
+| 768×1024 | 768 / 768 | 71×71 | 722×359 | 688×619 | 117×44 | 88×44 |
+| 1440×900 | 1440 / 1440 | 54×54 | 568×308 | 506×455 | 117×44 | 88×44 |
+
+Images: `.preflight/p18_01_waiting_four_tickets_390.png`,
+`p18_02_ticket_tab_three_390.png`, `p18_03_waiting_after_reload_390.png`,
+`p18_04_game_started_390.png`, `p18_05_keyboard_tab_390.png`,
+`p18_06_refused_claim_390.png`, `p18_07_winning_claim_390.png`,
+`p18_08_after_reload_390.png`, `p18_09_after_network_loss_390.png`,
+`p18_10_viewport_{360,390,430,tablet,desktop}.png`, `p18_11_completed_390.png`,
+`p18_12_completed_desktop.png`. The machine-readable transcript is
+`.preflight/p18-player.json`.
+
+### 11.3 Accessibility and call cost
+
+`.preflight/tools/p18-audit.mjs` audits the live DOM and CSSOM (accessible names,
+duplicate ids, heading order, alt text, the ARIA wiring, contrast computed from the
+resolved background, and the presence of a reduced-motion rule) and then measures
+what one official call costs a seat with four tickets against a seat with one, in
+the same room, in the same browser, each measured while it was the front tab.
+
+**35 of 35 checks held.**
+
+| Audit | Waiting room | Game screen |
+|---|---|---|
+| Controls missing an accessible name | 0 | 0 |
+| Duplicate ids | 0 | 0 |
+| Skipped heading levels | 0 | 0 |
+| Images without alt | 0 of 0 | 0 of 0 |
+| Reduced-motion rules found in the stylesheet | 1 | 1 |
+| Text samples meeting WCAG AA | 18 of 18 | 123 of 123 |
+| Text on a gradient (not measurable as one colour) | 35 | 58 |
+| Lowest measured ratio | 5.38:1 | 5.38:1 |
+
+The lowest ratio in both screens belongs to `--oh-text-faint`, and it is 5.38:1
+*because* the audit failed it first: the token was `#6b717e`, which measured 3.86:1
+on the chip that paints it, and was raised to `#828997` before this run.
+
+| Call cost | 4 tickets | 1 ticket |
+|---|---|---|
+| DOM nodes | 351 | 333 |
+| Grid cells in the DOM | 27 | 27 |
+| First DOM mutation → painted frame | p50 4 ms / p95 9 ms | p50 6 ms / p95 14 ms |
+| Long tasks (>50 ms) while 20 calls landed | 0 | 0 |
+| Frame gaps | p50 17 ms / p95 17 ms, max 17 ms | p50 17 ms / p95 17 ms, max 17 ms |
+
+Four tickets add **18 DOM nodes** and no measurable call cost, because only the
+selected ticket is mounted; the other three cost one small state update each.
+
+### 11.4 The server path, measured
+
+`.preflight/tools/p18-perf.mjs` runs the real controller against PostgreSQL in a
+throwaway schema (created here, dropped here): one host seat plus seats holding 1, 4
+and 12 tickets — the hard ceiling, because the room was configured with
+`maxTicketsPerPlayer: 12` for the run.
+
+| Measurement | Result |
+|---|---|
+| Snapshot bytes, 1 / 4 / 12 tickets | 1 343 / 1 727 / 2 752 |
+| `number:called` payload | 77 B — the only event per call |
+| Bytes per client per call | 76 B, independent of ticket count |
+| Durable call wall time, 12 calls | p50 4.65 ms / p95 15.98 ms |
+| Rows written per call | 2 (`draw_calls` insert, `audit_events` insert) |
+| Ticket rows updated per call | 0 |
+| `index scan` on `draw_calls` / `games` / `rooms` | 12 / 24 / 24 over the 12 calls |
+| Integrity pass over the room | p50 0.09 ms, max 0.71 ms |
+| Snapshot build for the 12-ticket seat | p50 0.00 ms, p95 0.01 ms |
+| Persisted ticket rows | 18, equal to the 18 tickets issued |
+
+### 11.5 Defects found by testing, and what closed them
+
+1. **The waiting room promised tickets it could not show.** The server stores a
+   ticket *count* until a round starts, so a refresh in the waiting room rendered
+   an empty preview (the harness measured `{"tabs":0,"cells":0}`). Fixed by asking
+   the server once for the count the seat already holds; the preview is now the
+   real grids.
+2. **The picker's live region repeated a stale sentence.** After a successful pick
+   it kept announcing "Selected 2 of 4 tickets." instead of the recomputed count.
+3. **Claim buttons were 32px tall** (`{w:63,h:32}` measured at 360px) and ticket
+   tabs 40px. Both are 44px at every width now, and the harness asserts it at all
+   five viewports.
+4. **The quietest ink failed WCAG AA** at 3.86:1; raised to 5.38:1.
+5. **The preview sat below the fold on a phone.** On a 390×844 screen the ticket
+   began at y≈690 behind the roster. The preview moved above the roster and the
+   hero and picker were tightened; the whole ticket now fits in the first screen.
+6. **A test fixture was wrong, not the engine.** The first draft of the hydrated
+   round set `draw: [1..90]` while claiming `TOP_LINE` had been called, and the
+   engine refused it (`call 1 does not match the stored draw plan`) — the new
+   integrity check working as designed.
+
+### 11.6 What this pass does not prove
+
+- **No phone was involved.** Every mobile figure is Chromium viewport emulation on
+  a desktop OS — no iOS Safari, no on-screen keyboard, no real touch.
+- **Four tickets is not the ceiling.** The browser measured 4 (the room default
+  maximum); 12 was measured on the server path only.
+- **The load numbers are not this phase's.** Phase 16B's durable run (50 rooms ×
+  250 players) still stands as the capacity evidence; nothing here adds to it.
+- **Audio, screen readers and OS-level zoom were not exercised.** The audit checks
+  what the DOM and CSSOM expose; it does not hear a screen reader speak.
+- **Chat remains in memory.** A server restart keeps the game and empties the room's
+  chat, which is deliberate and documented in `docs/PLAYER-GAMEPLAY.md` §7.

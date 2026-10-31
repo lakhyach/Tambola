@@ -1,10 +1,11 @@
 # Final product gap report
 
 Phase 16 · 31 October 2026 · build `2063f0b` (pushed to `origin/main`) · **updated in Phase 16B**,
-base `0a4de55` · **updated in Phase 17**, base `108c6aa` · evidence in `TEST-REPORT.md`,
-`docs/MARKET-BENCHMARK.md`, `docs/RULES-DECISIONS.md`, `docs/CLIENT-REQUIREMENTS.md`,
-`docs/CLIENT-SIGNOFF.md`, `docs/HOSTING-OPTIONS.md`, `docs/FREE-INFRASTRUCTURE-RESEARCH.md`,
-`docs/DEPLOYMENT-READINESS.md`, `docs/CALLER-CONSOLE.md`
+base `0a4de55` · **updated in Phase 17**, base `108c6aa` · **updated in Phase 18**, base `e5c6e99` ·
+evidence in `TEST-REPORT.md`, `docs/MARKET-BENCHMARK.md`, `docs/RULES-DECISIONS.md`,
+`docs/CLIENT-REQUIREMENTS.md`, `docs/CLIENT-SIGNOFF.md`, `docs/HOSTING-OPTIONS.md`,
+`docs/FREE-INFRASTRUCTURE-RESEARCH.md`, `docs/DEPLOYMENT-READINESS.md`, `docs/CALLER-CONSOLE.md`,
+`docs/PLAYER-GAMEPLAY.md`
 
 Every status below is either **verified by a gate that ran in this release** or marked as not done.
 Nothing is "probably fine".
@@ -19,6 +20,13 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 > the call sheet, a server round clock, cadence control, a per-device voice panel, the hall roster)
 > and closes the host-experience gap that the matrix below used to leave out. §9 and §10 record what
 > that changed and what it did not. No winning rule changed, nothing was deployed.
+>
+> **Phase 18** does the same for the player: a ticket picker that shows the real grids, a tab rail
+> that keeps four tickets inside a 390px phone, a ticket marked from the official call history, a
+> per-ticket `9/15` and row chips, and a results panel. It also closed two visible defects (an
+> empty ticket preview in the waiting room, and the quietest ink failing WCAG AA at 3.86:1) and one
+> hole nobody could see: tickets replayed from PostgreSQL were never re-validated before being dealt
+> back to a seat. §11 and §12 record what it changed and what it deliberately did not.
 
 ## 1. Gap matrix
 
@@ -26,19 +34,20 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 | --- | --- | --- | --- | --- |
 | **Gameplay** | Full 90-number round runs to COMPLETED on both the in-memory and the durable stack; 383/383 tests; 800 sequential room lifecycles with 0 errors | None for the current rules. Every rules change waits on `docs/RULES-DECISIONS.md` | — | No (unless rules change) |
 | **Voice** | Web Speech EN + हिं, per device, 7/7 scenarios with `problems=[]` and `maxOverlapMs=0`; watchdog + RETRY chip; honest about engine blocks. **Phase 17** adds a chosen voice (from those the browser lists), rate 0.75–1.5×, volume, Repeat-current-number, and a sentence for every way speech can be missing (no engine, no Hindi voice, voice stopped) | A voice can only be picked from the browser's own list (OS-dependent); no pitch control; custom call phrases are not built | P2 | No |
-| **Tickets** | 1–4 default, cap 12, per-ticket tab rail, server-minted grids (CSPRNG), roster promises what the round issues, tested | Default should be 3 to match the market (configuration only) | P1 (config) | **Yes** — tickets per player |
+| **Tickets** | 1–4 default, cap 12, server-minted grids (CSPRNG), per-ticket tab rail, roster promises what the round issues, tested. **Phase 18** makes the picker show the real grids, keeps 1–12 inside one tab rail on a phone, re-validates every replayed grid, and adds 69 tests across four suites (integrity, properties, view model, multi-ticket play), including a 20 000-ticket statistical sweep and a 5 000-ticket invariant sweep | Default should be 3 to match the market (configuration only) | P1 (config) | **Yes** — tickets per player |
 | **Winning rules** | Six patterns, exclusive, completion ordinal on every one, late-claim window enforced at prepare *and* commit; boundaries pinned by tests | Five deferred patterns need written definitions. **Early Seven now has one** — exact rule, six fixtures, unregistered (`server/game/proposed-patterns.js`) — and needs only a points value and an approval. Star/Middle Number is still the riskiest | P1 | **Yes** |
 | **Celebrations** | Overlay on award, host and player views, verified in browser; end-of-game standings and final results both sides | Winner reactions and out-of-app notifications are not built | P2 | No |
 | **Chat** | Room chat, EN + HI content, rate-limited, not persisted; sits in a panel, never over the hero number | Profanity filter, report flow, host broadcast banner, kick/ban | P1 (public rooms) / P2 (banner) | Partly |
 | **Administration** | Owner sign-in with TOTP MFA, room audit, health snapshot, durable history, backup/restore verification | No in-room host moderation (kick/ban); no player approval or ticket approval | P1 | **Yes** — admission policy |
 | **Branding** | A complete, working default identity ("Tambola" / "Obsidian Hall", Champagne-gold accent, generated icon set), every part overridable through `VITE_*` build vars — but it is an example, not the client's brand | All of §1 of `docs/CLIENT-REQUIREMENTS.md`: real name, logo, icon set, colours, tagline. Now asked for on one page in `docs/CLIENT-SIGNOFF.md` | P0 | **Yes** |
 | **Security** | 51/51 live probe (headers, CORS origin echo, CSRF, body limits, socket contract, rate budgets); secret scan clean and now run in CI; admin boundary tested; production dependency audit **0 vulnerabilities** after the `socket.io`/`ws` patch upgrades; **L3 deep security review run before the 16B push, `findings_count: 0`** | No third-party pentest and no review by anyone outside this project. Client bundle still carries **2 moderate `react-router-dom` 6.x advisories** whose fix is the 7.x major (SSR-only paths this app does not use) | P1 (before public launch) | No |
-| **Performance** | 400 concurrent joins, 0 failures; call-to-screen p95 53 ms; call ack p95 70 ms; event-loop p99 32 ms; 800 room lifecycles, 0 errors. **Phase 16B, durable PostgreSQL, 50 rooms × 250 players**: 250 joins, 0 failures, 750 acks, ack p50 44.6 / p95 84.8 ms with the default pool, p95 65.0 ms at `DB_POOL_MAX=16`, 150/150 room syncs, 50/50 reconnects, **0 duplicate calls**, RSS 143 MB, and a database profiler proving the queue was pool checkout (peak 7 active, longest query 23 ms, cache hit 100%, 0 deadlocks) | No hours-long soak, no test above 250 concurrent players, no slow-phone profiling | P1 | No |
+| **Performance** | 400 concurrent joins, 0 failures; call-to-screen p95 53 ms; call ack p95 70 ms; event-loop p99 32 ms; 800 room lifecycles, 0 errors. **Phase 16B, durable PostgreSQL, 50 rooms × 250 players**: 250 joins, 0 failures, 750 acks, ack p50 44.6 / p95 84.8 ms with the default pool, p95 65.0 ms at `DB_POOL_MAX=16`, 150/150 room syncs, 50/50 reconnects, **0 duplicate calls**, RSS 143 MB, and a database profiler proving the queue was pool checkout (peak 7 active, longest query 23 ms, cache hit 100%, 0 deadlocks). **Phase 18, durable, 1 + 4 + 12 ticket seats**: 1 343 / 1 727 / 2 752-byte snapshots, 77-byte `number:called` (the only event per call, independent of ticket count), call p50 4.65 / p95 15.98 ms, **2 rows written per call and 0 ticket rows updated**, integrity pass p50 0.09 ms; in the browser 4 seats vs 1 ticket were 351 vs 333 DOM nodes with 0 long tasks | No hours-long soak, no test above 250 concurrent players, no slow-phone profiling | P1 | No |
 | **Deployment** | Docker image, compose, Render/Fly/Railway manifests, Supabase TLS pinning verified, runbook complete. **Phase 16B adds**: `npm run env:check` (production gate), `npm run smoke -- --full` (live proof, 11/11 against a running server), a CI workflow that runs every gate and builds the image, rollback and pool-sizing procedures, and `docs/DEPLOYMENT-READINESS.md` | **Nothing is deployed.** A host, a domain and the account owner must be chosen; the zero-cost options are a workstation behind a Quick Tunnel (URL changes on restart) or Oracle Always Free (card required) | P0 | **Yes** |
 | **Host experience** | A dedicated caller console at `/host/game`: current/previous number, sealed next slot, 1–90 board, full call sheet, server round clock, start/pause/resume/end with two-click confirmation, cadence control, voice panel, hall roster; `C`/`P`/`R` hotkeys; desktop/tablet/390/360 verified with 0 page errors. **Phase 17** | No in-room moderation controls (no kick/ban/approve exists server-side); no caller notes or per-round commentary; no printable call sheet | P1 (moderation) / P2 (print) | **Yes** (admission policy) |
-| **Mobile** | 390×844 verified: `scrollWidth 390`, zero overflow, tabbed tickets, header wrap fixed; mid-round join explained on screen. **Phase 17** adds the caller console at 390×844 and 360×740 with a pinned draw bar, `scrollWidth 390/360`, no overflow | No real hardware, no iOS Safari, no touch-gesture testing; no PWA install | P1 | No |
+| **Player experience** | **Phase 18.** A waiting room that previews the grids the server will actually deal, a count control with the room's ceiling stated in words, a tab rail that holds 1–12 tickets, a ticket marked from the official call history with `9/15` and per-row chips, claim buttons only for enabled patterns with the server's own refusal text, and a personal result panel. Verified by a 78-check browser journey at five viewports with 0 console errors | No player-side profile or history across rooms (a seat ends with the round); no printable ticket; no haptics | P2 | No |
+| **Mobile** | 390×844 verified: `scrollWidth 390`, zero overflow, tabbed tickets, header wrap fixed; mid-round join explained on screen. **Phase 17** adds the caller console at 390×844 and 360×740 with a pinned draw bar, `scrollWidth 390/360`, no overflow. **Phase 18** measures the player's game at 360, 390, 430, 768 and 1440: ticket cells 30–71px, the whole waiting-room ticket inside the first 844px, ticket tabs and claim buttons 44px tall at every width, no horizontal overflow at any of them | No real hardware, no iOS Safari, no touch-gesture testing; no PWA install | P1 | No |
 | **Monitoring** | `/livez`, `/readyz`, `/healthz` (now with **scheduler heartbeat** and **pool pressure**), draining signal, structured logs, health check in the image, a scheduled `uptime.yml` that opens and closes an issue, and a smoke test that fails if a guest does not receive a call | No external uptime account (UptimeRobot needs an account), no error-tracking account (Sentry), no alert recipient, no scheduled backup — all of it needs a human, see `docs/DEPLOYMENT-READINESS.md` §10 | P1 | **Yes** — who is on call |
-| **Documentation** | README, RUNBOOK, ADMIN, DATABASE, CONTRACT, DEPLOYMENT, TEST-REPORT, CHANGELOG, market benchmark, rules decisions, requirements, hosting paper, **free-infrastructure research, deployment readiness, client sign-off, this report**, **caller-console paper** | Nothing blocking; keep the runbook current | — | No |
+| **Documentation** | README, RUNBOOK, ADMIN, DATABASE, CONTRACT, DEPLOYMENT, TEST-REPORT, CHANGELOG, market benchmark, rules decisions, requirements, hosting paper, **free-infrastructure research, deployment readiness, client sign-off, this report**, **caller-console paper**, **player-gameplay paper** | Nothing blocking; keep the runbook current | — | No |
 | **Legal / privacy** | No policy, no terms, no support contact in the product | Privacy policy, terms (incl. no-cash-prizes), support contact, retention statement | P0 | **Yes** |
 | **Monetisation** | None. Free-to-play only; nothing processes payments | Decide free-to-play in writing; anything else is a different, regulated product | P0 (decision) / — (build) | **Yes** |
 
@@ -66,8 +75,8 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
    not monitoring.
 4. **Marketing-default settings** — 3 tickets per player, 0-call claim window for prize games,
    multiple winners above ~10 seats.
-5. **One real handset pass** — the mobile evidence is Chrome emulation at 390×844, not iOS Safari on
-   glass.
+5. **One real handset pass** — the mobile evidence is Chrome emulation at 360, 390, 430, 768 and
+   1440 pixels wide (Phase 18), not iOS Safari on glass.
 6. **An independent security review** and a dependency audit. *(Phase 16B ran the audit,
    patched the production dependencies to 0 vulnerabilities and ran the L3 deep review
    before the push — `findings_count: 0`. The client bundle still carries 2 moderate
@@ -143,6 +152,22 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 | Speaker audibility | **Not verified** — no audio device was listened to; the settings, the queue state and the repeat were. Listed in `TEST-REPORT.md` §10.4 |
 | Production deployment | **Not performed** (by instruction). |
 
+### Phase 18 (base `e5c6e99`)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | PASS — `tests 516 / suites 18 / pass 516 / fail 0 / skipped 0 / todo 0`, 11 599 ms (69 of those tests are new in this phase) |
+| `npm run lint` / `npm run build` | Clean at `--max-warnings 0`; 132 modules, CSS 46.53 kB (gzip 9.75), JS 385.05 kB (gzip 116.07) |
+| `npm run secret-scan` | PASSED — 220 files, 2 `.env` values, 7 credential shapes, nothing found |
+| `npm run security-probe` | PASS — 51 of 51 |
+| `npm run e2e` (in-memory) | PASS — `COMPLETED`, 6 awards over 77 calls; premature, invented and duplicate claims all refused |
+| `npm run e2e:durable` (PostgreSQL, throwaway schema) | PASS — `COMPLETED`, 6 awards over 74 calls, throwaway schema dropped |
+| Browser journey, headless Chrome over CDP (`.preflight/tools/p18-player.mjs`) | PASS — **78 of 78** checks, **0 console errors**: join, pick 1/2/3/4 tickets, ceiling disabled at 4, ticket grids read at 360/390/430/768/1440 with no horizontal overflow, call marking on every ticket, all six awards, refusal of a premature claim, reload mid-round restoring every ticket, chat EN + HI, and the result panel. Screenshots `.preflight/p18_01..14_*.png` |
+| Accessibility + call-cost audit (`.preflight/tools/p18-audit.mjs`) | PASS — **35 of 35**: 18/18 and 123/123 measurable text samples at WCAG AA (worst 5.38:1), 27/27 grid cells publishing row and column, 0 unnamed controls, 0 duplicate ids, 0 heading skips, 1 global reduced-motion rule; **0** long tasks, 4 tickets settling at 9 ms p95 against 14 ms for 1 |
+| Server path, durable (`.preflight/tools/p18-perf.mjs`) | PASS — 1 343 / 1 727 / 2 752-byte snapshots, 77-byte `number:called`, call p50 4.65 / p95 15.98 ms, **2 rows written per call and 0 ticket-row updates**, integrity pass p50 0.09 ms, 18 persisted rows for 18 issued tickets |
+| Physical device / real screen reader / heard audio | **Not verified** — viewport emulation, DOM and CSSOM only |
+| Production deployment | **Not performed** (by instruction). |
+
 ## 7. What Phase 16B closed
 
 | Gap (§1 row) | What closed it |
@@ -190,4 +215,40 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
   button.
 - **No claim of physical-device testing, and no claim of heard audio.** Every width is an emulated
   viewport in desktop Chrome, and speech was configured and inspected, not listened to.
+ **No deployment, no purchase, no payment surface.** Unchanged from Phase 16B.
+
+## 11. What Phase 18 closed
+
+| Gap (§1 row) | What closed it |
+| --- | --- |
+| **The waiting room showed no ticket.** The server stores a ticket *count* until a round starts, so a refresh rendered an empty preview while the seat held tickets | The room asks the server once for the count the seat already holds, which materialises the real grids; the preview is now the ticket the round will actually deal, in the same component the round uses |
+| **Tickets were tall and unbounded on a phone.** Four stacked previews pushed the game itself off the screen | One ticket at a time behind an ARIA tab rail, the ticket above the roster, and a tightened hero: the whole ticket, its tabs and its row chips fit inside the first 844 px of a 390 px screen |
+| **A ticket explained nothing.** A player had to count cells to know whether a line was close | `9/15` in the header and a per-row chip (`R1 3/5`) that turns gold when the row completes — exactly the condition the Top/Middle/Bottom Line claim checks |
+| **A picked ticket was a promise, not a grid** | The count control states the room's ceiling in words ("4 of 4 selected · room maximum"), disables `+` at it, exposes every count as a real radio in a `radiogroup`, and renders the server's own refusal when a ceiling drops under a waiting player |
+| **The results screen was a board that stopped** | `YourResult.jsx` gives a seat its own points, its awards with the ticket number that won each, and the final standings |
+| **Replayed tickets were never re-validated.** A grid written by an older build, a half-finished migration or a hand-edited row would have been dealt back and scored | `recovery.js` runs the generator's own `validateTicket` over every persisted grid and refuses a duplicate `(player, ticketNo)`; `integrityErrors()` does the same in memory. A bad row freezes the room (visible on `/healthz`) instead of being played |
+| **Two accessibility defects** — claims at 32 px and tabs at 40 px (under the 44 px touch minimum), and the quietest ink at 3.86:1 (under WCAG AA) | Both fixed and now asserted by the harness at all five widths: 44 px at every width, worst measured text 5.38:1 |
+| **The player journey had no test that played it** | Four new suites (69 tests) plus a 78-check browser journey over the real socket contract: generation, persistence, the view model, and the 1/2/3/4-ticket lifecycle through claims, refusal, reload and reconnect |
+| **Nothing documented the player's side** | `docs/PLAYER-GAMEPLAY.md` — the journey, the issued-never-invented rule, the marking model and why it has no tap-to-mark, claims, multi-ticket, recovery (including the deliberate chat semantics) and the measured behaviour |
+
+## 12. What Phase 18 deliberately did not do
+
+- **No winning-rule change and no ticket-format change.** Six patterns, 3×9, 15 numbers,
+  5 per row, 1–3 per column — all unchanged. Early Seven, Star, Middle Number, 1 2 3 / 143 and
+  Pyramid still have no button, because they still have no approved predicate.
+- **No tap-to-mark.** Marks derive from the official call history, so a local tap can never
+  become evidence, a reconnect cannot produce two disagreeing notions of "marked", and the
+  draw sequence is untouchable from the browser. This is a product difference the client should
+  sign off rather than "fix" (§5), and it is now explained in `docs/PLAYER-GAMEPLAY.md` §4.
+- **No browser-side ticket.** The client sends a count; the server mints the grids. There is no
+  code path by which a browser names a number or keeps a grid the server did not issue.
+- **No standing in for a phone.** Every mobile figure is Chromium viewport emulation on a
+  desktop OS. No iOS Safari, no on-screen keyboard, no real touch, no haptics.
+- **No screen-reader listening and no colour-blind simulation.** The audit checks what the DOM
+  and CSSOM expose — roles, names, indices, computed contrast, reduced-motion rules — not what
+  a screen reader says out loud.
+- **No capacity claim.** The Phase 18 measurements are one process, one machine, one room:
+  what a call costs, not how many rooms fit in a box.
+- **No new persistence writes for marking.** A call still writes two rows (`draw_calls`,
+  `audit_events`) and zero ticket rows, because marks are derived, not stored.
 - **No deployment, no purchase, no payment surface.** Unchanged from Phase 16B.
