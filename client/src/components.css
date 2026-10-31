@@ -483,6 +483,584 @@
   100% { transform: translateY(105vh) rotate(540deg); opacity: 0.15; }
 }
 
+/* ------------------------------------------- caller console (§17)
+ *
+ * The host's operating surface. Denser than the player screen — a caller reads
+ * it in glances while the room is live — but built from the same graphite
+ * panels, the same single gold accent and the same system type, so it belongs
+ * to the hall instead of looking like an admin dashboard bolted onto it.
+ */
+.oh-console-shell {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  padding: clamp(10px, 2.2vw, 22px);
+}
+
+.oh-console {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.oh-console-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.oh-console-col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* tablet: console beside the board, the hall beneath both */
+@media (min-width: 820px) {
+  .oh-console-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .oh-console-col:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+/* desk: console | board | hall */
+@media (min-width: 1180px) {
+  .oh-console-grid {
+    grid-template-columns: minmax(300px, 0.95fr) minmax(340px, 1.05fr) minmax(270px, 0.85fr);
+  }
+  .oh-console-col:nth-child(3) {
+    grid-column: auto;
+  }
+}
+
+.oh-statechip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--oh-line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--oh-text-muted);
+  font-family: var(--oh-font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.oh-statechip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.oh-statechip[data-tone="running"] {
+  color: var(--oh-ok);
+  border-color: rgba(100, 183, 143, 0.4);
+  background: rgba(100, 183, 143, 0.1);
+}
+.oh-statechip[data-tone="running"]::before {
+  animation: oh-pulse 1.8s var(--oh-ease) infinite;
+}
+.oh-statechip[data-tone="paused"] {
+  color: var(--oh-warn);
+  border-color: rgba(216, 162, 74, 0.42);
+  background: rgba(216, 162, 74, 0.1);
+}
+.oh-statechip[data-tone="completed"] {
+  color: var(--oh-gold-bright);
+  border-color: var(--oh-line-gold);
+  background: rgba(207, 171, 99, 0.1);
+}
+
+.oh-dot {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--oh-text-faint);
+}
+.oh-dot[data-tone="ok"] {
+  background: var(--oh-ok);
+}
+.oh-dot[data-tone="warn"] {
+  background: var(--oh-warn);
+}
+.oh-dot[data-tone="danger"] {
+  background: var(--oh-danger);
+}
+.oh-dot[data-tone="muted"] {
+  background: var(--oh-silver-dim);
+}
+.oh-dot[data-tone="off"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--oh-silver-dim);
+}
+
+/* ------------------------------------------------------------- caller hero */
+.oh-caller-hero {
+  overflow: hidden;
+}
+
+.oh-caller-aside {
+  min-width: 92px;
+  text-align: right;
+}
+
+.oh-caller-clock {
+  font-size: clamp(22px, 4.4vw, 30px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+  color: var(--oh-ivory);
+}
+
+.oh-caller-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.oh-caller-cell {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--oh-r-sm);
+  border: 1px solid var(--oh-line);
+  background: var(--oh-inset);
+}
+.oh-caller-cell .oh-eyebrow {
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+}
+
+.oh-caller-cell__value {
+  margin-top: 2px;
+  font-size: clamp(18px, 3.2vw, 24px);
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--oh-ivory);
+}
+.oh-caller-cell__value[data-empty="true"] {
+  color: var(--oh-text-faint);
+}
+
+.oh-caller-cell--sealed {
+  border-style: dashed;
+  border-color: var(--oh-line-gold);
+  background: rgba(207, 171, 99, 0.05);
+}
+.oh-sealed {
+  color: var(--oh-gold);
+  opacity: 0.72;
+}
+
+.oh-caller-voice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--oh-line);
+}
+
+.oh-caller-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--oh-text-faint);
+}
+
+/* --------------------------------------------------------- draw controls */
+.oh-callbtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: var(--oh-r-md);
+  border: 1px solid var(--oh-line-gold);
+  background: linear-gradient(180deg, rgba(207, 171, 99, 0.16), rgba(207, 171, 99, 0.05));
+  color: var(--oh-gold-bright);
+  font-family: var(--oh-font-ui);
+  cursor: pointer;
+  transition: background var(--oh-med) var(--oh-ease), box-shadow var(--oh-med) var(--oh-ease),
+    transform var(--oh-fast) var(--oh-ease), opacity var(--oh-fast) linear;
+}
+.oh-callbtn:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(207, 171, 99, 0.24), rgba(207, 171, 99, 0.1));
+}
+.oh-callbtn:active:not(:disabled) {
+  transform: translateY(1px) scale(0.995);
+}
+.oh-callbtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+.oh-callbtn__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+.oh-callbtn__hint {
+  font-size: 11.5px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--oh-text-muted);
+}
+
+/* the live call is the one control that should read as gold, not a tint */
+.oh-callbtn--call {
+  color: #1a1408;
+  border-color: transparent;
+  background: linear-gradient(180deg, var(--oh-gold-bright), var(--oh-gold) 55%, var(--oh-gold-deep));
+  box-shadow: 0 12px 26px -16px rgba(207, 171, 99, 0.9), var(--oh-inner-glow);
+}
+.oh-callbtn--call:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--oh-ivory), var(--oh-gold-bright) 55%, var(--oh-gold));
+}
+.oh-callbtn--call .oh-callbtn__hint {
+  color: rgba(26, 20, 8, 0.72);
+}
+
+.oh-caller-transport {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* segmented control: interval, language, rate */
+.oh-seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--oh-line);
+  background: var(--oh-inset);
+}
+.oh-seg__item {
+  font-family: var(--oh-font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--oh-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: color var(--oh-fast) var(--oh-ease), background var(--oh-fast) var(--oh-ease),
+    border-color var(--oh-fast) var(--oh-ease), opacity var(--oh-fast) linear;
+}
+.oh-seg__item:hover:not(:disabled) {
+  color: var(--oh-text);
+  background: rgba(255, 255, 255, 0.05);
+}
+.oh-seg__item[data-active="true"] {
+  color: var(--oh-gold-bright);
+  border-color: var(--oh-line-gold);
+  background: rgba(207, 171, 99, 0.14);
+}
+.oh-seg__item:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.oh-seg__item[data-active="true"]:disabled {
+  opacity: 0.8;
+}
+
+.oh-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-family: var(--oh-font-ui);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--oh-text-muted);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--oh-line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+}
+.oh-kbd--dark {
+  color: rgba(26, 20, 8, 0.75);
+  background: rgba(26, 20, 8, 0.12);
+  border-color: rgba(26, 20, 8, 0.25);
+}
+
+/* ---------------------------------------------------------------- call log */
+.oh-log {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 236px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.oh-log__row {
+  display: grid;
+  grid-template-columns: 30px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: var(--oh-r-sm);
+  border: 1px solid transparent;
+}
+.oh-log__row[data-current="true"] {
+  border-color: var(--oh-line-gold);
+  background: rgba(207, 171, 99, 0.1);
+}
+.oh-log__ordinal {
+  font-size: 11px;
+  color: var(--oh-text-faint);
+}
+.oh-log__number {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--oh-ivory);
+}
+.oh-log__row[data-current="true"] .oh-log__number {
+  color: var(--oh-gold-bright);
+}
+.oh-log__tag {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: var(--oh-gold);
+}
+
+/* ------------------------------------------------------------ hall readout */
+.oh-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.oh-stat {
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: var(--oh-r-sm);
+  border: 1px solid var(--oh-line);
+  background: var(--oh-inset);
+}
+.oh-stat__value {
+  margin-top: 2px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--oh-ivory);
+}
+.oh-stat__value[data-tone="ok"] {
+  color: var(--oh-ok);
+}
+.oh-stat__value[data-tone="warn"] {
+  color: var(--oh-warn);
+}
+.oh-stat__unit {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--oh-text-faint);
+}
+
+.oh-seats {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.oh-seat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--oh-r-sm);
+  border: 1px solid transparent;
+}
+.oh-seat[data-away="true"] {
+  border-color: var(--oh-line);
+  background: rgba(255, 255, 255, 0.02);
+}
+.oh-seat__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--oh-text);
+}
+.oh-seat[data-away="true"] .oh-seat__name {
+  color: var(--oh-text-muted);
+}
+.oh-seat__host {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--oh-line-gold);
+  border-radius: 999px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--oh-gold);
+}
+.oh-seat__stat {
+  white-space: nowrap;
+  font-size: 12.5px;
+  color: var(--oh-text-muted);
+}
+.oh-seat__unit {
+  margin-left: 3px;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.oh-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ------------------------------------------------------------ voice panel */
+.oh-voice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.oh-voice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+.oh-range {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 6px;
+  border-radius: 999px;
+  background: var(--oh-line);
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+.oh-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: linear-gradient(180deg, var(--oh-gold-bright), var(--oh-gold));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.oh-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--oh-gold);
+}
+.oh-range:focus-visible {
+  outline: 2px solid var(--oh-gold-bright);
+  outline-offset: 6px;
+}
+
+.oh-console-footnote {
+  padding: 12px 14px;
+  border: 1px dashed var(--oh-line);
+  border-radius: var(--oh-r-md);
+  background: rgba(255, 255, 255, 0.015);
+}
+.oh-console-footnote .oh-caller-note + .oh-caller-note {
+  margin-top: 6px;
+}
+
+/*
+ * Phone: one column, and the draw control pinned to the bottom edge — the one
+ * thing a caller must reach without scrolling while the room is live. The bar
+ * is hidden everywhere else, where the full controls are already in view.
+ */
+.oh-console-bar {
+  display: none;
+}
+.oh-console-bar__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.oh-console-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+@media (max-width: 759px) {
+  .oh-console {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+  }
+  .oh-console-bar {
+    position: fixed;
+    inset-inline: 0;
+    bottom: 0;
+    z-index: 45;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--oh-line-gold);
+    background: linear-gradient(180deg, rgba(18, 21, 29, 0.94), rgba(6, 7, 10, 0.98));
+    backdrop-filter: blur(8px);
+  }
+}
+
+/* two cells per row on the narrowest phones: four 90px cells are illegible */
+@media (max-width: 430px) {
+  .oh-caller-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@keyframes oh-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -7,12 +7,13 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { call, clearSession, fetchState, isSeatGone, on, resumeSession } from "./net.js";
+import { call, clearSession, fetchState, isSeatGone, on, resumeSession, socket } from "./net.js";
 import {
   announce,
   celebrateSound,
   getAnnounceSettings,
   onAnnouncePending,
+  repeatAnnouncement,
   resetAnnouncements,
   seedAnnouncements,
   setAnnounceSetting,
@@ -35,6 +36,11 @@ const GameScreen = ({ role }) => {
 
   const [snap, setSnap] = useState(null);
   const [serverRole, setServerRole] = useState(null);
+  // When THIS snapshot arrived. The caller console's elapsed clock ticks locally
+  // from this anchor between snapshots (lib/caller.js:elapsedAt) instead of
+  // polling the server once a second.
+  const [snapAt, setSnapAt] = useState(0);
+  const [connected, setConnected] = useState(() => socket.connected);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [sound, setSound] = useState(getAnnounceSettings());
@@ -51,6 +57,7 @@ const GameScreen = ({ role }) => {
     const result = await fetchState();
     if (result.ok) {
       setSnap(result.snapshot);
+      setSnapAt(Date.now());
     } else if (result.code === "ROOM_NOT_FOUND") {
       // The room left the process; nothing is left to show.
       clearSession();
@@ -111,6 +118,7 @@ const GameScreen = ({ role }) => {
         }
         if (resumed.snapshot) {
           setSnap(resumed.snapshot);
+          setSnapAt(Date.now());
           // A reconnect must not read the board aloud from call 1: seed the
           // queue's replay guard with everything already called, so only FRESH
           // `number:called` events announce from here on.
@@ -132,8 +140,13 @@ const GameScreen = ({ role }) => {
 
     const off = [
       on("connect", () => {
-        if (alive) resume();
+        if (!alive) return;
+        setConnected(true);
+        resume();
       }),
+      // The console must say "not connected" rather than showing controls that
+      // would silently do nothing while the transport is down.
+      on("disconnect", () => alive && setConnected(false)),
       // Announce the number from the authoritative event itself, keyed by its
       // server call index. Feeding the queue here (and not off the snapshot's
       // `lastCall`) means two calls landing before one state fetch completes
@@ -328,6 +341,39 @@ const GameScreen = ({ role }) => {
     setSound(setAnnounceSetting("speechLang", next));
   }, [sound]);
 
+  /**
+   * The calling interval belongs to the room, not to this tab: it goes over the
+   * documented host event and the server validates, stores and re-arms the
+   * clock (server/game/engine.js:setAutoCall). Sending `intervalMs` alone leaves
+   * the auto-call switch untouched, so changing the cadence mid-round cannot
+   * accidentally stop or start the loop.
+   */
+  const setCallInterval = useCallback(
+    async (ms) => {
+      await hostAction("game:set-autocall", { intervalMs: ms });
+    },
+    [hostAction]
+  );
+
+  /**
+   * Say the CURRENT number again on this device. Not a new call: the queue's
+   * replay path refuses to overlap an utterance and never touches the server,
+   * so a repeat cannot duplicate a call or stall the draw.
+   */
+  const repeatNumber = useCallback(() => {
+    const last = snap?.lastCall;
+    if (!Number.isInteger(last)) return;
+    if (!repeatAnnouncement(last)) {
+      flash("The voice is off or still reading — nothing was repeated.", 2200);
+    }
+  }, [snap?.lastCall, flash]);
+
+  // One settings funnel for the console's voice panel (language, rate, volume,
+  // chosen voice, speech on/off); the announce layer clamps and persists.
+  const voiceSetting = useCallback((key, value) => {
+    setSound(setAnnounceSetting(key, value));
+  }, []);
+
   // All values below are derived views of the single server snapshot.
   const sheets = ticketSheets(snap);
   const view = {
@@ -352,12 +398,22 @@ const GameScreen = ({ role }) => {
     playerId: snap?.playerId,
     name: snap?.name || "",
     points: snap?.points ?? 0,
+    // caller console (§17): the round's own read-outs, all from the snapshot
+    callIntervalMs: snap?.callIntervalMs ?? null,
+    elapsedMs: snap?.elapsedMs ?? 0,
+    receivedAt: snapAt,
+    maxPlayers: snap?.maxPlayers ?? null,
+    gameNumber: snap?.gameNumber ?? null,
+    connected,
     busy,
     sound,
     message,
     onToggleSound: toggleSound,
     onToggleSpeech: toggleSpeech,
     onToggleSpeechLang: toggleSpeechLang,
+    onVoiceSetting: voiceSetting,
+    onRepeatNumber: repeatNumber,
+    onSetInterval: setCallInterval,
     onClaim: submitClaim,
     onHostAction: hostAction,
     onSelectTicketCount: selectTicketCount,

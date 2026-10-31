@@ -125,6 +125,10 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
     state: room.status,
     gameNumber: room.game_number,
     createdAt: asMillis(room.created_at),
+    // The caller console's round clock continues from this timestamp, so a
+    // restarted process does not report the round as having just begun.
+    startedAt: game ? asMillis(game.started_at) : undefined,
+    endedAt: game ? asMillis(game.completed_at) : undefined,
     hostPlayerId: room.host_player_id,
     config: room.config || {},
     players,

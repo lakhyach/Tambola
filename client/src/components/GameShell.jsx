@@ -10,8 +10,9 @@ import NumberBoard from "./NumberBoard.jsx";
 import CallHistory from "./CallHistory.jsx";
 import PlayerRoster from "./PlayerRoster.jsx";
 import GameChat from "./GameChat.jsx";
-import HostControls from "./HostControls.jsx";
 import Panel from "./Panel.jsx";
+import Toast from "./Toast.jsx";
+import CallerConsole from "./caller/CallerConsole.jsx";
 import { canClaim, claimNote, ticketPanel } from "../lib/playerview.js";
 
 /**
@@ -72,7 +73,12 @@ const TicketChoiceNotice = () => (
  * through `view.onClaim` / `view.onHostAction`. No game logic lives here.
  */
 const GameShell = ({ role, view }) => {
-  const isHost = role === "host";
+  // The host operates the room from the caller console (§17) — a dedicated
+  // surface built around the draw, the call sheet and the hall. Players keep the
+  // shared hall below. Both read the SAME server snapshot, so the two surfaces
+  // can never disagree.
+  if (role === "host") return <CallerConsole view={view} />;
+
   const waiting = view.state === "WAITING";
   // The tickets this seat owns, exactly as the server issued them — never a
   // placeholder. `panel` is the honest state of the ticket area (see
@@ -91,26 +97,7 @@ const GameShell = ({ role, view }) => {
         onToggleSpeechLang={view.onToggleSpeechLang}
       />
 
-      {view.message ? (
-        <div
-          className="oh-toast"
-          role="status"
-          aria-live="polite"
-          style={{
-            position: "fixed",
-            top: 68,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 40,
-            padding: "10px 18px",
-            maxWidth: "90vw",
-            fontSize: 14,
-            textAlign: "center",
-          }}
-        >
-          {view.message}
-        </div>
-      ) : null}
+      <Toast message={view.message} />
 
       {/* shared hero: the current call + progress, with host controls beneath */}
       <Panel className="p-4 sm:p-5 mt-4">
@@ -149,17 +136,6 @@ const GameShell = ({ role, view }) => {
           </div>
         </div>
       </Panel>
-
-      {isHost ? (
-        <div className="mt-4">
-          <HostControls
-            state={view.state}
-            autoCall={view.autoCall}
-            busy={view.busy}
-            onAction={view.onHostAction}
-          />
-        </div>
-      ) : null}
 
       {waiting && view.onSelectTicketCount ? (
         <div className="mt-4">

@@ -264,6 +264,19 @@ export class TambolaRoom {
     this.state = GameState.WAITING;
     this.createdAt = this.now();
 
+    /**
+     * Round clock — a read-out for the caller console, never an input to the
+     * game. `elapsedMs` accumulates the time the round has actually been
+     * running (paused stretches are subtracted) and `runningSince` anchors the
+     * current running stretch. The scheduler owns WHEN a number is called; this
+     * clock only says how long the round has been going. It survives a process
+     * restart from `games.started_at` (see hydrateFrom).
+     */
+    this.startedAt = null;
+    this.endedAt = null;
+    this.elapsedMs = 0;
+    this.runningSince = null;
+
     // Credentials below are server-side only. Since they never leave the
     // process (browsers hold a session token instead, see persist/sessions.js)
     // they are minted fresh on every boot, which retires any token that an
@@ -350,6 +363,24 @@ export class TambolaRoom {
     this.calledNumbers = Array.isArray(source.calledNumbers) ? source.calledNumbers.slice() : [];
     this.calledSet = new Set(this.calledNumbers);
     this.cursor = Number.isInteger(source.cursor) ? source.cursor : this.calledNumbers.length;
+
+    // Continue the round clock from the stored start time instead of zeroing
+    // it: a restarted process must not tell the host the round began at boot.
+    // Pause intervals that happened inside the previous process are not in any
+    // row, so that time is counted; the read-out is honest about its source
+    // (games.started_at) and never runs backwards.
+    this.startedAt = Number.isFinite(source.startedAt) ? source.startedAt : null;
+    this.endedAt = Number.isFinite(source.endedAt) ? source.endedAt : null;
+    this.runningSince = null;
+    if (this.state === GameState.WAITING || !this.startedAt) {
+      this.startedAt = this.state === GameState.WAITING ? null : this.startedAt;
+      this.elapsedMs = 0;
+    } else if (this.state === GameState.COMPLETED) {
+      this.elapsedMs = Math.max(0, (this.endedAt || this.now()) - this.startedAt);
+    } else {
+      this.elapsedMs = Math.max(0, this.now() - this.startedAt);
+      this.runningSince = this.state === GameState.RUNNING ? this.now() : null;
+    }
 
     this.awards = new Map();
     for (const award of source.awards || []) {
@@ -855,8 +886,44 @@ export class TambolaRoom {
     if (!STATE_TRANSITIONS[this.state].includes(target)) {
       return fail(ErrorCodes.INVALID_TRANSITION, "cannot go from " + this.state + " to " + target, { state: this.state });
     }
+    const from = this.state;
     this.state = target;
+    this.applyRoundClock(from, target);
     return ok({ state: target });
+  }
+
+  /**
+   * Keep the round clock in step with the state machine. One hook, so every
+   * path into PAUSED (host pause, host lost, recovery) stops the clock and every
+   * path into COMPLETED freezes it — there is no second place to forget.
+   */
+  applyRoundClock(from, to) {
+    const at = this.now();
+    if (to === GameState.RUNNING) {
+      if (from === GameState.WAITING) {
+        this.startedAt = at;
+        this.elapsedMs = 0;
+        this.endedAt = null;
+      }
+      this.runningSince = at;
+      return;
+    }
+    if (this.runningSince != null) {
+      this.elapsedMs = Math.max(0, this.elapsedMs + (at - this.runningSince));
+      this.runningSince = null;
+    }
+    if (to === GameState.COMPLETED) this.endedAt = at;
+    if (to === GameState.WAITING) {
+      this.startedAt = null;
+      this.endedAt = null;
+      this.elapsedMs = 0;
+    }
+  }
+
+  /** Milliseconds this round has been running; 0 before a round starts. */
+  roundElapsedMs() {
+    const running = this.runningSince == null ? 0 : Math.max(0, this.now() - this.runningSince);
+    return Math.round(this.elapsedMs + running);
   }
 
   start(auth = {}) {
@@ -1031,6 +1098,7 @@ export class TambolaRoom {
     }
     this.stopAutoCall();
     this.state = GameState.WAITING;
+    this.applyRoundClock(GameState.COMPLETED, GameState.WAITING);
     this.draw = [];
     this.cursor = 0;
     this.calledNumbers = [];
@@ -1104,6 +1172,9 @@ export class TambolaRoom {
       else this.stopAutoCall();
     }
     this.record({ type: "auto-call", enabled: this.config.autoCall, intervalMs: this.config.callIntervalMs });
+    // A changed cadence is room state every seat can see; the caller console
+    // and the players' progress read-out must not disagree about it.
+    this.emit("game:state", this.stateView());
     return ok({ autoCall: this.config.autoCall, callIntervalMs: this.config.callIntervalMs });
   }
 
@@ -1360,6 +1431,12 @@ export class TambolaRoom {
       autoCall: Boolean(this.config.autoCall),
       callIntervalMs: this.config.callIntervalMs,
       enabledPatterns: enabledPatternIds(this.config),
+      // Caller read-outs. Still no future draw: these say how long the round
+      // has run and how big the room is, never which number comes next.
+      startedAt: this.startedAt,
+      elapsedMs: this.roundElapsedMs(),
+      gameNumber: this.gameNumber,
+      maxPlayers: this.config.maxPlayers,
     };
   }
 

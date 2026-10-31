@@ -29,6 +29,10 @@
  *      utterances until the user re-enables speech.
  *   5. `mute()` stops the current utterance and empties the queue; `reset()`
  *      forgets seen numbers between rounds without touching the server.
+ *   6. `replay(n)` is the host's "say that again" control. It is the ONE path
+ *      allowed to speak a number twice, it clears whatever was waiting first so
+ *      nothing stacks behind it, and it never touches the replay guard — so a
+ *      repeated number can never be mistaken for a new call.
  *
  * Architecture: this queue is pure presentation. The server's draw, clock and
  * awards are entirely authoritative; nothing here can alter game state, a
@@ -67,6 +71,8 @@ export const DEFAULT_ANNOUNCE_OPTIONS = Object.freeze({
  *   this module only ever calls it after the previous promise settled.
  *   Returning null means "no engine available right now".
  * @param {()=>string} [deps.language] current speech language, "en" | "hi"
+ * @param {()=>number} [deps.rate] speech rate, 0.5–2; the watchdog scales with
+ *   it so a slow voice is never killed mid-sentence for being slow
  * @param {(n:number, lang:string)=>string} deps.toWords spoken form of a number
  * @param {(n:number)=>void} [deps.onStart] fired when an utterance starts (chime)
  * @param {(name:string, payload:object)=>void} [deps.emitEvent] timestamped
@@ -80,6 +86,7 @@ export function createAnnounceQueue(deps = {}) {
     now = () => Date.now(),
     speak,
     language = () => "en",
+    rate = () => 1,
     toWords = (n) => String(n),
     onStart = null,
     emitEvent = null,
@@ -124,7 +131,9 @@ export function createAnnounceQueue(deps = {}) {
   }
 
   function estimateMs(text) {
-    return Math.min(opt.watchdogMaxMs, Math.round((opt.minSpeakMs + text.length * opt.perCharMs) * opt.watchdogFactor) + 2500);
+    const speed = Math.min(2, Math.max(0.5, Number(rate()) || 1));
+    const spoken = (opt.minSpeakMs + text.length * opt.perCharMs) / speed;
+    return Math.min(opt.watchdogMaxMs, Math.round(spoken * opt.watchdogFactor) + 2500);
   }
 
   function settleCurrent(reason) {
@@ -271,6 +280,26 @@ export function createAnnounceQueue(deps = {}) {
     if (Number.isInteger(seq) && seq > highWater) highWater = seq;
   }
 
+  /**
+   * Say an already-called number again, on the host's explicit request.
+   *
+   * This is the only way the same number is spoken twice. It clears the queue
+   * first (a repeat is "say THAT now", not "join the back of the line"), it
+   * refuses when the queue is already saying that exact number, and it leaves
+   * `highWater` alone so the official-call dedupe is unaffected.
+   */
+  function replay(number) {
+    if (!Number.isInteger(number) || number < 1 || number > 90) return false;
+    if (!enabled || dead) return false;
+    if (current && current.number === number) return false;
+    stop();
+    queue.push({ number, seq: highWater, replay: true });
+    fire("enqueue", { number, seq: highWater, pending: queue.length, replay: true });
+    notify();
+    pump();
+    return true;
+  }
+
   function setEnabled(on) {
     const next = Boolean(on);
     if (next === enabled) {
@@ -332,6 +361,7 @@ export function createAnnounceQueue(deps = {}) {
   return {
     enqueue,
     markSeen,
+    replay,
     setEnabled,
     stop,
     reset,

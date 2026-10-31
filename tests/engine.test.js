@@ -541,7 +541,8 @@ test("no snapshot reveals the future draw", () => {
     assert.equal(json.includes(JSON.stringify(h.room.draw)), false, `${label} leaked the whole shuffle`);
   }
 
-  // what IS exposed: exactly the called prefix plus a count
+  // what IS exposed: exactly the called prefix plus a count, plus the caller
+  // console's clock read-outs (elapsed time, room capacity) — still no draw
   const snap = h.room.publicSnapshot();
   assert.equal(snap.calledNumbers.length, 12);
   assert.equal(snap.remaining, 78);
@@ -550,12 +551,18 @@ test("no snapshot reveals the future draw", () => {
     "autoCall",
     "callIntervalMs",
     "calledCount",
+    "elapsedMs",
     "enabledPatterns",
+    "gameNumber",
     "lastCall",
+    "maxPlayers",
     "remaining",
     "roomId",
+    "startedAt",
     "state",
   ]);
+  assert.equal(typeof snap.elapsedMs, "number");
+  assert.equal(snap.maxPlayers, 100);
 });
 
 test("the audit trail is host-only and bounded", () => {

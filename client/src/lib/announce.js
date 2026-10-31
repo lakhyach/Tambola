@@ -18,10 +18,14 @@
  * numbers instead of sliding permanently behind. Each device announces for
  * itself; nothing here can change game state or slow the server's clock.
  *
- * Settings (speech on/off, chime on/off, voice language) persist per device
- * in localStorage — speech still only ever STARTS after a user gesture in this
- * session, because the browser's autoplay policy demands it and the toggle is
- * that gesture.
+ * Settings (speech on/off, chime on/off, voice language, a chosen voice, rate
+ * and volume) persist per device in localStorage — speech still only ever
+ * STARTS after a user gesture in this session, because the browser's autoplay
+ * policy demands it and the toggle is that gesture.
+ *
+ * Nothing here is authoritative about the game. A voice that is slow, silent,
+ * missing or dead changes only what this one browser hears; the displayed
+ * number, the call history and every player's screen come from the server.
  */
 
 import { createAnnounceQueue } from "./announce-queue.js";
@@ -29,7 +33,23 @@ import { speakWord } from "./number-words.js";
 
 const STORE_KEY = "tambola.announce.v1";
 
-let settings = { speech: false, chime: false, speechLang: "en" };
+/** Spoken numbers are unintelligible outside this range; the UI offers 0.75–1.5. */
+export const RATE_MIN = 0.5;
+export const RATE_MAX = 2;
+
+export function clampRate(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.round(Math.min(RATE_MAX, Math.max(RATE_MIN, n)) * 100) / 100;
+}
+
+export function clampVolume(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.round(Math.min(1, Math.max(0, n)) * 100) / 100;
+}
+
+let settings = { speech: false, chime: false, speechLang: "en", voiceURI: null, rate: 1, volume: 1 };
 let audioCtx = null;
 let cachedVoices = [];
 
@@ -41,6 +61,9 @@ try {
       settings.speech = Boolean(saved.speech);
       settings.chime = Boolean(saved.chime);
       settings.speechLang = saved.speechLang === "hi" ? "hi" : "en";
+      settings.voiceURI = typeof saved.voiceURI === "string" && saved.voiceURI ? saved.voiceURI : null;
+      settings.rate = clampRate(saved.rate);
+      settings.volume = clampVolume(saved.volume);
     }
   }
 } catch {
@@ -137,15 +160,29 @@ if (typeof window !== "undefined" && "speechSynthesis" in window) {
   }
 }
 
-/** Pick the best available voice for a language; null means "engine default". */
-function pickVoice(lang) {
+/**
+ * Pick the voice to speak with.
+ *
+ * A chosen voice is honoured only when the browser still lists it AND it
+ * belongs to the language being spoken — voice lists differ per operating
+ * system, and a saved Hindi voice must not read English numbers (or vanish
+ * silently on a machine that never had it). Anything else falls back to the
+ * best available voice for the language; null means "engine default".
+ */
+function pickVoice(lang, preferredURI = settings.voiceURI) {
   if (!cachedVoices.length) refreshVoices();
+  const family = lang === "hi" ? /^hi/i : /^en/i;
+  if (preferredURI) {
+    const chosen = cachedVoices.find(
+      (v) => (v.voiceURI === preferredURI || v.name === preferredURI) && v.lang && family.test(v.lang)
+    );
+    if (chosen) return chosen;
+  }
   const want = lang === "hi" ? ["hi-IN", "hi"] : ["en-IN", "en-GB", "en-US", "en"];
   for (const tag of want) {
     const exact = cachedVoices.find((v) => v.lang && v.lang.toLowerCase().replace("_", "-") === tag.toLowerCase());
     if (exact) return exact;
   }
-  const family = lang === "hi" ? /^hi/i : /^en/i;
   return cachedVoices.find((v) => v.lang && family.test(v.lang)) || null;
 }
 
@@ -157,7 +194,12 @@ function pickVoice(lang) {
 function speakOne(text, meta) {
   if (!available().speech) return null;
   let settled = false;
-  const utter = new SpeechSynthesisUtterance(text);
+  let utter;
+  try {
+    utter = new SpeechSynthesisUtterance(text);
+  } catch {
+    return { promise: Promise.resolve({ reason: "failed" }) };
+  }
   const langTag = meta.lang === "hi" ? "hi-IN" : "en-IN";
   const voice = pickVoice(meta.lang);
   if (voice) {
@@ -166,8 +208,8 @@ function speakOne(text, meta) {
   } else {
     utter.lang = langTag; // graceful: engine decides with the tag alone
   }
-  utter.rate = 1;
-  utter.pitch = 1;
+  utter.rate = clampRate(settings.rate);
+  utter.volume = clampVolume(settings.volume);
   const promise = new Promise((resolve) => {
     const done = (reason) => {
       if (settled) return;
@@ -198,6 +240,7 @@ function speakOne(text, meta) {
 const queue = createAnnounceQueue({
   speak: speakOne,
   language: () => settings.speechLang,
+  rate: () => settings.rate,
   toWords: (n, lang) => speakWord(n, lang),
   onStart: () => {
     // the chime rides WITH its utterance, so sound and voice stay together
@@ -266,7 +309,43 @@ export function celebrateSound() {
 }
 
 export function getAnnounceSettings() {
-  return { ...settings, available: available(), pending: queue.pendingCount(), dead: queue.isDead() };
+  return {
+    ...settings,
+    available: available(),
+    pending: queue.pendingCount(),
+    speaking: queue.speakNow(),
+    dead: queue.isDead(),
+    enabled: queue.isEnabled(),
+  };
+}
+
+/**
+ * What this browser can actually do for a language, so the console can say
+ * "no Hindi voice here" instead of silently reading English. `savedVoiceMissing`
+ * is true when the host chose a voice on another machine and this one does not
+ * list it — the fallback is used, and the console says so.
+ */
+export function voiceSupport(lang = settings.speechLang) {
+  const voices = listSpeechVoices(lang);
+  const savedVoiceMissing = Boolean(
+    settings.voiceURI && !listSpeechVoices(lang).some((v) => v.uri === settings.voiceURI)
+  );
+  return {
+    engine: available().speech,
+    voices: voices.length,
+    lang,
+    savedVoiceMissing,
+    selected: settings.voiceURI,
+  };
+}
+
+/**
+ * Say the current number again, on the host's explicit request. Returns false
+ * when there is no voice to say it with, or when that number is already being
+ * spoken — a repeat must not become a stutter.
+ */
+export function repeatAnnouncement(number) {
+  return queue.replay(number);
 }
 
 /** Count of announcements waiting behind the current one (for the UI). */
@@ -283,7 +362,9 @@ export function onAnnouncePending(fn) {
 export function listSpeechVoices(lang = settings.speechLang) {
   refreshVoices();
   const family = lang === "hi" ? /^hi/i : /^en/i;
-  return cachedVoices.filter((v) => v.lang && family.test(v.lang)).map((v) => ({ name: v.name, lang: v.lang }));
+  return cachedVoices
+    .filter((v) => v.lang && family.test(v.lang))
+    .map((v) => ({ name: v.name, lang: v.lang, uri: v.voiceURI || v.name, local: v.localService !== false }));
 }
 
 /** Toggle one setting. Returns the new settings (with availability flags). */
@@ -300,6 +381,16 @@ export function setAnnounceSetting(key, value) {
     settings.speechLang = value === "hi" ? "hi" : "en";
     // changing language mid-utterance: stop what is playing, keep the order
     queue.stop();
+    save();
+  } else if (key === "voiceURI") {
+    settings.voiceURI = typeof value === "string" && value ? value : null;
+    // the next utterance uses the new voice; the current one finishes
+    save();
+  } else if (key === "rate") {
+    settings.rate = clampRate(value);
+    save();
+  } else if (key === "volume") {
+    settings.volume = clampVolume(value);
     save();
   }
   return getAnnounceSettings();
