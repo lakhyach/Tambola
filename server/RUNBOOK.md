@@ -107,7 +107,7 @@ npm start
 ## 4. Database and migrations
 
 Migrations are hand-written, versioned and checksummed files in
-`server/db/migrations/` (`001_init`, `002_owner`, `003_hardening`). The runner
+`server/db/migrations/` (`001_init.sql` through `021_preserve_booking_audit_assignment.sql` as currently shipped). The runner
 (`npm run migrate`, which the server also runs at boot) applies each exactly
 once inside its own transaction, records a SHA-256 checksum, and serialises
 concurrent boots with an advisory lock.
@@ -122,16 +122,17 @@ concurrent boots with an advisory lock.
 
 ## 5. The single-instance rule
 
-**Exactly one server process may run against a given database at a time.** This
-is not a preference; it is enforced.
+**Exactly one server process may run against a given database schema at a time.**
+This is not a preference; it is enforced. Regular, Bumper and other game
+instances inside the same application schema share that one server and scheduler.
 
-- On boot, the durable server takes a PostgreSQL **session advisory lock**
-  (`pg_try_advisory_lock(INSTANCE_LOCK_KEY)`) on a dedicated connection it holds
-  for the life of the process.
-- If a second process tries to boot against the same database, the lock is
+- On boot, the durable server takes a PostgreSQL **session advisory lock** whose
+  key is derived from `DB_SCHEMA` (`pg_try_advisory_lock` with two integer key
+  parts), on a dedicated connection it holds for the life of the process.
+- If a second process tries to boot against the same database and schema, the lock is
   already held, `pg_try_advisory_lock` returns false, and startup throws
-  `INSTANCE_LOCKED`. The bootstrap prints
-  `another server already owns this database` and exits non-zero. You will never
+  `INSTANCE_LOCKED`. The bootstrap reports that another server already owns the
+  database schema and exits non-zero. You will never
   get two schedulers racing.
 - A background **heartbeat** refreshes the lease row on that same connection
   every `LEASE_HEARTBEAT_MS`. If the refresh fails or the row now names a
@@ -140,10 +141,11 @@ is not a preference; it is enforced.
   monitor, marks itself draining, and answers `503` on readiness for the
   supervisor to act on. A half-alive instance that keeps calling numbers on a
   database it no longer owns is far worse than one that stops.
-- The lock is keyed to the **cluster/database**, not the schema. Running two
-  isolated deployments against one cluster therefore needs either two databases
-  or two clusters — a distinct `DB_SCHEMA` alone does **not** allow two live
-  servers on one database.
+- The lock is schema-scoped inside the PostgreSQL database. Separate application
+  deployments can use distinct `DB_SCHEMA` values in one database; their tables,
+  migration ledgers and leases are separate. They still share database capacity
+  and must each have only one process per schema. The platform's Regular/Bumper
+  tenants are rows inside one schema, not separate server processes.
 
 **Why not just scale horizontally?** The per-room clock lives in this process,
 and a room's authoritative state is rebuilt into memory before it can be driven.
@@ -290,11 +292,15 @@ unit.
   command's own logs, or the manifest.
 - Use `npm run db:restore-check` (optionally `-- <archive.dump>`, else the newest
   in `BACKUP_DIR`) to prove a real restore. It creates a brand-new **throwaway
-  database** on the same cluster, `pg_restore`s the archive into it, checks that
+  database** on the same cluster, checks the archive SHA-256 against its
+  manifest, `pg_restore`s it into the scratch database, checks that
   the migration ledger, the table inventory and every row count match the backup
   manifest, verifies the restored call logs are contiguous prefixes of their
   stored draws (so a room's history is genuinely readable), then drops the
-  throwaway database. It never restores into the source.
+  throwaway database. It never restores into the source. The result is also
+  written beside the archive as a credential-free `.restore-check.json` status
+  record. The owner Settings page shows archive and restore-check status from
+  `BACKUP_DIR`; it does not trigger backups or restores.
 - The tools need a driver: put `pg_dump`/`pg_restore` on `PATH`, or set `PG_BIN`
   to their directory, or — when the database runs in a container with no host
   client tools — set `PG_CONTAINER` (e.g. `tambola-pg`, optional
@@ -328,6 +334,15 @@ exactly:
   chatty load balancer cannot stampede the database.
 - `GET /healthz` — the same facts as one JSON object for an operator or script,
   including room counts (`{ live, frozen }`) and the persistence `mode`.
+
+The authenticated Super Admin overview presents a bounded owner-health summary
+from that same probe: readiness, migration status, lease state, live/frozen room
+counts, scheduler status, database-pool occupancy/errors and process uptime. The
+owner-only `GET /api/admin/health` returns the same summary. These views do not
+configure alert delivery. On the production host, point process supervision at
+`/livez`, traffic readiness at `/readyz`, and an external monitor at `/healthz`;
+configure alert thresholds and delivery in the host's monitoring system after
+the account and plan are confirmed.
 
 No probe ever returns a connection string, a query, a stack trace or a secret.
 Memory mode answers ready with `durable: false` and an explicit note; in
@@ -389,14 +404,26 @@ a
 Fly.io/Render/Railway-style long-running service, or an app server behind a
 reverse proxy that sets `TRUST_PROXY=1` and terminates TLS.
 
+Moderator account lifecycle and key recovery are documented in
+[`MODERATOR-SECURITY.md`](MODERATOR-SECURITY.md). Apply the full current migration
+chain before exposing moderator routes; the checked-in chain currently ends at
+`021_preserve_booking_audit_assignment.sql`. Deliver invitation
+and owner-issued one-time recovery tokens only through a private channel. A
+recovered moderator must enroll MFA again; never send or log a raw token outside
+that one-time owner response. Keep `OWNER_MFA_KEY` backed up separately, and
+verify moderator grant audit activity after changes. Revocation applies on the
+principal's next HTTP request or Socket.IO command.
+
 ## 12. Deploy checklist
 
 Before calling a deployment ready, confirm every line:
 
 - [ ] `DATABASE_URL` points at a managed PostgreSQL instance the process can keep
-      open; `DB_SCHEMA` is set if you isolate deployments on one cluster.
+      open; `DB_SCHEMA` is unique for each isolated application deployment that
+      shares this database. Keep exactly one app process per database/schema pair.
 - [ ] Migrations have run (`npm run migrate`, or the server boot reported them);
-      `schema_migrations` lists `001`, `002`, `003`.
+      `schema_migrations` matches all checked-in migrations through
+      `021_preserve_booking_audit_assignment.sql` (current chain).
 - [ ] `NODE_ENV=production`, and TLS is terminated in front of the server.
 - [ ] `PUBLIC_ORIGIN` is the exact public HTTPS origin.
 - [ ] `TRUST_PROXY=1` when behind a proxy; `ALLOWED_ORIGINS` left empty for
@@ -406,8 +433,9 @@ Before calling a deployment ready, confirm every line:
       secret manager, and **backed up separately** from the database.
 - [ ] The owner account exists (`npm run owner:list`) and, ideally, has MFA
       enrolled.
-- [ ] Exactly one instance runs against this database. The platform's instance
-      count is pinned to 1; a second boot is expected to exit `INSTANCE_LOCKED`.
+- [ ] Exactly one app process runs against this database/schema pair. The
+      platform's replica count is pinned to 1; a second boot on that same schema
+      is expected to exit `INSTANCE_LOCKED`.
 - [ ] Liveness is wired to `/livez`, readiness to `/readyz`, and the container
       stop grace period exceeds 5 seconds so shutdown drains.
 - [ ] Backups run on a schedule and a restore has actually been exercised with
@@ -415,3 +443,9 @@ Before calling a deployment ready, confirm every line:
 - [ ] The full test suite passes with the server **stopped**
       (`node --env-file-if-exists=.env --test "tests/*.test.js"`), the client
       builds, and lint is clean.
+
+### Rechecking a frozen durable room
+
+A recovery error freezes the room and leaves it out of live operations. Review the owner room detail's recovery note and the corresponding room/booking/member history. For a booking-linked seat, compare `ticket_reservations.player_id`, `room_code`, `status`, and `ticket_count` with the member identified by `room_members.booking_reservation_id` (`player_id`, `room_code`, and `ticket_count`). These records are retained; do not delete or recreate the reservation to get a room online.
+
+Only an operator with the authoritative booking/game records should arrange a corrective database transaction. Take and verify a backup first, preserve append-only reservation audit history, and keep the room frozen while correcting it. Then use **Recheck recovery** on the owner room detail page. The server reruns hydration and integrity checks, writes an owner audit event, and only restores the room when all checks pass. A failed recheck leaves it frozen. The endpoint does not perform data repair or make inconsistent fields agree automatically.

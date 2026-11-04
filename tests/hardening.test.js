@@ -32,6 +32,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { compareSnapshots, driverAvailable, parseConnection } from "../scripts/pg-cli.js";
+import { openDurableSchema } from "./pattern-harness.js";
 
 import { createApp } from "../server/index.js";
 import {
@@ -131,8 +132,8 @@ describe("second-factor key handling", () => {
   });
 
   test("the provisioning uri names the issuer and the account", () => {
-    const uri = provisioningUri({ secret: generateSecret(), username: "operator", issuer: "Tambola" });
-    assert.match(uri, /^otpauth:\/\/totp\/Tambola:/);
+    const uri = provisioningUri({ secret: generateSecret(), username: "operator" });
+    assert.match(uri, /^otpauth:\/\/totp\/Ninety%20Club:/);
     assert.match(uri, /[?&]secret=[A-Z2-7]+/);
     assert.match(uri, /[?&]period=30/);
     assert.match(uri, /[?&]digits=6/);
@@ -905,6 +906,21 @@ describe("liveness, readiness and graceful shutdown over HTTP", () => {
     }
   });
 
+  test("CSP allows local Draco workers and GLB blob reads without enabling blob scripts", async () => {
+    const { instance, base } = await memoryInstance();
+    try {
+      const response = await fetch(base + "/livez");
+      const policy = response.headers.get("content-security-policy") || "";
+      assert.match(policy, /worker-src 'self' blob:/);
+      assert.match(policy, /connect-src 'self' blob: ws: wss:/);
+      assert.match(policy, /script-src 'self' 'wasm-unsafe-eval'/);
+      assert.doesNotMatch(policy, /(?:^|\s)'unsafe-eval'(?:\s|;|$)/);
+      assert.doesNotMatch(policy, /script-src[^;]*blob:/);
+    } finally {
+      await instance.closeServer();
+    }
+  });
+
   test("an allow-listed origin comes back as itself, not as the word true", async () => {
     // The HTTP middleware once set Access-Control-Allow-Origin from the boolean
     // verdict, so every allow-listed browser was answered `true` — a header no
@@ -1027,11 +1043,12 @@ describe("backup snapshot comparison (pure)", () => {
 });
 
 describe("real isolated database restore (pg_dump + pg_restore)", () => {
-  test("a backup restores faithfully into a throwaway database and passes integrity checks", { skip: restoreSkip, timeout: 180_000 }, () => {
+  test("a backup restores faithfully into a throwaway database and passes integrity checks", { skip: restoreSkip, timeout: 180_000 }, async () => {
+    const fixture = await openDurableSchema({ prefix: "backup" });
     // A dedicated scratch backup dir so this run never reads a stale archive.
     const backupDir = path.join(SCRIPTS, "..", "backups", "selfcheck_" + randomBytes(4).toString("hex"));
     fs.mkdirSync(backupDir, { recursive: true });
-    const env = { ...process.env, BACKUP_DIR: backupDir };
+    const env = { ...process.env, BACKUP_DIR: backupDir, DB_SCHEMA: fixture.schema };
     const run = (script) =>
       spawnSync(process.execPath, ["--env-file-if-exists=.env", path.join(SCRIPTS, script)], { cwd: path.join(SCRIPTS, ".."), env, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
     try {
@@ -1052,6 +1069,13 @@ describe("real isolated database restore (pg_dump + pg_restore)", () => {
       assert.match(verify.stdout, /RESTORE CHECK PASSED/, "the isolated restore verified");
       assert.match(verify.stdout, /created throwaway database/, "into a throwaway database");
       assert.match(verify.stdout, /dropped throwaway database/, "which was cleaned up afterwards");
+      const verificationPath = path.join(backupDir, dumps[0].replace(/\.dump$/, ".restore-check.json"));
+      const verification = JSON.parse(fs.readFileSync(verificationPath, "utf8"));
+      assert.equal(verification.status, "passed");
+      assert.equal(verification.checksumStatus, "match", "the archive digest matches the manifest before restore");
+      assert.equal(verification.archive, dumps[0]);
+      assert.equal(verification.issueCount, 0);
+      assert.equal("database" in verification, false, "restore status stores no database connection details");
       // No credential ever appears in either command's own output.
       const pw = (() => { try { return parseConnection(process.env.DATABASE_URL).password; } catch { return null; } })();
       if (pw) {
@@ -1059,6 +1083,7 @@ describe("real isolated database restore (pg_dump + pg_restore)", () => {
       }
     } finally {
       fs.rmSync(backupDir, { recursive: true, force: true });
+      await fixture.close();
     }
   });
 });

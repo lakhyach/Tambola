@@ -1,4 +1,5 @@
 /* eslint-disable react/prop-types */
+import { FaBroadcastTower, FaDoorOpen, FaTicketAlt, FaTrophy, FaUsers } from "react-icons/fa";
 import GameHeader from "./GameHeader.jsx";
 import CurrentNumberReveal from "./CurrentNumberReveal.jsx";
 import GameProgress from "./GameProgress.jsx";
@@ -14,208 +15,93 @@ import Panel from "./Panel.jsx";
 import Toast from "./Toast.jsx";
 import CallerConsole from "./caller/CallerConsole.jsx";
 import YourResult from "./YourResult.jsx";
+import { PlayerControlDock, PlayerCurrentPattern } from "./PlayerGameExtras.jsx";
+import { getNumberCallout } from "../lib/number-callouts.js";
 import { canClaim, claimNote, ticketPanel } from "../lib/playerview.js";
 import { callAnnouncement } from "../lib/ticketview.js";
+import { bookingClaimNote, bookingCopy, formatBookingNumber, useBookingLanguage } from "../i18n/booking-locale.js";
 
-/**
- * Shown to a participant who joined while a round was already in progress. The
- * server never issues tickets after a start, so such a seat has none and cannot
- * claim. Rather than a broken-looking empty ticket + dead claim buttons, this
- * states the rule plainly: watch this round, pick tickets when the next starts.
- */
-const SpectatorNotice = () => (
+/** Ticket absence has two real meanings; neither should produce a fake grid. */
+const TicketNotice = ({ spectator, language }) => (
   <Panel className="p-5">
-    <div className="flex flex-col items-start gap-2">
-      <span
-        className="oh-eyebrow"
-        style={{ color: "var(--oh-gold)", letterSpacing: ".16em" }}
-      >
-        Watching this round
-      </span>
-      <h2 className="oh-display" style={{ fontSize: 20, margin: 0 }}>
-        You joined mid-game
-      </h2>
-      <p style={{ color: "var(--oh-text-muted)", fontSize: 14, margin: 0, maxWidth: "46ch" }}>
-        Tickets can only be chosen before a round starts, so you’re watching this
-        one. Follow the board and chat, and you can pick your tickets as soon as
-        the host opens the next round — your seat is already saved for it.
-      </p>
-    </div>
+    <span className="oh-eyebrow">{bookingCopy(language, spectator ? "watchingRound" : "noTicketYet")}</span>
+    <h2 className="oh-display">{bookingCopy(language, spectator ? "joinedMidGame" : "chooseTicketsHowMany")}</h2>
+    <p>{bookingCopy(language, spectator ? "joinedMidGameHelp" : "ticketDealtExplanation")}</p>
   </Panel>
 );
 
-/**
- * Shown before the first ticket of a round exists. Nothing is wrong and nothing
- * is broken: the picker directly above this panel is the control that produces
- * the ticket, so this says where to look instead of drawing an empty grid.
- */
-const TicketChoiceNotice = () => (
-  <Panel className="p-5">
-    <div className="flex flex-col items-start gap-2">
-      <span
-        className="oh-eyebrow"
-        style={{ color: "var(--oh-gold)", letterSpacing: ".16em" }}
-      >
-        No ticket yet
-      </span>
-      <h2 className="oh-display" style={{ fontSize: 20, margin: 0 }}>
-        Choose how many you want to play
-      </h2>
-      <p style={{ color: "var(--oh-text-muted)", fontSize: 14, margin: 0, maxWidth: "46ch" }}>
-        Pick a number of tickets above and the server deals them here straight
-        away. They are locked in the moment the host starts the round.
-      </p>
-    </div>
-  </Panel>
-);
-
-/**
- * The composed game screen — presentation only. It reads every value from the
- * `view` object GameScreen derives from the server snapshot, and calls back out
- * through `view.onClaim` / `view.onHostAction`. No game logic lives here.
- */
-const GameShell = ({ role, view }) => {
-  // The host operates the room from the caller console (§17) — a dedicated
-  // surface built around the draw, the call sheet and the hall. Players keep the
-  // shared hall below. Both read the SAME server snapshot, so the two surfaces
-  // can never disagree.
+/** Composition only: game values and actions all belong to GameScreen. */
+const GameShell = ({ role, view, sessionResumeCount }) => {
+  const language = useBookingLanguage();
   if (role === "host") return <CallerConsole view={view} />;
 
-  const waiting = view.state === "WAITING";
-  // The tickets this seat owns, exactly as the server issued them — never a
-  // placeholder. `panel` is the honest state of the ticket area (see
-  // lib/playerview.js): real tickets, "not chosen yet", or "watching this round".
   const tickets = view.tickets || [];
   const panel = ticketPanel({ state: view.state, sheets: tickets });
   const claimable = canClaim({ state: view.state, sheets: tickets });
+  const t = (key, variables) => bookingCopy(language, key, variables);
+  const hi = language === "hi";
+  const eventName = typeof document !== "undefined" ? document.documentElement.dataset.instanceName : "";
+  // The voice selector changes spoken output only; visible game copy remains English.
+  const callout = getNumberCallout(view.lastCall, { language: "en", festival: view.sound?.festival });
 
   return (
-    <div className="oh-app-shell">
-      <GameHeader
-        roomId={view.roomId}
-        sound={view.sound}
-        onToggleSound={view.onToggleSound}
-        onToggleSpeech={view.onToggleSpeech}
-        onToggleSpeechLang={view.onToggleSpeechLang}
-      />
+    <div className="oh-app-shell player-festival" lang={hi ? "hi" : "en"}>
+      <a className="public-skip-link" href="#main-content">{t("skipToGame")}</a>
+      <GameHeader roomId={view.roomId} state={view.state} playerCount={view.players.length} language={language} sound={view.sound} onToggleSound={view.onToggleSound} onToggleSpeech={view.onToggleSpeech} onToggleSpeechLang={view.onToggleSpeechLang} />
+      <main id="main-content" tabIndex="-1" className="player-game-main">
+        <h1 className="oh-sr-only">{t("liveGameHeading")}</h1>
+        <Toast message={view.message} />
+        <div className="oh-sr-only" role="status" aria-live="polite" aria-atomic="true" data-call-announcer="true">{callAnnouncement(view.lastCall, view.remaining)}</div>
+        <PlayerControlDock view={view} language={language} />
+        {view.connected === false ? <p className="player-connection-notice" role="status">{hi ? "कनेक्शन टूट गया। रूम से फिर जुड़ रहे हैं…" : "Connection lost. Reconnecting to your room…"}</p> : null}
 
-      <Toast message={view.message} />
+        <div className="player-live-layout">
+          <aside className="player-live-sidebar" aria-label={t("inTheHall")}>
+            <Panel className="player-game-info">
+              <span className="player-game-info__eyebrow"><FaBroadcastTower />{hi ? "लाइव गेम" : "THE LIVE EXPERIENCE"}</span>
+              <h2>{eventName || (hi ? "तंबोला महफ़िल" : "Tambola Celebration")}</h2>
+              <dl>
+                <div><dt><FaDoorOpen />{t("room")}</dt><dd>{view.roomId || "—"}</dd></div>
+                <div><dt><FaUsers />{hi ? "खिलाड़ी" : "Players"}</dt><dd>{formatBookingNumber(view.players.length, language)}</dd></div>
+                <div><dt><FaTicketAlt />{t("myTickets")}</dt><dd>{formatBookingNumber(tickets.length, language)}</dd></div>
+                <div><dt><FaTrophy />{t("yourScore")}</dt><dd>{formatBookingNumber(view.points ?? 0, language)}</dd></div>
+              </dl>
+              <span className="player-game-info__state" data-state={view.state.toLowerCase()}><i aria-hidden="true" />{t(`state${view.state}`)}</span>
+            </Panel>
+            <div className="player-game-chat"><GameChat sessionResumeCount={sessionResumeCount} /></div>
+            <details className="player-hall-details"><summary><FaUsers />{hi ? "खिलाड़ी और स्कोर" : "Players & scores"}<span>{formatBookingNumber(view.players.length, language)}</span></summary><PlayerRoster players={view.players} leaderboard={view.leaderboard} myPlayerId={view.playerId} state={view.state} language={language} /></details>
+          </aside>
 
-      {/*
-        The board is visual; this is its spoken twin. A screen-reader user hears
-        each official call once, in the same words the chime announces, instead
-        of having to poll a 90 tile grid. It is polite and not atomic per tile,
-        so a fast auto-call queue cannot interrupt itself.
-      */}
-      <div className="oh-sr-only" role="status" aria-live="polite" aria-atomic="true" data-call-announcer="true">
-        {callAnnouncement(view.lastCall, view.remaining)}
-      </div>
-
-      {/* shared hero: the current call + progress, with host controls beneath */}
-      <Panel className="p-4 sm:p-5 mt-4" data-hero="true">
-        <div
-          className="flex flex-col items-center gap-5"
-          style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}
-        >
-          <div style={{ flex: "0 0 auto" }}>
-            <CurrentNumberReveal
-              number={view.lastCall}
-              callIndex={view.calledCount}
-              total={90}
-              voicePending={view.sound && view.sound.speech ? view.sound.pending || 0 : 0}
-            />
-          </div>
-          <div style={{ flex: "1 1 240px", minWidth: 220 }}>
-            <GameProgress
-              state={view.state}
-              calledCount={view.calledCount}
-              remaining={view.remaining}
-            />
-            <div className="flex items-center justify-between mt-4">
-              <div className="leading-tight">
-                <div className="oh-eyebrow">Your score</div>
-                <div className="oh-num" style={{ fontSize: 26, fontWeight: 700, color: "var(--oh-gold-bright)" }}>
-                  {view.points ?? 0}
-                </div>
+          <section className="player-live-stage" aria-label={t("liveGameHeading")}>
+            <Panel className="player-game-hero" data-hero="true">
+              <div className="player-stage-caption"><span><FaBroadcastTower />{t(`state${view.state}`)}</span>{view.gameNumber > 0 ? <span>{t("round")} #{formatBookingNumber(view.gameNumber, language)}</span> : null}</div>
+              <div className="player-game-hero__layout">
+                <div className="player-caller-speech"><strong>{view.lastCall == null ? (hi ? "महफ़िल तैयार है!" : "Let the celebration begin!") : `${hi ? "नंबर" : "Number"} ${formatBookingNumber(view.lastCall, language)}!`}</strong><span>{callout || (hi ? "पहले आधिकारिक नंबर का इंतज़ार है।" : "Waiting for the first official call.")}</span></div>
+                <div className="player-game-hero__ball"><CurrentNumberReveal number={view.lastCall} callIndex={view.calledCount} total={90} language={language} voicePending={view.sound?.speech ? view.sound.pending || 0 : 0} /></div>
               </div>
-              {view.name ? (
-                <div className="text-right leading-tight">
-                  <div className="oh-eyebrow">Playing as</div>
-                  <div style={{ fontSize: 15 }}>{view.name}</div>
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      </Panel>
+            </Panel>
+            <div className="player-live-history"><CallHistory calledNumbers={view.calledNumbers} language={language} /></div>
+            {view.state === "WAITING" && view.onSelectTicketCount ? <div className="player-live-picker"><TicketPicker value={view.ticketCount ?? 1} max={view.maxTickets ?? 1} disabled={view.busy} language={language} onPick={view.onSelectTicketCount} /></div> : null}
+            <YourResult state={view.state} leaderboard={view.leaderboard} awards={view.awards} myPlayerId={view.playerId} playerName={view.name} tickets={tickets} calledNumbers={view.calledNumbers} language={language} />
+          </section>
 
-      {waiting && view.onSelectTicketCount ? (
-        <div className="mt-4">
-          <TicketPicker
-            value={view.ticketCount ?? 1}
-            max={view.maxTickets ?? 1}
-            disabled={view.busy}
-            onPick={view.onSelectTicketCount}
-          />
-        </div>
-      ) : null}
+          <aside className="player-live-board" aria-label={hi ? "बोर्ड और पैटर्न" : "Board and patterns"}>
+            <NumberBoard calledNumbers={view.calledNumbers} currentNumber={view.lastCall} language={language} />
+            <Panel className="player-game-progress"><h2>{hi ? "गेम की प्रगति" : "Game Progress"}</h2><GameProgress state={view.state} language={language} calledCount={view.calledCount} remaining={view.remaining} /></Panel>
+            <PlayerCurrentPattern patterns={view.patternViews} example={view.patternExample} language={language} />
+          </aside>
 
-      <div
-        className="mt-4"
-        style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)" }}
-        // two balanced columns on wide screens, single stacked column on phones
-        data-oh-grid="true"
-      >
-        <div className="flex flex-col gap-4 oh-col">
-          <YourResult
-            state={view.state}
-            leaderboard={view.leaderboard}
-            awards={view.awards}
-            myPlayerId={view.playerId}
-            playerName={view.name}
-            tickets={tickets}
-            calledNumbers={view.calledNumbers}
-          />
-          {panel === "spectator" ? (
-            <SpectatorNotice />
-          ) : panel === "choose" ? (
-            <TicketChoiceNotice />
-          ) : (
-            <TicketRail
-              tickets={tickets}
-              calledNumbers={view.calledNumbers}
-              currentNumber={view.lastCall}
-              playerName={view.name}
-              roomId={view.roomId}
-              state={view.state}
-            />
-          )}
-          <WinningPatterns
-            patterns={view.patternViews}
-            example={view.patternExample}
-            claimStates={view.claimStates}
-            awards={view.awards}
-            note={claimNote({ state: view.state, sheets: tickets })}
-            canClaim={claimable}
-            myPlayerId={view.playerId}
-            onSubmit={view.onClaim}
-          />
-          <ClaimFeedback awards={view.awards} leaderboard={view.leaderboard} state={view.state} />
+          <section className="player-live-tickets" aria-label={t("myTickets")}>
+            <div className="player-section-heading"><h2><FaTicketAlt />{t("myTickets")} <span>({formatBookingNumber(tickets.length, language)})</span></h2><span>{hi ? "आधिकारिक कॉल से अपने आप चिह्नित" : "Automatically marked from official calls"}</span></div>
+            {panel === "spectator" || panel === "choose" ? <TicketNotice spectator={panel === "spectator"} language={language} /> : <TicketRail tickets={tickets} calledNumbers={view.calledNumbers} currentNumber={view.lastCall} playerName={view.name} roomId={view.roomId} state={view.state} language={language} />}
+          </section>
         </div>
 
-        <div className="flex flex-col gap-4 oh-col">
-          <NumberBoard calledNumbers={view.calledNumbers} currentNumber={view.lastCall} />
-          <CallHistory calledNumbers={view.calledNumbers} />
-          <PlayerRoster players={view.players} leaderboard={view.leaderboard} myPlayerId={view.playerId} state={view.state} />
-          <GameChat />
-        </div>
-      </div>
-
-      <style>{`
-        @media (min-width: 900px) {
-          [data-oh-grid="true"] { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr) !important; }
-        }
-      `}</style>
+        <section className="player-live-patterns" aria-label={t("winningPatterns")}>
+          <WinningPatterns patterns={view.patternViews} example={view.patternExample} claimStates={view.claimStates} pendingPattern={view.claimPending} claimFeedback={view.claimFeedback} awards={view.awards} note={bookingClaimNote(language, claimNote({ state: view.state, sheets: tickets }))} canClaim={claimable} myPlayerId={view.playerId} onSubmit={view.onClaim} language={language} />
+          <ClaimFeedback awards={view.awards} leaderboard={view.leaderboard} state={view.state} language={language} />
+        </section>
+      </main>
     </div>
   );
 };

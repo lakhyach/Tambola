@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import { PATTERN_META, OPTIONAL_PATTERNS } from "../brand.js";
+import { PATTERN_CATALOG, PATTERN_TICKET, getPatternDisplayCells, getPatternDisplayNote } from "../pattern-display.js";
 import { api } from "./api.js";
 import { useAdmin } from "./useAdmin.js";
 import { formatDateTime, formatNumber, formatRelative, statusLabel } from "./format.js";
@@ -16,6 +17,8 @@ import { Badge, Empty, ErrorNote, Field, Loading, Pagination, Section, StatusPil
 
 const PAGE = 25;
 const PATTERN_IDS = Object.keys(PATTERN_META);
+const ALL_PATTERN_IDS = [...PATTERN_IDS, ...OPTIONAL_PATTERNS.map((pattern) => pattern.id)];
+const PATTERN_POINTS = { ...PATTERN_META, ...Object.fromEntries(OPTIONAL_PATTERNS.map((pattern) => [pattern.id, pattern])) };
 const STATES = [
   { value: "open", label: "Open rooms" },
   { value: "all", label: "All rooms" },
@@ -25,6 +28,17 @@ const STATES = [
   { value: "COMPLETED", label: "Completed" },
   { value: "closed", label: "Closed" },
 ];
+
+/* eslint-disable react/prop-types */
+function AdminPatternDiagram({ pattern }) {
+  const cells = new Set(getPatternDisplayCells(pattern).map(([row, col]) => `${row}-${col}`));
+  const ticket = (index) => <div className="adm-pattern-ticket" key={index} aria-hidden="true">
+    {PATTERN_TICKET.flatMap((row, r) => row.map((number, c) => <span key={`${r}-${c}`} className={cells.has(`${r}-${c}`) ? "is-pattern" : ""} data-empty={number == null ? "true" : "false"}>{number ?? ""}</span>))}
+  </div>;
+  return <div className={`adm-pattern-diagram${pattern.kind === "halfSheet" ? " is-half-sheet" : ""}`} role="img" aria-label={`${pattern.title}: ${getPatternDisplayNote(pattern)}`}>
+    {pattern.kind === "halfSheet" ? [0, 1, 2].map(ticket) : ticket(0)}
+  </div>;
+}
 
 export default function AdminGames() {
   const { durable, toast } = useAdmin();
@@ -49,11 +63,17 @@ export default function AdminGames() {
     load();
   }, [load]);
 
+  const [instanceOptions, setInstanceOptions] = useState([]);
+  useEffect(() => {
+    if (durable) api.instances().then((data) => setInstanceOptions((data.instances || []).filter((item) => item.status === "active"))).catch(() => {});
+  }, [durable]);
+
   const [form, setForm] = useState({
     name: "Operator Table",
     seconds: 8,
     autoCall: false,
-    patterns: PATTERN_IDS,
+    patterns: ALL_PATTERN_IDS,
+    instanceId: "regular",
   });
   const [creating, setCreating] = useState(false);
   const [formError, setFormError] = useState(null);
@@ -85,9 +105,11 @@ export default function AdminGames() {
         callIntervalMs: Math.round(seconds * 1000),
         autoCall: Boolean(form.autoCall),
         enabledPatterns: form.patterns,
+        instanceId: form.instanceId,
       });
       toast(`Room ${created.roomId} created.`, "success");
-      navigate(`/admin/games/${created.roomId}`);
+      const base = window.location.pathname.startsWith("/super-admin") ? "/super-admin" : "/admin";
+      navigate(`${base}/games/${created.roomId}`);
     } catch (error) {
       setFormError(error);
     } finally {
@@ -147,45 +169,35 @@ export default function AdminGames() {
                 disabled={creating}
               />
             </Field>
+            {durable ? <Field label="Game instance" htmlFor="adm-instance" hint="Room ownership is fixed at creation.">
+              <select id="adm-instance" className="oh-field" value={form.instanceId} onChange={(event) => setForm((prev) => ({ ...prev, instanceId: event.target.value }))} disabled={creating}>
+                {instanceOptions.map((instance) => <option key={instance.instance_id} value={instance.instance_id}>{instance.display_name}</option>)}
+              </select>
+            </Field> : null}
           </div>
 
           <fieldset className="adm-fieldset">
             <legend className="adm-field__label">Winning patterns</legend>
-            <div className="adm-checks">
-              {PATTERN_IDS.map((id) => (
-                <label key={id} className="adm-check">
-                  <input
-                    type="checkbox"
-                    checked={form.patterns.includes(id)}
-                    onChange={() => togglePattern(id)}
-                    disabled={creating}
-                  />
-                  <span>
-                    {PATTERN_META[id].label}
-                    <span className="adm-check__hint">{PATTERN_META[id].points} pts</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </fieldset>
-
-          <fieldset className="adm-fieldset">
-            <legend className="adm-field__label">Optional prizes (off by default)</legend>
             <p className="adm-check__hint" style={{ margin: "0 0 8px" }}>
-              Ambiguous or unapproved rules. Tick one only if you want this room to play for it.
+              All eleven server-supported patterns start enabled for a new room. Review the exact prize conditions below and adjust this room’s list before creating it.
             </p>
-            <div className="adm-checks">
-              {OPTIONAL_PATTERNS.map((pattern) => (
-                <label key={pattern.id} className="adm-check">
+            <div className="adm-pattern-options">
+              {PATTERN_CATALOG.map((pattern) => (
+                <label key={pattern.id} className="adm-pattern-option">
                   <input
                     type="checkbox"
                     checked={form.patterns.includes(pattern.id)}
                     onChange={() => togglePattern(pattern.id)}
                     disabled={creating}
                   />
-                  <span>
-                    {pattern.label}
-                    <span className="adm-check__hint">{pattern.points} pts</span>
+                  <span className="adm-pattern-option__body">
+                    <span className="adm-pattern-option__heading">
+                      <strong>{pattern.title}</strong>
+                      <span className="adm-check__hint">{PATTERN_POINTS[pattern.id].points} pts</span>
+                    </span>
+                    <AdminPatternDiagram pattern={pattern} />
+                    <span className="adm-pattern-option__description">{pattern.description}</span>
+                    <span className="adm-pattern-option__note">{getPatternDisplayNote(pattern)}</span>
                   </span>
                 </label>
               ))}

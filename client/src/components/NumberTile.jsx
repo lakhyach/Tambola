@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
 
 /**
  * One cell of the 1–90 master board. States are conveyed by colour AND shape
@@ -8,16 +9,21 @@ import { memo } from "react";
  */
 const NumberTile = memo(
   // eslint-disable-next-line react/prop-types
-  function NumberTile({ n, called = false, current = false }) {
+  function NumberTile({ n, called = false, current = false, recent = false, language = "en" }) {
+    const state = bookingCopy(language, called ? "numberCalled" : "numberNotCalled");
+    const recentLabel = language === "hi" ? "हाल में बोला गया" : "recently called";
     return (
       <div
         className="oh-tile"
+        role="listitem"
         data-called={String(called)}
         data-current={String(current)}
-        aria-label={`Number ${n}${called ? ", called" : ", not called"}`}
+        data-recent={String(Boolean(recent && called && !current))}
+        aria-current={current ? "true" : undefined}
+        aria-label={`${language === "hi" ? "नंबर" : "Number"} ${formatBookingNumber(n, language)}, ${state}${recent && !current ? `, ${recentLabel}` : ""}${current ? `, ${bookingCopy(language, "numberCurrent")}` : ""}`}
         style={{ fontSize: "clamp(11px, 2.5vw, 15px)" }}
       >
-        {n}
+        {formatBookingNumber(n, language)}
       </div>
     );
   }

@@ -242,6 +242,11 @@ run are in [`TEST-REPORT.md`](TEST-REPORT.md).
 
 ## Re-branding it
 
+The current UI brand remains build-time configuration. Database-backed
+platform/instance branding is not implemented yet. The instance-management
+foundation and its remaining acceptance gaps are tracked in
+[`docs/PLATFORM-IMPLEMENTATION-STATUS.md`](docs/PLATFORM-IMPLEMENTATION-STATUS.md).
+
 [`client/src/config.js`](client/src/config.js) is the only file to edit for a
 different product name, tagline, logo, accent colour, footer notice, legal links
 or default language. `VITE_*` build-time overrides for the ones that change per
@@ -275,19 +280,25 @@ setting.
 - [`docs/HOSTING-OPTIONS.md`](docs/HOSTING-OPTIONS.md) — the four hosting architectures, their monthly cost, and why nothing has been purchased yet.
 - [`docs/CLIENT-SIGNOFF.md`](docs/CLIENT-SIGNOFF.md) — the eighteen decisions that need the client (fourteen product, four legal), on one page, with proposed defaults.
 - [`docs/GAP-REPORT.md`](docs/GAP-REPORT.md) — every remaining gap, ranked P0/P1/P2 with the client decision attached to it.
+- [`docs/REFERENCE-VIDEO-ANALYSIS.md`](docs/REFERENCE-VIDEO-ANALYSIS.md) — timestamped feature observations and route accessibility results.
+- [`docs/SECURITY-THREAT-MODEL.md`](docs/SECURITY-THREAT-MODEL.md) — principal/surface inventory, tenant checks, test scope and residual deployment review.
+- [`docs/COMPLETE-PRODUCT-REQUIREMENTS.md`](docs/COMPLETE-PRODUCT-REQUIREMENTS.md) — product requirements, ticket architecture options, open decisions and staged roadmap.
+- [`docs/MASTER-BUILD-IMPLEMENTATION-TRACKER.md`](docs/MASTER-BUILD-IMPLEMENTATION-TRACKER.md) — current master-build stage status, evidence and next implementation slices.
 
-One instance, always. A second process pointed at the same database fails closed
-on an advisory lease rather than double-calling numbers — that is intended
-behaviour, not a fault to work around.
+One application process still owns the engine and scheduler per database schema;
+a second process pointed at that same schema fails closed on the advisory lease.
+Separate isolated deployments may use different schemas in one database and share its
+capacity budget. Within each application deployment, durable Regular and Bumper
+instances are separate room ownership boundaries. Historical rooms are kept in the hidden Legacy instance because
+their original identity cannot be established safely.
 
 ## Known limits
 
 Written plainly, because they are the things a client will ask about:
 
-- **Single instance.** Horizontal scaling is a redesign (per-room ownership), not a dial.
-- **Six patterns.** The five deferred ones (Early Seven, Star, Middle Number,
-  1 2 3 / 143, Pyramid) have neither a server rule nor a button — see
-  [`CHANGELOG.md`](CHANGELOG.md) for why.
+- **One application process.** The database lease remains a correctness gate; multi-process engine ownership is not implemented.
+- **Platform administration is partial.** `/super-admin/instances` supports instance lifecycle and moderator management APIs enforce instance grants. Runtime branding editing, a moderator dashboard, public instance-specific joining, and some platform-wide dashboard views remain unfinished. Security coverage and release limits are in [`docs/SECURITY-THREAT-MODEL.md`](docs/SECURITY-THREAT-MODEL.md); product scope and staged requirements are in [`docs/COMPLETE-PRODUCT-REQUIREMENTS.md`](docs/COMPLETE-PRODUCT-REQUIREMENTS.md).
+- **Eleven patterns.** Six original patterns plus five optional patterns (off by default) are implemented. Middle Number, 1 2 3 / 143 and Pyramid remain unimplemented pending written definitions.
 - **No tap-to-mark.** A ticket is marked because the official call history contains
   the number, not because someone tapped a cell. It is a deliberate difference, and
   the client should sign it off rather than "fix" it (see

@@ -22,18 +22,18 @@ test("only a confirmed win (won === true) becomes a celebration", () => {
   assert.equal(patternEvent({}, "ROOM1", "en"), null);
 });
 
-test("a pattern event carries the winner, ticket and verified pattern and localises it", () => {
-  const win = { won: true, pattern: "fullHouse", playerId: "p7", name: "रवि", label: "Full House", points: 30, ticketNo: 4 };
+test("a pattern event carries the winner, ticket and verified pattern in the English UI", () => {
+  const win = { won: true, pattern: "fullHouse", playerId: "p7", name: "Ravi", label: "Full House", points: 30, ticketNo: 4 };
   const en = patternEvent(win, "ROOM1", "en");
   assert.equal(en.kind, "pattern");
-  assert.equal(en.name, "रवि");
+  assert.equal(en.name, "Ravi");
   assert.equal(en.label, "Full House");
   assert.equal(en.ticketNo, 4);
   assert.equal(en.points, 30);
-  assert.match(en.message, /रवि/);
+  assert.match(en.message, /Ravi/);
   assert.match(en.message, /Full House/);
   const hi = patternEvent(win, "ROOM1", "hi");
-  assert.match(hi.message, /जीता/);
+  assert.equal(hi.message, en.message, "the UI stays English even when Hindi voice is selected");
 });
 
 test("the pattern id is stable and room-scoped so the same award cannot double-fire", () => {
@@ -86,7 +86,7 @@ test("finalEvent localises the outcome and carries the standings", () => {
   const single = finalEvent(completed, "ROOM1", "en");
   assert.equal(single.kind, "final");
   assert.equal(single.id, "final:ROOM1");
-  assert.equal(single.reason, "all 90 numbers called");
+  assert.equal(single.reason, "All 90 numbers were called.");
   assert.deepEqual(single.leaderboard, LB);
   assert.match(single.message, /Alice wins the game/);
 
@@ -95,9 +95,11 @@ test("finalEvent localises the outcome and carries the standings", () => {
 
   const none = finalEvent({ reason: "host ended the game", leaderboard: [{ player: "Alice", points: 0 }] }, "ROOM1", "en");
   assert.match(none.message, /no winner/i);
+  assert.equal(none.reason, "The host ended the game.");
 
-  const hi = finalEvent(completed, "ROOM1", "hi");
-  assert.match(hi.message, /जीता/);
+  const hiVoice = finalEvent(completed, "ROOM1", "hi");
+  assert.equal(hiVoice.message, single.message, "the UI stays English even when Hindi voice is selected");
+  assert.equal(hiVoice.reason, single.reason);
 });
 
 test("finalEvent tolerates a malformed payload without throwing", () => {

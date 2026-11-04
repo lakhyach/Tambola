@@ -12,6 +12,7 @@
  */
 
 import { celebrate } from "../i18n/messages.js";
+import { bookingPatternName } from "../i18n/booking-locale.js";
 
 /**
  * Map a `claim:result` payload to a pattern-win celebration event, or null when
@@ -21,14 +22,16 @@ import { celebrate } from "../i18n/messages.js";
 export function patternEvent(claim, roomId, lang) {
   if (!claim || claim.won !== true) return null;
   const ticketPart = claim.ticketNo == null ? "na" : claim.ticketNo;
+  const label = bookingPatternName(lang, claim.pattern, claim.label);
   return {
     id: `pat:${roomId}:${claim.pattern}:${claim.playerId}:${ticketPart}`,
     kind: "pattern",
     name: claim.name,
-    label: claim.label,
+    pattern: claim.pattern,
+    label,
     points: claim.points,
     ticketNo: claim.ticketNo ?? null,
-    message: celebrate(lang, "patternWin", { name: claim.name, label: claim.label }),
+    message: celebrate(lang, "patternWin", { name: claim.name, label }),
   };
 }
 
@@ -60,9 +63,16 @@ export function finalEvent(completed, roomId, lang) {
     id: `final:${roomId}`,
     kind: "final",
     outcome,
-    reason: completed?.reason || "",
+    reason: localizedCompletionReason(completed?.reason, lang),
     leaderboard,
     awards: completed?.awards || [],
     message,
   };
+}
+
+function localizedCompletionReason(reason, lang) {
+  if (!reason) return "";
+  if (reason === "host ended the game") return celebrate(lang, "hostEnded");
+  if (reason === "all 90 numbers called") return celebrate(lang, "allNumbersCalled");
+  return reason;
 }

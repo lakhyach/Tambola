@@ -1,11 +1,11 @@
 /**
- * SPOKEN NUMBER FORMS (1–90) for English and Hindi (हिन्दी).
+ * SPOKEN NUMBER FORMS (1–90) for English and Hindi voice.
  *
  * Why words instead of the digit string: some TTS voices rush digit strings at
  * speed and Indian players report confusing pairs like 15/50 (पंद्रह/पचास) and
  * 16/60 (सोलह/साठ). Spelling the word makes the utterance unambiguous, matches
- * the way a live housie caller announces ("बोलो पंद्रह…"), and lets us pick the
- * exact Devanagari the voice should say.
+ * the way a live housie caller announces. Romanized Hindi keeps voice copy in
+ * the same readable script as the Hinglish callouts.
  *
  * `speakWord` returns a best-effort string for ANY integer so an out-of-range
  * number from a stale event can never throw inside a speech callback.
@@ -18,17 +18,17 @@ const EN_ONES = [
 ];
 const EN_TENS = { 2: "twenty", 3: "thirty", 4: "forty", 5: "fifty", 6: "sixty", 7: "seventy", 8: "eighty", 9: "ninety" };
 
-const HI_ONES = [
-  "शून्य", "एक", "दो", "तीन", "चार", "पाँच", "छह", "सात", "आठ", "नौ",
-  "दस", "ग्यारह", "बारह", "तेरह", "चौदह", "पंद्रह", "सोलह", "सत्रह", "अठारह", "उन्नीस",
+const HI_ROMAN = [
+  "shoonya", "ek", "do", "teen", "chaar", "paanch", "chhe", "saat", "aath", "nau",
+  "das", "gyaarah", "baarah", "terah", "chaudah", "pandrah", "solah", "satrah", "atharah", "unnees",
+  "bees", "ikkis", "bais", "teis", "chaubis", "pachis", "chhabis", "sattais", "atthais", "untis",
+  "tees", "ikattis", "battis", "taintees", "chauntees", "paintees", "chhattis", "saintis", "adtees", "untalis",
+  "chalis", "iktalis", "bayalis", "tain-taalis", "chawalis", "paintalis", "chhiyalis", "saintalis", "adtalis", "unchaas",
+  "pachaas", "ikyavan", "bavan", "tirpan", "chauvan", "pachpan", "chhappan", "sattavan", "athavan", "unsath",
+  "saath", "iksath", "basath", "tirsath", "chaunsath", "painsath", "chhiyasath", "sadsath", "adsath", "unhattar",
+  "sattar", "ikhattar", "bahattar", "tihattar", "chauhattar", "pachhattar", "chhihattar", "satattar", "athhattar", "unasi",
+  "assi", "ikyasi", "bayasi", "tirasi", "chaurasi", "pachasi", "chhiyasi", "satasi", "athasi", "navasi", "nabbe",
 ];
-const HI_TENS = {
-  2: "बीस", 3: "तीस", 4: "चालीस", 5: "पचास", 6: "साठ", 7: "सत्तर", 8: "अस्सी", 9: "नब्बे",
-};
-// 21–29, 31–39… in Hindi are "एक-की-बीस", "छह-का-चालीस"… The compound form the
-// caller tradition uses is simply "<unit>-<tens>"; voices say the hyphenated
-// pair clearly, so we generate it rather than hand-listing 70 entries.
-const HI_TENS_CONNECTOR = { 2: "बीस", 3: "तीस", 4: "चालीस", 5: "पचास", 6: "साठ", 7: "सत्तर", 8: "अस्सी" };
 
 /** English words for 0–99, null outside that range. */
 export function englishWords(n) {
@@ -40,15 +40,10 @@ export function englishWords(n) {
   return unit === 0 ? base : `${base}-${EN_ONES[unit]}`;
 }
 
-/** Devanagari words for 0–90 (the Tambola range), null outside it. */
+/** Romanized Hindi words for 0–90, null outside the Tambola range. */
 export function hindiWords(n) {
   if (!Number.isInteger(n) || n < 0 || n > 90) return null;
-  if (n < 20) return HI_ONES[n];
-  if (n === 90) return "नब्बे";
-  const tens = Math.floor(n / 10);
-  const unit = n % 10;
-  if (unit === 0) return HI_TENS[tens];
-  return `${HI_ONES[unit]}-${HI_TENS_CONNECTOR[tens]}`;
+  return HI_ROMAN[n];
 }
 
 /**

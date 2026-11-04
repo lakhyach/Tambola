@@ -1,5 +1,5 @@
 /**
- * Product identity, kept in one place so the "OBSIDIAN HALL" direction can be
+ * Product identity, kept in one place so the provisional Ninety Club identity can be
  * re-branded without touching a single component. These are display strings
  * only — nothing here affects gameplay, which stays entirely server-owned.
  *
@@ -29,6 +29,10 @@ export const APP_SUBTITLE = config.brand.subtitle;
  *   INVITE_*      share/invite copy, so it follows the product name
  */
 export const APP_LOGO = config.brand.logoPath;
+export const APP_HORIZONTAL_LOGO = config.brand.horizontalLogoPath;
+export const APP_COMPACT_LOGO = config.brand.compactLogoPath;
+export const APP_ICON = config.brand.iconPath;
+export const APP_SOCIAL_CARD = config.brand.socialCardPath;
 export const APP_MARK = config.brand.mark;
 export const BRAND_LINKS = config.links;
 export const FOOTER_NOTICE = config.footer.notice;
@@ -36,6 +40,32 @@ export const FOOTER_NOTICE = config.footer.notice;
 /** Share/invite copy, so a re-branded build never asks a friend to "join my Tambola room". */
 export const INVITE_TITLE = config.brand.name;
 export const INVITE_TEXT = `Join my ${config.brand.name} room`;
+
+/** Apply the deployment brand to browser metadata as well as visible UI. */
+if (typeof document !== "undefined") {
+  document.title = APP_NAME;
+  const setMeta = (selector, value) => {
+    let element = document.querySelector(selector);
+    if (!element && value) {
+      element = document.createElement("meta");
+      if (selector.includes('property="')) element.setAttribute("property", selector.match(/property="([^"]+)"/)?.[1] || "");
+      else if (selector.includes('name="')) element.setAttribute("name", selector.match(/name="([^"]+)"/)?.[1] || "");
+      document.head.appendChild(element);
+    }
+    if (element && value) element.setAttribute("content", value);
+  };
+  setMeta('meta[name="description"]', APP_SUBTITLE);
+  setMeta('meta[property="og:title"]', APP_NAME);
+  setMeta('meta[property="og:description"]', APP_SUBTITLE);
+  const socialImage = /^https?:\/\//i.test(APP_SOCIAL_CARD)
+    ? APP_SOCIAL_CARD
+    : new URL(APP_SOCIAL_CARD, window.location.origin).href;
+  setMeta('meta[property="og:image"]', socialImage);
+  const icon = document.querySelector('link[rel="icon"]');
+  if (icon) icon.setAttribute("href", APP_ICON);
+  const appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
+  if (appleIcon) appleIcon.setAttribute("href", APP_ICON);
+}
 
 /**
  * Winning-pattern display metadata. The *rules* live only on the server
@@ -53,14 +83,12 @@ export const PATTERN_META = {
 };
 
 /**
- * The OPTIONAL prizes a host may add. These are display metadata only — the
- * authoritative definition, coordinates and verdict for each live on the server
- * (server/game/patterns.js) and reach the board through `snapshot.patternViews`.
- *
- * Deliberately kept OUT of `PATTERN_META`: the admin create-room form seeds its
- * default selection from `Object.keys(PATTERN_META)`, so listing a pattern there
- * would switch it on for every new room. The approved rules stay on and these
- * stay off until a host ticks one on purpose. Labels/hints mirror the server.
+ * The additional server-supported patterns. These are display metadata only —
+ * their authoritative definitions, coordinates and verdicts live in
+ * `server/game/patterns.js` and reach the board through `snapshot.patternViews`.
+ * The Admin and Host creation flows now include them in the new-room selection;
+ * this list does not define or change server defaults. Labels and hints mirror
+ * the server catalog.
  */
 export const OPTIONAL_PATTERNS = [
   { id: "star", label: "Star", points: 25, hint: "The four corners plus the middle row's third number" },

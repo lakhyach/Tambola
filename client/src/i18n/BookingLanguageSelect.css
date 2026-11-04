@@ -1,0 +1,29 @@
+.booking-language {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  color: var(--oh-text-muted);
+  font-size: 12px;
+}
+
+.booking-language select {
+  min-height: 40px;
+  max-width: 150px;
+  border: 1px solid var(--oh-line-gold);
+  border-radius: 8px;
+  padding: 7px 28px 7px 10px;
+  background: var(--oh-panel);
+  color: var(--oh-ivory);
+  font: inherit;
+}
+
+.booking-language select option {
+  background: var(--oh-panel);
+  color: var(--oh-ivory);
+}
+
+.booking-language select:focus-visible {
+  outline: 2px solid var(--oh-gold-bright);
+  outline-offset: 3px;
+}

@@ -1,4 +1,5 @@
 import { memo } from "react";
+import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
 
 /**
  * A single cell of the player's server-issued ticket. Empty cells are drawn
@@ -12,12 +13,13 @@ import { memo } from "react";
  */
 const TicketCell = memo(
   // eslint-disable-next-line react/prop-types
-  function TicketCell({ n, called = false, current = false, row, col }) {
+  function TicketCell({ n, called = false, current = false, row, col, language = "en", callMarker = null }) {
     const empty = n == null;
-    const position = Number.isInteger(row) && Number.isInteger(col) ? `, row ${row + 1} column ${col + 1}` : "";
+    const number = (value) => formatBookingNumber(value, language);
+    const position = Number.isInteger(row) && Number.isInteger(col) ? bookingCopy(language, "ticketGridPosition", { row: number(row + 1), column: number(col + 1) }) : "";
     const label = empty
-      ? `Empty cell${position}`
-      : `Number ${n}${position}${called ? ", called" : ", not called"}`;
+      ? `${bookingCopy(language, "ticketGridEmpty")}${position}`
+      : `${bookingCopy(language, "ticketGridNumber", { number: number(n) })}${position}, ${bookingCopy(language, called ? "ticketGridCalled" : "ticketGridNotCalled")}`;
 
     return (
       <div
@@ -28,8 +30,9 @@ const TicketCell = memo(
         data-empty={String(empty)}
         data-called={String(!empty && called)}
         data-current={String(!empty && current)}
+        data-call-marker={called && typeof callMarker === "string" ? callMarker : undefined}
       >
-        {empty ? "" : n}
+        {empty ? "" : number(n)}
       </div>
     );
   }

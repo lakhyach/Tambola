@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { call, clearSession, isSeatGone, on, resumeSession } from "./net.js";
 import Header from "./Header";
 import Panel from "./components/Panel.jsx";
+import ConnectionIndicator from "./components/ConnectionIndicator.jsx";
 import PlayerRoster from "./components/PlayerRoster.jsx";
 import TicketPicker from "./components/TicketPicker.jsx";
 import TicketRail from "./components/TicketRail.jsx";
+import BookingLanguageSelect from "./i18n/BookingLanguageSelect.jsx";
+import { bookingCopy, bookingRefusalText, setBookingLanguage, useBookingLanguage } from "./i18n/booking-locale.js";
 
 // nothing has been called before a round starts, and a fresh [] every render
 // would defeat the ticket's memoisation
@@ -13,9 +16,11 @@ const NO_CALLS = [];
 
 const PlayerRoom = () => {
   const navigate = useNavigate();
+  const language = useBookingLanguage();
+  const t = useCallback((key, variables) => bookingCopy(language, key, variables), [language]);
   const [players, setPlayers] = useState([]);
   const [roomCode, setRoomCode] = useState("");
-  const [tickets, setTickets] = useState({ count: 1, max: 1 });
+  const [tickets, setTickets] = useState({ count: 1, max: 1, locked: false });
   const [previews, setPreviews] = useState([]);
   const [note, setNote] = useState("");
   // A seat joins with a ticket count but no minted grids (the server stores the
@@ -27,24 +32,20 @@ const PlayerRoom = () => {
 
   const applyCounts = (snapshot) => {
     if (!snapshot) return;
-    setTickets({ count: snapshot.ticketCount ?? 1, max: snapshot.maxTickets ?? 1 });
+    setTickets({ count: snapshot.ticketCount ?? 1, max: snapshot.maxTickets ?? 1, locked: Boolean(snapshot.ticketSelectionLocked) });
     setPreviews(Array.isArray(snapshot.tickets) ? snapshot.tickets : []);
   };
 
-  const pickCount = async (count) => {
+  const pickCount = useCallback(async (count) => {
     const result = await call("tickets:select", { count });
     if (result.ok) {
-      setTickets({ count: result.ticketCount, max: result.maxTickets });
+      setTickets((current) => ({ ...current, count: result.ticketCount, max: result.maxTickets }));
       setPreviews(Array.isArray(result.tickets) ? result.tickets : []);
       setNote("");
     } else {
-      setNote(
-        result.code === "TICKET_LIMIT"
-          ? `This room allows at most ${result.max} tickets.`
-          : result.error || "the server did not accept that"
-      );
+      setNote(bookingRefusalText(language, { ...result, error: result.error || t("ticketPickFailed") }));
     }
-  };
+  }, [language, t]);
 
   useEffect(() => {
     let alive = true;
@@ -92,21 +93,25 @@ const PlayerRoom = () => {
       clearSession();
       navigate("/player");
     });
+    const stopRemoved = on("room:removed", () => {
+      clearSession();
+      navigate("/player");
+    });
     const stopConnected = on("connect", () => resume());
 
     resume();
 
     return () => {
       alive = false;
-      [stopUpdated, stopStarted, stopTicket, stopClosed, stopConnected].forEach((stop) => stop());
+      [stopUpdated, stopStarted, stopTicket, stopClosed, stopRemoved, stopConnected].forEach((stop) => stop());
     };
-  }, [navigate]);
+  }, [navigate, pickCount]);
 
   return (
     <div className="flex flex-col" style={{ minHeight: "100vh" }}>
       <Header />
-      <main
-        className="flex-1 w-full"
+      <main id="main-content" lang={language === "hi" ? "hi" : "en"} tabIndex="-1"
+        className="player-room-page flex-1 w-full"
         style={{ maxWidth: 980, marginInline: "auto", padding: "12px 20px 40px" }}
       >
         <div
@@ -118,18 +123,20 @@ const PlayerRoom = () => {
               <div className="flex items-center justify-between flex-wrap gap-3">
                 <div>
                   <h1 className="oh-display" style={{ fontSize: 24, margin: 0 }}>
-                    You’re Seated
+                    {t("seatedTitle")}
                   </h1>
                   <p style={{ color: "var(--oh-text-muted)", fontSize: 14, margin: "2px 0 0" }}>
-                    Choose your tickets — the host starts when everyone’s ready.
+                    {t("seatedIntro")}
                   </p>
                 </div>
+                <ConnectionIndicator />
+                <BookingLanguageSelect language={language} onChange={setBookingLanguage} />
                 {roomCode ? (
                   <div
                     className="oh-num text-right"
                     style={{ padding: "8px 14px", borderRadius: 14, background: "var(--oh-inset)", border: "1px solid var(--oh-line-gold)" }}
                   >
-                    <div className="oh-eyebrow">Room</div>
+                    <div className="oh-eyebrow">{t("room")}</div>
                     <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: ".18em", color: "var(--oh-gold-bright)" }}>
                       {roomCode}
                     </div>
@@ -138,7 +145,7 @@ const PlayerRoom = () => {
               </div>
             </Panel>
 
-            <TicketPicker value={tickets.count} max={tickets.max} onPick={pickCount} />
+            <TicketPicker value={tickets.count} max={tickets.max} disabled={tickets.locked} language={language} lockedLabel={t("lockedReservation")} onPick={pickCount} />
             {note ? (
               <p role="alert" className="text-center" style={{ color: "var(--oh-danger)", fontSize: 13 }}>
                 {note}
@@ -152,11 +159,11 @@ const PlayerRoom = () => {
                     right above the tickets because on a phone those have to reach the
                     first screen — above the roster, not below it. */}
                 <p style={{ color: "var(--oh-text-muted)", fontSize: 13, margin: 0 }}>
-                  Exactly what the server dealt you — a tab only changes what you see.
+                  {t("ticketPreviewCaption")}
                 </p>
                 {/* one ticket at a time behind tabs, exactly as it is played: four
                     stacked previews pushed the hall and the status line off-screen */}
-                <TicketRail tickets={previews} calledNumbers={NO_CALLS} roomId={roomCode} state="WAITING" />
+                <TicketRail tickets={previews} calledNumbers={NO_CALLS} roomId={roomCode} state="WAITING" language={language} />
               </div>
             ) : null}
 
@@ -165,14 +172,14 @@ const PlayerRoom = () => {
               style={{ color: "var(--oh-text-faint)" }}
               role="status"
             >
-              Waiting for the host to start the game…
+              {t("waitingForHost")}
             </p>
 
           </div>
 
           {/* The hall is the second column on a wide screen and the last thing on
               a phone: the seat's own tickets come first. */}
-          <PlayerRoster players={players} leaderboard={[]} />
+          <PlayerRoster players={players} leaderboard={[]} language={language} />
         </div>
 
         <style>{`

@@ -78,6 +78,7 @@ export const DEFAULT_CONFIG = Object.freeze({
   callIntervalMs: 8000,
   /** the server drives the draw on a timer; the host may still call manually */
   autoCall: true,
+  /** Fresh seats may be admitted; existing credentials can always resume. */
   maxPlayers: 100,
   /** a player who reconnects inside this window keeps ticket and score */
   disconnectGraceMs: 60000,
@@ -93,16 +94,15 @@ export const DEFAULT_CONFIG = Object.freeze({
    * value turns the rule off entirely. Also reachable as an admin setting.
    */
   claimWindowCalls: 0,
-  /** most tickets a single seat may hold; clamped TICKET_MIN..TICKET_MAX */
-  maxTicketsPerPlayer: 4,
   /** pattern id -> boolean, overrides enabledByDefault */
   patterns: {},
   multipleWinnersPerPattern: false,
 });
 
-/** Hard bounds on a seat's ticket count, independent of the room's max. */
+/** Shared room/session ticket budget. Individual seats may use any amount of
+ * the remaining room capacity; this is not a per-player limit. */
 export const TICKET_MIN = 1;
-export const TICKET_MAX = 12;
+export const ROOM_TICKET_CAPACITY = 10_000;
 
 /**
  * How many past messages a room remembers in memory, so a seat that joins
@@ -202,7 +202,12 @@ function ticketFingerprint(grid) {
 
 /** Public shape of one owned ticket: a stable number plus its grid. */
 function publicTicket(ticket) {
-  return { no: ticket.no, grid: ticket.grid };
+  return {
+    no: ticket.no,
+    grid: ticket.grid,
+    ...(ticket.inventoryTicketId ? { inventoryTicketId: ticket.inventoryTicketId } : {}),
+    ...(ticket.serial ? { serial: ticket.serial } : {}),
+  };
 }
 
 /**
@@ -213,7 +218,14 @@ function publicTicket(ticket) {
 function normalizeStoredTickets(entry) {
   if (Array.isArray(entry.tickets)) {
     return entry.tickets
-      .map((t, i) => (t && t.grid ? { no: t.no || i + 1, grid: t.grid } : { no: i + 1, grid: t }))
+      .map((t, i) => (t && t.grid ? {
+        no: t.no || i + 1,
+        grid: t.grid,
+        ...(typeof t.inventoryTicketId === "string" ? { inventoryTicketId: t.inventoryTicketId } : {}),
+        ...(typeof t.serial === "string" ? { serial: t.serial } : {}),
+        ...(typeof t.inventorySessionId === "string" ? { inventorySessionId: t.inventorySessionId } : {}),
+        ...(typeof t.inventoryReservationId === "string" ? { inventoryReservationId: t.inventoryReservationId } : {}),
+      } : { no: i + 1, grid: t }))
       .filter((t) => Array.isArray(t.grid));
   }
   if (entry.ticket && Array.isArray(entry.ticket)) return [{ no: 1, grid: entry.ticket }];
@@ -252,6 +264,9 @@ export class TambolaRoom {
     if (!roomId) throw new Error("roomId is required");
     this.roomId = roomId;
     this.config = { ...DEFAULT_CONFIG, ...(config || {}) };
+    // Old snapshots and instance settings may still contain this obsolete
+    // per-player field. Ignore it so it cannot restrict ticket selection.
+    delete this.config.maxTicketsPerPlayer;
     this.rng = rng || randomInt;
     this.now = now || (() => Date.now());
     this.setTimer = setTimer || ((fn, ms) => setTimeout(fn, ms));
@@ -358,6 +373,10 @@ export class TambolaRoom {
         connected: false,
         tickets: normalizeStoredTickets(entry),
         ticketCount: 0,
+        ticketSelectionLocked: Boolean(entry.ticketSelectionLocked),
+        inventoryLocked: Boolean(entry.inventoryLocked || (Array.isArray(entry.tickets) && entry.tickets.some((ticket) =>
+          typeof ticket?.inventoryTicketId === "string" || typeof ticket?.serial === "string"
+        ))),
         points: Number.isInteger(entry.points) ? entry.points : 0,
         claims: Array.isArray(entry.claims) ? entry.claims.slice() : [],
         joinedAt: Number.isFinite(entry.joinedAt) ? entry.joinedAt : this.now(),
@@ -465,6 +484,9 @@ export class TambolaRoom {
         }
       }
     }
+    const inventoryIds = new Set();
+    const inventorySerials = new Set();
+    const inventoryFingerprints = new Set();
     for (const player of this.players.values()) {
       let expected = 0;
       for (const [pattern, winners] of this.awards.entries()) {
@@ -493,11 +515,14 @@ export class TambolaRoom {
     // count until start re-mints the grids, and a seat that joined a running
     // round is a deliberate spectator.
     for (const player of this.players.values()) {
-      if (!Number.isInteger(player.ticketCount) || player.ticketCount < TICKET_MIN || player.ticketCount > TICKET_MAX) {
+      if (!Number.isInteger(player.ticketCount) || player.ticketCount < TICKET_MIN) {
         push(player.name + " has an impossible ticket count (" + player.ticketCount + ")");
       }
       if (player.tickets.length > player.ticketCount) {
         push(player.name + " holds " + player.tickets.length + " tickets but chose " + player.ticketCount);
+      }
+      if (player.inventoryLocked && player.tickets.length !== player.ticketCount) {
+        push(player.name + " has an incomplete locked ticket inventory");
       }
       const seenNumbers = new Set();
       const seenGrids = new Set();
@@ -509,6 +534,18 @@ export class TambolaRoom {
         if (seenNumbers.has(ticket.no)) push(player.name + " holds two tickets numbered " + ticket.no);
         seenNumbers.add(ticket.no);
 
+        if (player.inventoryLocked && (
+          typeof ticket.inventoryTicketId !== "string" || !ticket.inventoryTicketId.trim() || ticket.inventoryTicketId.length > 128 ||
+          typeof ticket.serial !== "string" || !ticket.serial.trim() || ticket.serial.length > 64
+        )) {
+          push(player.name + " has an inventory ticket without a valid stable identity");
+        } else if (player.inventoryLocked) {
+          if (inventoryIds.has(ticket.inventoryTicketId)) push("inventory ticket ID " + ticket.inventoryTicketId + " is assigned more than once");
+          if (inventorySerials.has(ticket.serial)) push("inventory serial " + ticket.serial + " is assigned more than once");
+          inventoryIds.add(ticket.inventoryTicketId);
+          inventorySerials.add(ticket.serial);
+        }
+
         const check = validateTicket(ticket.grid);
         if (!check.valid) {
           push(player.name + "'s ticket " + ticket.no + " is not a legal Tambola ticket: " + check.errors[0]);
@@ -517,7 +554,15 @@ export class TambolaRoom {
         const fingerprint = ticketFingerprint(ticket.grid);
         if (seenGrids.has(fingerprint)) push(player.name + " holds the same 15 numbers on two tickets");
         seenGrids.add(fingerprint);
+        if (player.inventoryLocked) {
+          if (inventoryFingerprints.has(fingerprint)) push("an inventory grid is assigned more than once");
+          inventoryFingerprints.add(fingerprint);
+        }
       }
+    }
+    const roomTicketCount = [...this.players.values()].reduce((sum, player) => sum + Math.max(player.ticketCount || 0, player.tickets.length), 0);
+    if (roomTicketCount > this.roomTicketCapacity()) {
+      push("room holds " + roomTicketCount + " tickets beyond its capacity of " + this.roomTicketCapacity());
     }
     return problems;
   }
@@ -596,11 +641,22 @@ export class TambolaRoom {
     return ticket;
   }
 
-  /** The room's per-seat ticket ceiling, clamped to the hard bounds. */
-  ticketCeiling() {
-    const raw = Number(this.config.maxTicketsPerPlayer);
-    const max = Number.isFinite(raw) ? Math.floor(raw) : TICKET_MIN;
-    return Math.min(TICKET_MAX, Math.max(TICKET_MIN, max));
+  /** Session ticket budget plus one baseline ticket for each room seat.
+   * Booked ticket capacity is session-wide; this allowance keeps ordinary
+   * seats, including the host, from consuming a reserved player's quota. */
+  roomTicketCapacity() {
+    return ROOM_TICKET_CAPACITY + this.players.size;
+  }
+
+  /** Maximum allocation for a seat after accounting for every other seat. */
+  ticketCeiling(playerId = null) {
+    const capacity = this.roomTicketCapacity();
+    if (playerId == null) return capacity;
+    const otherTickets = [...this.players.values()].reduce((sum, seat) => {
+      if (seat.id === playerId) return sum;
+      return sum + Math.max(seat.ticketCount || 0, seat.tickets.length);
+    }, 0);
+    return Math.max(0, capacity - otherTickets);
   }
 
   /**
@@ -616,14 +672,113 @@ export class TambolaRoom {
     return this.issueTicket();
   }
 
+  /** Fix a newly joined seat to the quantity reserved before it can choose. */
+  lockTicketCount({ playerId, count } = {}) {
+    const player = this.players.get(playerId);
+    if (!player) return fail(ErrorCodes.NOT_PLAYER, "you are not a participant of this room");
+    if (this.state !== GameState.WAITING) return fail(ErrorCodes.INVALID_STATE, "ticket selection is locked once the game has started", { state: this.state });
+    const ceiling = this.ticketCeiling(player.id);
+    if (!Number.isInteger(count) || count < TICKET_MIN || count > ceiling) {
+      return fail(ErrorCodes.TICKET_LIMIT, "the confirmed reservation exceeds the remaining room ticket capacity", { max: ceiling });
+    }
+    if (player.tickets.length) return fail("BOOKING_TICKET_COUNT_LOCKED", "a booking must be assigned before ticket grids are selected");
+    player.ticketCount = count;
+    player.ticketSelectionLocked = true;
+    this.record({ type: "tickets-booked", player: player.id, count });
+    this.emit("room:updated", { players: this.playersList() });
+    return ok({ ticketCount: count, ticketSelectionLocked: true });
+  }
+
+  /**
+   * Assign the exact, server-selected inventory grids to one waiting seat.
+   * The caller must already have atomically reserved these ticket IDs in its
+   * durable inventory service. The engine independently validates every grid
+   * and makes this set immutable for the round. `no` remains the seat-local
+   * claim/award number; `serial` is the stable inventory identity.
+   */
+  assignInventoryTickets({ playerId, tickets, playerToken, socketId } = {}) {
+    let player = this.players.get(playerId);
+    if (!player && socketId) player = this.players.get(this.socketToPlayer.get(socketId));
+    if (!player) return fail(ErrorCodes.NOT_PLAYER, "you are not a participant of this room");
+    if (playerToken !== undefined && player.token !== playerToken) {
+      return fail(ErrorCodes.NOT_PLAYER, "bad player credential");
+    }
+    if (this.state !== GameState.WAITING) {
+      return fail(ErrorCodes.INVALID_STATE, "inventory tickets can only be assigned before the game starts", { state: this.state });
+    }
+    if (!Array.isArray(tickets) || tickets.length !== player.ticketCount || tickets.length < TICKET_MIN || tickets.length > this.ticketCeiling(player.id)) {
+      return fail("TICKET_INVENTORY_COUNT", "the assigned inventory must match the seat's locked ticket count", { ticketCount: player.ticketCount });
+    }
+
+    const normalized = [];
+    const ids = new Set();
+    const serials = new Set();
+    const fingerprints = new Set();
+    for (const [index, candidate] of tickets.entries()) {
+      if (!candidate || typeof candidate.inventoryTicketId !== "string" || !candidate.inventoryTicketId.trim() || candidate.inventoryTicketId.length > 128 ||
+          typeof candidate.serial !== "string" || !candidate.serial.trim() || candidate.serial.length > 64 || !Array.isArray(candidate.grid)) {
+        return fail("TICKET_INVENTORY_INVALID", "an inventory ticket has an invalid stable identity or grid");
+      }
+      const id = candidate.inventoryTicketId.trim();
+      const serial = candidate.serial.trim();
+      if (ids.has(id) || serials.has(serial)) {
+        return fail("TICKET_INVENTORY_DUPLICATE", "inventory ticket IDs and serials must be unique");
+      }
+      const check = validateTicket(candidate.grid);
+      if (!check.valid) {
+        return fail("TICKET_INVENTORY_INVALID", "inventory ticket " + serial + " is invalid: " + check.errors[0]);
+      }
+      const fingerprint = ticketFingerprint(candidate.grid);
+      if (fingerprints.has(fingerprint)) {
+        return fail("TICKET_INVENTORY_DUPLICATE", "inventory tickets must have distinct number grids");
+      }
+      ids.add(id);
+      serials.add(serial);
+      fingerprints.add(fingerprint);
+      normalized.push({
+        no: index + 1, inventoryTicketId: id, serial, grid: candidate.grid,
+        ...(typeof candidate.inventorySessionId === "string" ? { inventorySessionId: candidate.inventorySessionId } : {}),
+        ...(typeof candidate.inventoryReservationId === "string" ? { inventoryReservationId: candidate.inventoryReservationId } : {}),
+      });
+    }
+
+    const otherInventory = [...this.players.values()].filter((seat) => seat.id !== player.id && seat.inventoryLocked).flatMap((seat) => seat.tickets);
+    const otherIds = new Set(otherInventory.map((ticket) => ticket.inventoryTicketId));
+    const otherSerials = new Set(otherInventory.map((ticket) => ticket.serial));
+    const otherFingerprints = new Set(otherInventory.map((ticket) => ticketFingerprint(ticket.grid)));
+    if (normalized.some((ticket) => otherIds.has(ticket.inventoryTicketId) || otherSerials.has(ticket.serial) || otherFingerprints.has(ticketFingerprint(ticket.grid)))) {
+      return fail("TICKET_INVENTORY_DUPLICATE", "an inventory ticket is already assigned to another seat");
+    }
+
+    if (player.inventoryLocked) {
+      const same = player.tickets.length === normalized.length && player.tickets.every((ticket, index) =>
+        ticket.no === normalized[index].no && ticket.inventoryTicketId === normalized[index].inventoryTicketId &&
+        ticket.serial === normalized[index].serial && JSON.stringify(ticket.grid) === JSON.stringify(normalized[index].grid)
+      );
+      if (!same) return fail("TICKET_INVENTORY_LOCKED", "the seat already holds a different immutable ticket inventory");
+      return ok({ ticketCount: player.ticketCount, ticketSelectionLocked: true, inventoryLocked: true, tickets: player.tickets.map(publicTicket), idempotent: true });
+    }
+    if (player.tickets.length) {
+      return fail("TICKET_INVENTORY_LOCKED", "tickets already selected for this seat cannot be replaced by an inventory");
+    }
+
+    player.tickets = normalized;
+    player.ticketCount = normalized.length;
+    player.ticketSelectionLocked = true;
+    player.inventoryLocked = true;
+    this.record({ type: "inventory-tickets-assigned", player: player.id, count: normalized.length });
+    this.emit("room:updated", { players: this.playersList() });
+    return ok({ ticketCount: player.ticketCount, ticketSelectionLocked: true, inventoryLocked: true, tickets: player.tickets.map(publicTicket) });
+  }
+
   /**
    * A seat chooses how many tickets it wants before the round begins.
    *
    * Server-authoritative and enforced here, not just in the UI:
    *  - only while the room is WAITING (a locked selection cannot be changed once
    *    the first number is called, which is what keeps a claim's ticket stable);
-   *  - the count is clamped to 1..maxTicketsPerPlayer; asking for more returns
-   *    TICKET_LIMIT rather than silently over-issuing;
+   *  - the count is bounded by remaining room capacity shared across all seats;
+   *    asking for more returns TICKET_LIMIT rather than allocating beyond it;
    *  - growing appends new, distinct tickets and shrinking drops from the end, so
    *    a ticket a player can already see never changes under them.
    */
@@ -637,13 +792,35 @@ export class TambolaRoom {
     if (this.state !== GameState.WAITING) {
       return fail(ErrorCodes.INVALID_STATE, "ticket selection is locked once the game has started", { state: this.state });
     }
-    const ceiling = this.ticketCeiling();
+    const ceiling = this.ticketCeiling(player.id);
     const wanted = Number.isInteger(count) ? count : NaN;
     if (!Number.isInteger(wanted) || wanted < TICKET_MIN) {
       return fail(ErrorCodes.BAD_PAYLOAD, "count must be a whole number of tickets");
     }
     if (wanted > ceiling) {
-      return fail(ErrorCodes.TICKET_LIMIT, "this room allows at most " + ceiling + " tickets per player", { max: ceiling });
+      return fail(ErrorCodes.TICKET_LIMIT, "this room has capacity for at most " + ceiling + " tickets for this seat", { max: ceiling });
+    }
+    if (player.ticketSelectionLocked && wanted !== player.ticketCount) {
+      return fail("BOOKING_TICKET_COUNT_LOCKED", "ticket count is fixed by the confirmed reservation", { ticketCount: player.ticketCount, maxTickets: player.ticketCount });
+    }
+    if (player.inventoryLocked) {
+      const ids = new Set();
+      const serials = new Set();
+      const fingerprints = new Set();
+      const complete = wanted === player.ticketCount && player.tickets.length === player.ticketCount && player.tickets.every((ticket) => {
+        if (typeof ticket.inventoryTicketId !== "string" || !ticket.inventoryTicketId.trim() || ticket.inventoryTicketId.length > 128 ||
+            typeof ticket.serial !== "string" || !ticket.serial.trim() || ticket.serial.length > 64 || !validateTicket(ticket.grid).valid) return false;
+        const fingerprint = ticketFingerprint(ticket.grid);
+        if (ids.has(ticket.inventoryTicketId) || serials.has(ticket.serial) || fingerprints.has(fingerprint)) return false;
+        ids.add(ticket.inventoryTicketId);
+        serials.add(ticket.serial);
+        fingerprints.add(fingerprint);
+        return true;
+      });
+      if (!complete) {
+        return fail("TICKET_INVENTORY_INCOMPLETE", "the locked ticket inventory is incomplete or invalid and cannot be replaced by newly generated tickets");
+      }
+      return ok({ ticketCount: player.ticketCount, maxTickets: ceiling, inventoryLocked: true, tickets: player.tickets.map(publicTicket), idempotent: true });
     }
 
     player.ticketCount = wanted;
@@ -812,6 +989,7 @@ export class TambolaRoom {
       ticket: player.tickets.length ? player.tickets[0].grid : null,
       tickets: player.tickets.map(publicTicket),
       ticketCount: player.ticketCount,
+      ticketSelectionLocked: Boolean(player.ticketSelectionLocked),
       points: player.points,
       claims: player.claims.slice(),
     };
@@ -873,7 +1051,7 @@ export class TambolaRoom {
    * host while the results screen was open. `reset()` clears those seats for
    * real (`final: true`) so a new round starts with the people who are present.
    */
-  dropPlayer(playerId, reason, { final = false } = {}) {
+  dropPlayer(playerId, reason, { final = false, actorPlayerId = null, actorRole = null } = {}) {
     const timer = this.pendingRemovals.get(playerId);
     if (timer) {
       this.clearTimer(timer);
@@ -916,7 +1094,7 @@ export class TambolaRoom {
     this.players.delete(playerId);
     this.lastChatAt.delete(playerId);
     if (wasHost) this.hostPlayerId = null;
-    this.record({ type: "removed", player: playerId, reason, wasHost });
+    this.record({ type: "removed", player: playerId, reason, wasHost, ...(actorPlayerId ? { actorPlayerId, actorRole } : {}) });
     this.emit("room:updated", { players: this.playersList() });
     if (wasHost) this.onHostGone(playerId, reason);
     return true;
@@ -985,6 +1163,34 @@ export class TambolaRoom {
     }
     const active = [...this.players.values()].filter((p) => p.connected);
     if (active.length < 1) return fail(ErrorCodes.INVALID_STATE, "nobody is connected to play");
+    const requestedRoomTickets = [...this.players.values()].reduce((sum, player) => sum + Math.max(1, player.ticketCount || 0), 0);
+    if (requestedRoomTickets > this.roomTicketCapacity()) {
+      return fail(ErrorCodes.TICKET_LIMIT, "the room ticket capacity is exceeded", { max: this.roomTicketCapacity() });
+    }
+
+    // Check before changing state/draw/round time: incomplete durable inventory
+    // must never be repaired by minting replacement grids at game start.
+    const lockedInventoryIds = new Set();
+    const lockedInventorySerials = new Set();
+    const lockedInventoryFingerprints = new Set();
+    for (const player of this.players.values()) {
+      if (!player.inventoryLocked) continue;
+      if (player.tickets.length !== player.ticketCount || player.tickets.some((ticket) =>
+        typeof ticket.inventoryTicketId !== "string" || !ticket.inventoryTicketId.trim() || ticket.inventoryTicketId.length > 128 ||
+        typeof ticket.serial !== "string" || !ticket.serial.trim() || ticket.serial.length > 64 || !validateTicket(ticket.grid).valid
+      )) {
+        return fail("TICKET_INVENTORY_INCOMPLETE", "a booked ticket inventory is incomplete or invalid; the host must restore the exact assigned tickets before starting");
+      }
+      for (const ticket of player.tickets) {
+        const fingerprint = ticketFingerprint(ticket.grid);
+        if (lockedInventoryIds.has(ticket.inventoryTicketId) || lockedInventorySerials.has(ticket.serial) || lockedInventoryFingerprints.has(fingerprint)) {
+          return fail("TICKET_INVENTORY_INCOMPLETE", "a booked ticket inventory contains duplicate identity or grid values; the host must restore the exact assigned tickets before starting");
+        }
+        lockedInventoryIds.add(ticket.inventoryTicketId);
+        lockedInventorySerials.add(ticket.serial);
+        lockedInventoryFingerprints.add(fingerprint);
+      }
+    }
 
     const moved = this.transition(GameState.RUNNING);
     if (!moved.ok) return moved;
@@ -999,10 +1205,10 @@ export class TambolaRoom {
       player.points = 0;
       player.claims = [];
       // honour the seat's chosen count; a seat that never chose still gets one.
-      const want = Math.min(Math.max(1, player.ticketCount || 1), this.ticketCeiling());
+      const want = Math.max(1, player.ticketCount || 1);
       player.ticketCount = want;
       const owned = new Set(player.tickets.map((t) => ticketFingerprint(t.grid)));
-      while (player.tickets.length < want) {
+      while (!player.inventoryLocked && player.tickets.length < want) {
         const grid = this.mintDistinctTicket(owned);
         owned.add(ticketFingerprint(grid));
         player.tickets.push({ no: player.tickets.length + 1, grid });
@@ -1019,6 +1225,8 @@ export class TambolaRoom {
           ticket: t.grid,
           ticketNo: t.no,
           ticketCount: player.tickets.length,
+          ...(t.inventoryTicketId ? { inventoryTicketId: t.inventoryTicketId } : {}),
+          ...(t.serial ? { serial: t.serial } : {}),
         });
       }
     }
@@ -1167,7 +1375,10 @@ export class TambolaRoom {
     for (const player of this.players.values()) {
       player.points = 0;
       player.claims = [];
-      player.tickets = [];
+      // An inventory-backed booking keeps its stable grids across a room
+      // reset. The next round may use the same reserved ticket identities;
+      // legacy count-only seats continue to receive fresh grids as before.
+      if (!player.inventoryLocked) player.tickets = [];
     }
     this.record({ type: "reset" });
     this.emit("game:state", this.stateView());
@@ -1228,6 +1439,7 @@ export class TambolaRoom {
     this.emit("game:state", this.stateView());
     return ok({ autoCall: this.config.autoCall, callIntervalMs: this.config.callIntervalMs });
   }
+
 
   /**
    * Which OPTIONAL prizes this room plays.
@@ -1613,7 +1825,8 @@ export class TambolaRoom {
       ticket: player.tickets.length ? player.tickets[0].grid : null,
       tickets: player.tickets.map(publicTicket),
       ticketCount: player.ticketCount,
-      maxTickets: this.ticketCeiling(),
+      ticketSelectionLocked: Boolean(player.ticketSelectionLocked),
+      maxTickets: this.ticketCeiling(player.id),
       // this seat's own eligibility per prize, computed from the same verdict
       // the claim path uses. Never another player's.
       claimStates: this.claimStates(player.id),

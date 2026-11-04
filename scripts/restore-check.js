@@ -7,17 +7,19 @@
  *   npm run db:restore-check -- <dump>  # verify a specific .dump file
  *
  * What it does, and what it refuses to do:
- *  1. Creates a brand-NEW, throwaway database on the same cluster
+ *  1. Matches the archive's SHA-256 to the backup manifest before connecting.
+ *  2. Creates a brand-NEW, throwaway database on the same cluster
  *     (`tambola_rc_<hex>`), never touching the live one.
- *  2. `pg_restore`s the chosen archive into it (--no-owner, exit-on-error).
- *  3. Runs integrity checks against the manifest the backup recorded:
+ *  3. `pg_restore`s the chosen archive into it (--no-owner, exit-on-error).
+ *  4. Runs integrity checks against the manifest the backup recorded:
  *       - migration ledger (version/name/checksum) matches,
  *       - the base-table inventory matches,
  *       - every table's row count matches,
  *       - semantic invariants of restored games hold (no gaps/duplicates in the
  *         call log, numbers within 1..90, calls never exceed the round marker) —
  *         i.e. restored rooms and history are actually readable and coherent.
- *  4. Drops the throwaway database, then prints PASS or FAIL.
+ *  5. Drops the throwaway database, writes a credential-free result sidecar,
+ *     then prints PASS or FAIL.
  *
  * It will NOT restore over, or into, the source database, and it never restores
  * into `public` of the live schema. Credentials are handled exactly as in
@@ -37,7 +39,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 import {
@@ -93,6 +95,32 @@ async function main() {
   console.log(`[restore-check] archive: ${path.basename(dumpPath)}`);
   console.log(`[restore-check] manifest: ${manifest ? path.basename(manifestPath) : "MISSING — will compare against the live source instead"}`);
 
+  let checksumStatus = "unavailable";
+  let initialFailures = [];
+  if (manifest) {
+    const manifestValid = manifest.format === "pg_dump-custom"
+      && manifest.file === path.basename(dumpPath)
+      && Number.isSafeInteger(manifest.bytes) && manifest.bytes > 0
+      && typeof manifest.sha256 === "string" && /^[a-f0-9]{64}$/i.test(manifest.sha256)
+      && typeof manifest.schema === "string" && Array.isArray(manifest.tables)
+      && Array.isArray(manifest.migrationLedger) && manifest.rowCountByTable && typeof manifest.rowCountByTable === "object";
+    if (!manifestValid) {
+      checksumStatus = "invalid-manifest";
+      initialFailures.push("backup manifest is invalid; archive verification was refused");
+    } else {
+      try {
+        checksumStatus = await sha256File(dumpPath) === manifest.sha256.toLowerCase() ? "match" : "mismatch";
+        if (checksumStatus === "mismatch") initialFailures.push("archive SHA-256 does not match the backup manifest");
+      } catch {
+        checksumStatus = "unreadable";
+        initialFailures.push("archive could not be read for SHA-256 verification");
+      }
+    }
+  }
+  if (checksumStatus === "match") console.log("[restore-check] archive SHA-256 matches its manifest");
+  else if (checksumStatus === "unavailable") console.log("[restore-check] no manifest checksum is available; snapshot comparison will use the live source");
+  else console.error(`[restore-check] archive verification stopped: ${initialFailures[0]}`);
+
   const scratch = assertIdentifier(`tambola_rc_${randomBytes(5).toString("hex")}`);
   const adminUrl = process.env.RESTORE_ADMIN_DATABASE_URL || connectionToDatabase(url, "postgres");
   const admin = parseConnection(adminUrl);
@@ -104,12 +132,15 @@ async function main() {
   const scratchUrl = connectionToDatabase(url, scratch);
   const env = source.password ? { PGPASSWORD: source.password } : {};
 
-  let restoreFailures = [];
+  let restoreFailures = initialFailures;
   let issues = [];
   let semanticIssues = [];
+  let restoredTables = 0;
+  let restoredRows = 0;
   let created = false;
   let adminPool = null;
   try {
+    if (restoreFailures.length === 0) {
     adminPool = new Pool({ connectionString: adminUrl, max: 1, connectionTimeoutMillis: 8000 });
     await adminPool.query(`CREATE DATABASE ${JSON.stringify(scratch)}`);
     created = true;
@@ -148,6 +179,8 @@ async function main() {
 
       // Gather what actually landed in the restored database.
       const actual = await collectSnapshot(scratchUrl, schema);
+      restoredTables = actual.tables.length;
+      restoredRows = countTotal(actual.rows);
       // Gather what the backup promised. Prefer the manifest; otherwise re-read
       // the live source (a valid faithful-restore check for a just-taken backup).
       const expected = manifest
@@ -165,6 +198,7 @@ async function main() {
       // Never throw here: this exit code plus the captured stderr are the only
       // place the real reason lives. The old behaviour threw past the report, so
       // an operator was told "pg_restore failed" and nothing else.
+    }
     }
   } catch (error) {
     // An unexpected failure (connection, permissions) is collected as a problem
@@ -188,13 +222,33 @@ async function main() {
     }
   }
 
-  report(restoreFailures, issues, semanticIssues);
+  report(restoreFailures, issues, semanticIssues, { dumpPath, tables: restoredTables, rows: restoredRows, checksumStatus });
 }
 
 // The single exit path. Reachable whether the restore succeeded, failed, or threw
 // part-way, so the reason is always printed rather than being lost to an exception.
-function report(restoreFailures, issues, semanticIssues) {
+function report(restoreFailures, issues, semanticIssues, { dumpPath, tables, rows, checksumStatus }) {
   const problems = [...restoreFailures, ...issues, ...semanticIssues];
+  const verification = {
+    format: "tambola-restore-check",
+    archive: path.basename(dumpPath),
+    verifiedAt: new Date().toISOString(),
+    status: problems.length ? "failed" : "passed",
+    issueCount: problems.length,
+    checksumStatus,
+    tables,
+    rows,
+  };
+  const verificationPath = dumpPath.replace(/\.dump$/, ".restore-check.json");
+  const temporaryPath = `${verificationPath}.tmp-${process.pid}`;
+  try {
+    fs.writeFileSync(temporaryPath, JSON.stringify(verification, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+    fs.renameSync(temporaryPath, verificationPath);
+    console.log(`[restore-check] wrote credential-free verification status ${path.basename(verificationPath)}`);
+  } catch {
+    try { fs.rmSync(temporaryPath, { force: true }); } catch { /* leave the restore result authoritative */ }
+    console.error("[restore-check] could not save verification status; use this command's result as the current evidence");
+  }
   if (problems.length) {
     console.error("\nRESTORE CHECK FAILED");
     for (const p of problems) console.error("  - " + p);
@@ -202,6 +256,16 @@ function report(restoreFailures, issues, semanticIssues) {
   }
   console.log("\nRESTORE CHECK PASSED");
   console.log(`  archive restores faithfully into an isolated database; ledger, table inventory, row counts and game-history invariants all match.`);
+}
+
+function sha256File(file) {
+  return new Promise((resolve, reject) => {
+    const hash = createHash("sha256");
+    const stream = fs.createReadStream(file);
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("error", reject);
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
 }
 
 // Does this archive intend to CREATE the schema it dumped? Read from the archive's

@@ -183,7 +183,7 @@ export default function AdminGameDetail() {
       <div className="adm-page">
         <ErrorNote title="The room could not load" error={state.error} onRetry={() => load()} />
         <div className="adm-actions">
-          <Button variant="ghost" size="sm" onClick={() => navigate("/admin/games")}>
+          <Button variant="ghost" size="sm" onClick={() => navigate(`${window.location.pathname.startsWith("/super-admin") ? "/super-admin" : "/admin"}/games`)}>
             Back to games
           </Button>
         </div>
@@ -209,14 +209,14 @@ export default function AdminGameDetail() {
   const ticketsThisRound = tickets.filter((ticket) => ticket.gameNumber === room.gameNumber).length;
   const invite = invitation.data;
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
-  const actionsLocked = busy !== null;
+  const actionsLocked = busy !== null || Boolean(room.recoveryError);
 
   return (
     <div className="adm-page">
       <header className="adm-page-head">
         <div>
           <p className="oh-eyebrow">
-            <Link className="adm-link" to="/admin/games">
+            <Link className="adm-link" to={`${window.location.pathname.startsWith("/super-admin") ? "/super-admin" : "/admin"}/games`}>
               Games
             </Link>{" "}
             / Room
@@ -241,6 +241,15 @@ export default function AdminGameDetail() {
       {room.recoveryError ? (
         <Banner tone="danger" title="Recovery required">
           {room.recoveryError}
+          <p>After correcting the durable data issue, recheck this room. It stays frozen if any recovery check still fails.</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => runAction("recover", () => api.recoverRoom(roomId), "Room recovery checks passed.")}
+            disabled={busy !== null || !state.data?.durable}
+          >
+            {busy === "recover" ? "Checking recovery…" : "Recheck recovery"}
+          </Button>
         </Banner>
       ) : null}
       {closed ? (
@@ -439,7 +448,7 @@ export default function AdminGameDetail() {
 
         <Section eyebrow="Seats" title="Participants" actions={<Badge tone="muted">{members.length}</Badge>}>
           {members.length ? (
-            <Table>
+            <Table className="adm-table--mobile-cards adm-table--participant-cards" wrapClassName="adm-table-wrap--participants">
               <thead>
                 <tr>
                   <th scope="col">Player</th>
@@ -455,13 +464,16 @@ export default function AdminGameDetail() {
                 {members.map((member) => (
                   <tr key={member.playerId}>
                     <td>
+                      <span className="adm-mobile-label">Player</span>
                       <span className="adm-cell-title">{member.displayName || member.playerId}</span>
                       <span className="adm-note oh-num">{member.playerId.slice(0, 10)}</span>
                     </td>
                     <td>
+                      <span className="adm-mobile-label">Role</span>
                       <Badge tone={member.role === "host" ? "gold" : "muted"}>{member.role}</Badge>
                     </td>
                     <td>
+                      <span className="adm-mobile-label">Seat</span>
                       {member.leftAt ? (
                         <Badge tone="muted">left</Badge>
                       ) : member.connected ? (
@@ -470,8 +482,12 @@ export default function AdminGameDetail() {
                         <Badge tone="warn">away</Badge>
                       )}
                     </td>
-                    <td>{member.joinedAt ? formatDateTime(member.joinedAt) : "—"}</td>
                     <td>
+                      <span className="adm-mobile-label">Joined</span>
+                      {member.joinedAt ? formatDateTime(member.joinedAt) : "—"}
+                    </td>
+                    <td>
+                      <span className="adm-mobile-label">Actions</span>
                       {!member.leftAt && member.role !== "host" && live && !closed ? (
                         <Button
                           variant="danger"

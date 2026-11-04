@@ -39,7 +39,7 @@ import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { parseConnection, connectionArgs, runPgTool, collectSnapshot } from "./pg-cli.js";
+import { parseConnection, connectionArgs, runPgTool, collectSnapshot, withExportedSnapshot } from "./pg-cli.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -83,14 +83,18 @@ async function main() {
   // the whole backup/restore guarantee would rest on a lie. It also takes locks
   // across every schema, so unrelated DDL elsewhere makes the backup fail.
   args.push("--schema", schema);
-  const result = await runPgTool({
+  const { result, snapshot } = await withExportedSnapshot(url, async (snapshotId) => {
+    const result = await runPgTool({
     tool: "pg_dump",
-    args,
+    args: [...args, "--snapshot", snapshotId],
     env: conn.password ? { PGPASSWORD: conn.password } : {},
     container,
     binDir,
     containerPort,
     stdoutFile: dumpPath,
+    });
+    const snapshot = result.code === 0 ? await collectSnapshot(url, schema, snapshotId) : null;
+    return { result, snapshot };
   });
 
   if (result.code !== 0) {
@@ -108,10 +112,8 @@ async function main() {
   }
   const sha256 = createHash("sha256").update(fs.readFileSync(dumpPath)).digest("hex");
 
-  // Snapshot the LIVE source so the manifest records what the archive promises.
-  // The tools may run inside a container but this query uses the already-reachable
-  // host connection string, so it needs no binary.
-  const snapshot = await collectSnapshot(url, schema);
+  // The manifest and archive share the exported MVCC snapshot, even if games
+  // continue writing while pg_dump runs.
 
   const manifest = {
     format: "pg_dump-custom",

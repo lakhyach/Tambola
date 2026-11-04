@@ -8,7 +8,7 @@
 # that keeps the process warm and runs exactly one replica.
 #
 # Build:   docker build -t tambola .
-# Run:     docker run -p 4000:4000 --env-file .env tambola
+# Run:     docker run -p 127.0.0.1:4000:4000 --env-file .env tambola
 # (env vars are described in DEPLOYMENT.md and .env.example; never bake secrets
 #  into the image - supply them at runtime.)
 
@@ -33,6 +33,11 @@ RUN npm ci --omit=dev
 COPY server/ ./server/
 # The server resolves the built client at ../client/dist relative to server/.
 COPY --from=client-build /build/dist ./client/dist
+# Sarvam's server-side announcement builder imports these shared, deterministic
+# word/callout modules directly from client/src/lib. They are runtime inputs,
+# not part of the static bundle, so keep both files in the final stage.
+COPY client/src/lib/number-callouts.js ./client/src/lib/number-callouts.js
+COPY client/src/lib/number-words.js ./client/src/lib/number-words.js
 # Migration SQL and the owner/backup CLIs live under server/ and scripts/; the
 # server applies migrations itself on boot, scripts/ is for operator tooling.
 COPY scripts/ ./scripts/

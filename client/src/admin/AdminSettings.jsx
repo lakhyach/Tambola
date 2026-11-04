@@ -49,21 +49,41 @@ function isCodeReady(value) {
   return String(value || "").replace(/\D/g, "").length === 6;
 }
 
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let size = bytes / 1024;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) { size /= 1024; unit += 1; }
+  return `${size.toFixed(size >= 100 ? 0 : 1)} ${units[unit]}`;
+}
+
 export default function AdminSettings() {
   const { owner, toast, reloadSession } = useAdmin();
   const navigate = useNavigate();
 
   const [state, setState] = useState({ loading: true, error: null, data: null });
+  const [backupState, setBackupState] = useState({ loading: false, error: null, data: null });
+
+  const loadBackupStatus = useCallback(async () => {
+    setBackupState((previous) => ({ ...previous, loading: true, error: null }));
+    try { setBackupState({ loading: false, error: null, data: await api.backupStatus() }); }
+    catch (error) { setBackupState((previous) => ({ loading: false, error, data: previous.data })); }
+  }, []);
 
   const load = useCallback(async () => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
       const data = await api.settings();
       setState({ loading: false, error: null, data });
+      if (data.durable) loadBackupStatus();
+      else setBackupState({ loading: false, error: null, data: null });
     } catch (error) {
       setState((prev) => ({ loading: false, error, data: prev.data }));
     }
-  }, []);
+  }, [loadBackupStatus]);
 
   useEffect(() => {
     load();
@@ -100,7 +120,7 @@ export default function AdminSettings() {
       toast("Password changed. Every owner session was revoked.", "success");
       setPasswordForm({ current: "", next: "", confirm: "", code: "" });
       await reloadSession();
-      navigate("/admin/signin", { replace: true });
+      navigate(`${window.location.pathname.startsWith("/super-admin") ? "/super-admin" : "/admin"}/signin`, { replace: true });
     } catch (error) {
       setPasswordError(error);
     } finally {
@@ -300,6 +320,29 @@ export default function AdminSettings() {
               ) : null}
             </Section>
           </div>
+
+          <Section eyebrow="Operations" title="Backup and restore status" description="Read-only status from local backup manifests and isolated restore-check reports." actions={<Button variant="ghost" size="sm" onClick={loadBackupStatus} disabled={!data.durable || backupState.loading}>Refresh backup status</Button>}>
+            {!data.durable ? <Banner tone="warn" title="Durable database required">Backups are not available while this process is using memory-only storage.</Banner> : null}
+            {data.durable && backupState.loading && !backupState.data ? <Loading label="Reading local backup status…" /> : null}
+            {data.durable && backupState.error && !backupState.data ? <ErrorNote title="Backup status could not be read" error={backupState.error} onRetry={loadBackupStatus} /> : null}
+            {data.durable && backupState.error && backupState.data ? <ErrorNote title="The last backup status refresh failed" error={backupState.error} onRetry={loadBackupStatus} /> : null}
+            {data.durable && backupState.data?.directoryStatus === "missing" ? <Banner tone="warn" title="Backup directory not found">No backup directory is present at the configured local path.</Banner> : null}
+            {data.durable && backupState.data?.directoryStatus === "unavailable" ? <Banner tone="danger" title="Backup directory unavailable">The configured local backup directory could not be read.</Banner> : null}
+            {data.durable && backupState.data?.unreadableCount > 0 ? <Banner tone="warn" title="Some backup entries could not be read">{formatNumber(backupState.data.unreadableCount)} archive entries were skipped while reading status.</Banner> : null}
+            {data.durable && backupState.data?.directoryStatus === "available" ? (
+              backupState.data.backups.length ? (
+              <Table><thead><tr><th>Backup created</th><th>Archive size</th><th>Manifest</th><th>Restore check</th><th>SHA-256</th></tr></thead><tbody>
+                {backupState.data.backups.map((backup, index) => <tr key={`${backup.backupAt}-${index}`}>
+                  <td>{formatDateTime(backup.backupAt)}</td><td>{formatBytes(backup.archiveBytes)}</td>
+                  <td><Badge tone={backup.manifestStatus === "valid" ? "gold" : backup.manifestStatus === "size-mismatch" || backup.manifestStatus === "invalid" ? "danger" : "muted"}>{backup.manifestStatus}</Badge></td>
+                  <td>{backup.restoreCheck ? <><Badge tone={backup.restoreCheck.status === "passed" ? "gold" : "danger"}>{backup.restoreCheck.status}</Badge><small className="adm-table-sub">{formatDateTime(backup.restoreCheck.verifiedAt)} · {formatNumber(backup.restoreCheck.tables)} tables · {formatNumber(backup.restoreCheck.rows)} rows · {formatNumber(backup.restoreCheck.issueCount)} issues</small></> : <Badge tone="muted">Not verified</Badge>}</td>
+                  <td><Badge tone={backup.restoreCheck?.checksumStatus === "match" ? "gold" : backup.restoreCheck?.checksumStatus === "mismatch" || backup.restoreCheck?.checksumStatus === "invalid-manifest" ? "danger" : "muted"}>{backup.restoreCheck?.checksumStatus || "Not checked"}</Badge></td>
+                </tr>)}
+              </tbody></Table>
+              ) : <Empty title="No backup archives found">Create an archive with <code>npm run db:backup</code>; verify it with <code>npm run db:restore-check</code>. Credentials and MFA keys are never returned here.</Empty>
+            ) : null}
+            {data.durable && backupState.data?.directoryStatus === "available" ? <p className="adm-note">Showing the latest {backupState.data.backups.length} of {backupState.data.backupCount} archive(s). Restore verification runs in an isolated temporary database and leaves the source untouched.</p> : null}
+          </Section>
 
           <Section eyebrow="Security" title="Two-factor sign-in" actions={<Badge tone={mfaView.tone}>{mfaView.label}</Badge>}>
             <p className="adm-note">{mfaView.detail}</p>

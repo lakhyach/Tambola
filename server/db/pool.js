@@ -11,7 +11,7 @@
  *    COMMIT may have reached the server the caller is told PERSIST_UNKNOWN and
  *    the store re-reads the row instead of writing it twice.
  *  - the single-instance lease: a session-scoped advisory lock held on a
- *    dedicated connection. A second server pointed at the same database
+ *    dedicated connection. A second server pointed at the same database schema
  *    refuses to start rather than running two schedulers over one set of rooms.
  */
 
@@ -87,7 +87,7 @@ export function createPool(options = {}) {
     max: options.max ?? 8,
     connectionTimeoutMillis: options.connectionTimeoutMillis ?? 5000,
     statement_timeout: options.statementTimeoutMs ?? 5000,
-    idle_timeout_millis: options.idleTimeoutMs ?? 30000,
+    idleTimeoutMillis: options.idleTimeoutMs ?? 30000,
     application_name: options.applicationName || "tambola-server",
   });
 
@@ -116,28 +116,39 @@ export function createPool(options = {}) {
   async function withTransaction(fn) {
     const client = await pool.connect();
     let committed = false;
+    let committing = false;
+    let discard = null;
     try {
       await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
       const result = await fn(client);
+      committing = true;
       await client.query("COMMIT");
       committed = true;
       return result;
     } catch (error) {
-      if (!committed) {
+      let rolledBack = false;
+      if (committing) {
+        // A lost reply does not tell us whether COMMIT reached PostgreSQL.
+        // Never replay the callback or reuse this connection on that evidence.
+        discard = error;
+      } else if (!committed) {
         try {
           await client.query("ROLLBACK");
+          rolledBack = true;
         } catch (rollbackError) {
+          discard = rollbackError;
           log("rollback failed", rollbackError && rollbackError.message);
         }
       }
       const wrapped = new Error("database transaction failed: " + (error && error.message));
       wrapped.cause = error;
-      wrapped.code = error && error.code === "PERSIST_FAILED" ? error.code : codeOf(error);
-      wrapped.retryable = RETRYABLE.has(codeOf(error));
+      wrapped.code = committing ? "PERSIST_UNKNOWN" : codeOf(error);
+      wrapped.retryable = !committing && rolledBack && RETRYABLE.has(codeOf(error));
+      wrapped.outcomeUnknown = committing;
       wrapped.committed = committed;
       throw wrapped;
     } finally {
-      client.release();
+      client.release(discard);
     }
   }
 
@@ -183,7 +194,7 @@ export function createPool(options = {}) {
       const result = await client.query("SELECT pg_try_advisory_lock($1, $2) AS locked", leaseKey);
       acquired = result.rows[0].locked === true;
       if (!acquired) {
-        const error = new Error("another game server already holds this database");
+        const error = new Error("another game server already holds this database schema");
         error.code = "INSTANCE_LOCKED";
         throw error;
       }

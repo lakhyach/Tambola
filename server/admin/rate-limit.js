@@ -10,7 +10,7 @@
  * `auth_throttle` (migration 003), keyed by (scope, sha256(key)), incremented
  * inside a row lock with SELECT ... FOR UPDATE, so two concurrent guesses cannot
  * both read "7 of 8". Because the row is in the database, restarting the process
- * - or pointing a second process at the same database - does not reset it. That
+ * - or pointing a second process at the same database schema - does not reset it. That
  * is the whole point: the previous in-memory map forgot every lockout on boot.
  *
  * Policy (defaults, overridable per limiter):

@@ -462,13 +462,46 @@ test("starting twice is refused and a reset makes the room playable again", asyn
 
   assert.equal((await host.call("game:end")).ok, true);
   assert.equal((await host.call("game:reset")).ok, true);
+  await settle(120);
+  assert.equal(
+    player.client.history("game:state").at(-1)?.state,
+    GameState.WAITING,
+    "the reset state is broadcast to the other seated clients"
+  );
   const view = await host.call("room:state");
   assert.equal(view.snapshot.state, GameState.WAITING);
   assert.deepEqual(view.snapshot.calledNumbers, []);
+  await player.client.disconnect();
+  const resumedPlayer = await newClient("Patient resumed");
+  const resumed = await resumedPlayer.call("session:resume", {
+    roomId: session.roomId,
+    sessionToken: player.session.sessionToken,
+  });
+  assert.equal(resumed.ok, true);
+  assert.equal(resumed.snapshot.state, GameState.WAITING);
+  assert.equal(
+    instance.io.sockets.adapter.rooms.get(session.roomId)?.has(resumedPlayer.id),
+    true,
+    "the resumed socket is in the Socket.IO room before the resume acknowledgement"
+  );
   assert.equal((await host.call("game:start")).ok, true);
   await settle(120);
-  assert.equal(player.client.tickets().length, 2, "a fresh ticket for the second game");
-  assert.notDeepEqual(player.client.tickets()[0], player.client.tickets()[1]);
+  assert.equal(
+    resumedPlayer.history("game:state").at(-1)?.state,
+    GameState.RUNNING,
+    "a resumed player receives the new round state"
+  );
+  assert.equal(resumedPlayer.tickets().length, 1, "a fresh ticket is privately assigned for the second game");
+  assert.notDeepEqual(player.client.tickets()[0], resumedPlayer.tickets()[0]);
+
+  const nextCall = await host.call("game:call-next");
+  assert.equal(nextCall.ok, true);
+  await settle(80);
+  assert.equal(
+    resumedPlayer.history("number:called").at(-1)?.number,
+    nextCall.number,
+    "the resumed player receives official number broadcasts after the round starts"
+  );
 });
 
 test("pause stops the draw and resume continues the same sequence", async () => {
@@ -944,28 +977,30 @@ test("nothing in a snapshot exposes the future draw", async () => {
 
 // ---------------------------------------------------- multi-ticket over the wire
 
-test("a seat selects its ticket count over the socket and the ceiling is enforced server-side", async () => {
+test("a seat selects more than four tickets over the socket under server capacity", async () => {
   const { client: host, session } = await hostRoom("MultiHost");
   const player = await joinRoom(session.roomId, "MultiPlayer");
 
   const picked = await player.client.call("tickets:select", { count: 3 });
   assert.equal(picked.ok, true, JSON.stringify(picked));
   assert.equal(picked.ticketCount, 3);
-  assert.equal(picked.maxTickets, 4, "the room's default ceiling is echoed");
+  assert.equal(picked.maxTickets, 10001, "the shared room capacity is echoed after the host seat is reserved");
   assert.equal(picked.tickets.length, 3, "the player sees the tickets while choosing");
   assert.deepEqual(picked.tickets.map((t) => t.no), [1, 2, 3]);
 
-  // inside the wire bounds but above the room's ceiling: refused, not clamped
-  const tooMany = await player.client.call("tickets:select", { count: 5 });
-  assert.equal(tooMany.ok, false);
-  assert.equal(tooMany.code, ErrorCodes.TICKET_LIMIT);
-  assert.equal(tooMany.max, 4, "the message can name the real limit");
+  const moreThanFour = await player.client.call("tickets:select", { count: 5 });
+  assert.equal(moreThanFour.ok, true, JSON.stringify(moreThanFour));
+  assert.equal(moreThanFour.ticketCount, 5);
+  assert.equal(moreThanFour.tickets.length, 5);
 
-  for (const junk of [{}, { count: "3" }, { count: 0 }, { count: -2 }, { count: 1.5 }, { count: 999 }]) {
+  for (const junk of [{}, { count: "3" }, { count: 0 }, { count: -2 }, { count: 1.5 }]) {
     const bad = await player.client.call("tickets:select", junk);
     assert.equal(bad.ok, false, "refused " + JSON.stringify(junk));
     assert.equal(bad.code, ErrorCodes.BAD_PAYLOAD);
   }
+  const overCapacity = await player.client.call("tickets:select", { count: 10002 });
+  assert.equal(overCapacity.ok, false);
+  assert.equal(overCapacity.code, ErrorCodes.TICKET_LIMIT, "a valid integer above shared room capacity is rejected as a capacity limit");
 });
 
 test("start issues every chosen ticket privately to its owner and nobody else", async () => {
@@ -1007,7 +1042,7 @@ test("claims name tickets within bounds and only the seat's own tickets qualify"
   await settle(120);
 
   // out-of-bounds ticket numbers never reach the engine
-  const huge = await player.client.call("claim:submit", { pattern: "topLine", ticketNo: 999 });
+  const huge = await player.client.call("claim:submit", { pattern: "topLine", ticketNo: 10003 });
   assert.equal(huge.ok, false);
   assert.equal(huge.code, ErrorCodes.BAD_PAYLOAD);
 

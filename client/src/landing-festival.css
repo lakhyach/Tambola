@@ -1,0 +1,364 @@
+.festival-landing {
+  --fest-plum: #240d37;
+  --fest-deep: #160b24;
+  --fest-panel: #301441;
+  --fest-panel-light: #42194e;
+  --fest-gold: #ffd564;
+  --fest-saffron: #ff9a31;
+  --fest-pink: #f052a2;
+  --fest-teal: #52d4c4;
+  --fest-green: #48bd86;
+  --fest-cream: #fff2dc;
+  --fest-ink: #35223c;
+  color: var(--oh-text);
+  overflow: clip;
+}
+
+.festival-landing main { width: min(100%, 1440px); margin: 0 auto; padding: 0 clamp(18px, 5vw, 64px) 50px; }
+.festival-landing .public-site-header { background: linear-gradient(180deg, rgba(20, 7, 29, .96), rgba(20, 7, 29, .58)); border-bottom: 1px solid rgba(255, 211, 99, .22); }
+.festival-landing .public-site-brand__name { color: #ffe6a0; text-shadow: 0 0 18px rgba(255, 194, 70, .3); }
+.festival-landing .public-site-nav a { color: #f4dff2; }
+.festival-landing .public-site-nav a:hover { color: var(--fest-gold); }
+
+.fest-hero {
+  position: relative;
+  isolation: isolate;
+  min-height: clamp(570px, 57vw, 760px);
+  margin: clamp(22px, 3vw, 38px) auto clamp(54px, 8vw, 106px);
+  display: grid;
+  grid-template-columns: minmax(0, .98fr) minmax(0, 1.02fr);
+  align-items: center;
+  gap: clamp(12px, 3vw, 40px);
+  padding: clamp(30px, 6vw, 76px);
+  border: 1px solid rgba(255, 217, 125, .58);
+  border-radius: clamp(24px, 4vw, 42px);
+  background:
+    linear-gradient(90deg, rgba(33, 9, 47, .98) 0%, rgba(37, 9, 51, .89) 43%, rgba(32, 7, 42, .37) 100%),
+    radial-gradient(ellipse at 52% 10%, rgba(255, 174, 50, .2), transparent 38%),
+    radial-gradient(ellipse at 88% 60%, rgba(238, 40, 142, .23), transparent 45%),
+    var(--fest-hero-scene, url("/brand/festival-courtyard-hero-v1.webp")) center 54% / cover no-repeat,
+    linear-gradient(142deg, rgba(57, 16, 74, .97) 0%, rgba(36, 9, 50, .98) 45%, rgba(21, 8, 35, .99) 100%);
+  box-shadow: inset 0 0 0 5px rgba(255, 225, 149, .045), 0 35px 90px rgba(11, 3, 19, .48), 0 0 55px rgba(233, 92, 73, .11);
+}
+.fest-hero::before, .fest-hero::after { position: absolute; z-index: -1; inset: 12px; border: 1px solid rgba(255, 215, 117, .16); border-radius: inherit; content: ""; pointer-events: none; }
+.fest-hero::after { inset: auto 6% 18px; height: 2px; border: 0; background: linear-gradient(90deg, transparent, rgba(255, 193, 74, .72), rgba(240, 82, 162, .5), transparent); opacity: .8; }
+.fest-hero__lights { position: absolute; z-index: -1; inset: 0 0 auto; height: 40px; border-radius: inherit; background: radial-gradient(circle at 14px 12px, #fff5c4 0 1px, #ffc44a 2px, rgba(255, 139, 32, .25) 5px, transparent 10px) 0 0 / 58px 32px repeat-x; filter: drop-shadow(0 0 10px rgba(255, 191, 62, .75)); opacity: .88; }
+.fest-hero__copy { z-index: 2; max-width: 620px; }
+.fest-eyebrow { margin: 0 0 13px; color: var(--fest-gold); font: 800 10px/1.4 var(--oh-font-ui); letter-spacing: .2em; text-transform: uppercase; }
+.fest-hero__kicker { display: flex; align-items: center; gap: 10px; font-size: 11px; }
+.fest-hero__kicker span { color: #fff0aa; text-shadow: 0 0 12px #ff9f35; }
+.fest-display { margin: 0; color: #fff0bd; font-family: var(--oh-font-display); font-weight: 650; letter-spacing: -.018em; line-height: 1.05; text-shadow: 0 3px 0 rgba(102, 34, 63, .52), 0 10px 30px rgba(255, 152, 54, .12); }
+.fest-hero h1 { max-width: 720px; font-size: clamp(52px, 8.7vw, 118px); background: linear-gradient(180deg, #fff4c4 0%, #ffd457 55%, #f3a038 100%); color: transparent; background-clip: text; filter: drop-shadow(0 5px 18px rgba(238, 112, 43, .22)); }
+.fest-hero__subtitle { max-width: 550px; margin: 22px 0 8px; color: #fff2e8; font: 700 clamp(20px, 2.5vw, 30px)/1.3 var(--oh-font-display); }
+.fest-hero__support { max-width: 510px; margin: 0; color: #dfcee2; font-size: clamp(14px, 1.6vw, 17px); line-height: 1.7; }
+.fest-hero__actions, .fest-final-cta__actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.fest-button { position: relative; display: inline-flex; min-height: 48px; align-items: center; justify-content: center; gap: 9px; padding: 0 22px; border: 1px solid transparent; border-radius: 999px; color: #fff6eb; font: 750 14px/1 var(--oh-font-ui); text-decoration: none; transition: transform .18s ease, box-shadow .18s ease, filter .18s ease; }
+.fest-button:hover { transform: translateY(-2px); filter: saturate(1.12) brightness(1.06); }
+.fest-button:focus-visible, .fest-text-link:focus-visible, .fest-scroll-cue:focus-visible, .fest-footer a:focus-visible { outline: 3px solid #fff0a8; outline-offset: 4px; }
+.fest-button--play { color: #3d1d24; border-color: #fff0a4; background: linear-gradient(180deg, #fff0a0, #ffc342 53%, #f8962f); box-shadow: inset 0 2px 0 rgba(255,255,255,.6), 0 7px 22px rgba(250, 137, 43, .32), 0 0 26px rgba(255, 183, 54, .18); }
+.fest-button--gold { color: #351d27; border-color: #ffebae; background: linear-gradient(180deg, #ffe389, #ffab35); box-shadow: 0 8px 24px rgba(235, 142, 42, .23); }
+.fest-button--pink { border-color: rgba(255, 184, 225, .75); background: linear-gradient(135deg, #fa4ea4, #a82083); box-shadow: inset 0 1px 0 rgba(255,255,255,.34), 0 9px 26px rgba(218, 34, 140, .24); }
+.fest-button--outline, .fest-button--quiet { border-color: rgba(255, 215, 132, .48); background: rgba(32, 11, 47, .44); }
+.fest-hero__promise { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin: 22px 0 0; color: #d3c1d9; font-size: 10px; font-weight: 700; letter-spacing: .13em; }
+.fest-hero__promise span { color: #81e4b0; }
+.fest-hero__promise i { width: 4px; height: 4px; border-radius: 50%; background: var(--fest-gold); }
+.fest-hero__stage { position: relative; display: grid; place-items: end center; min-width: 0; min-height: 460px; align-self: stretch; isolation: isolate; }
+.fest-hero__halo { position: absolute; z-index: -1; width: min(88%, 520px); aspect-ratio: 1; top: 8%; left: 6%; border: 1px solid rgba(255, 213, 121, .34); border-radius: 50%; background: radial-gradient(circle, rgba(255, 164, 53, .22), rgba(217, 51, 122, .11) 50%, transparent 69%); box-shadow: 0 0 0 18px rgba(239, 100, 92, .045), 0 0 0 45px rgba(255, 207, 110, .025), 0 0 86px rgba(255, 131, 39, .18); }
+.fest-hero__host { position: relative; z-index: 1; display: block; width: min(100%, 610px); max-height: 600px; object-fit: contain; object-position: bottom center; filter: drop-shadow(0 26px 32px rgba(10, 2, 18, .55)); animation: fest-host-arrive 750ms cubic-bezier(.2,.75,.3,1) both; }
+.fest-ball { position: absolute; z-index: 3; display: grid; place-items: center; width: clamp(54px, 6.5vw, 86px); aspect-ratio: 1; border: 2px solid #fff4c2; border-radius: 50%; color: #48213d; background: radial-gradient(circle at 30% 22%, #fff9e8 0 8%, #ffdc78 24%, #f7a12e 66%, #c45738 100%); box-shadow: inset -9px -12px 18px rgba(112, 42, 41, .37), inset 5px 5px 10px rgba(255,255,255,.8), 0 10px 26px rgba(5,2,12,.45), 0 0 25px rgba(255,186,65,.3); font: 900 clamp(19px, 2.4vw, 29px)/1 var(--oh-font-num); animation: fest-ball-float 5.8s ease-in-out infinite; }
+.fest-ball::before { position: absolute; top: 16%; left: 18%; width: 25%; height: 15%; border-radius: 50%; background: rgba(255,255,255,.9); filter: blur(3px); content: ""; }
+.fest-ball--45 { top: 15%; right: 2%; }
+.fest-ball--11 { bottom: 19%; left: 2%; width: clamp(42px, 5.2vw, 68px); animation-delay: -1.7s; color: #3b2451; background: radial-gradient(circle at 30% 22%, #fff 0 8%, #f7a9db 30%, #d63b95 75%, #78226f); }
+.fest-ball--67 { top: 50%; left: 1%; width: clamp(40px, 5vw, 64px); animation-delay: -3.2s; color: #193d3b; background: radial-gradient(circle at 30% 22%, #f4fff7 0 8%, #85e3c6 32%, #299981 72%, #19565b); }
+.fest-diya { position: absolute; z-index: 2; bottom: 4%; color: #ffcc57; font-size: clamp(28px, 3vw, 42px); text-shadow: 0 0 12px #ff9b2d, 0 0 32px rgba(255,128,37,.85); animation: fest-diya-glow 3s ease-in-out infinite; }
+.fest-diya--left { left: 8%; }.fest-diya--right { right: 8%; animation-delay: -1.4s; }
+.fest-hero__ticket-mini { position: absolute; z-index: 4; right: 1%; bottom: 5%; display: grid; grid-template-columns: repeat(4, 31px); gap: 5px; padding: 11px; transform: rotate(-5deg); border: 1px solid #ffe09b; border-radius: 14px; color: #37233d; background: var(--fest-cream); box-shadow: 0 14px 35px rgba(7,2,15,.45), inset 0 0 0 3px rgba(228,165,53,.19); }
+.fest-hero__ticket-mini span { grid-column: 1 / -1; color: #a65e3a; font-size: 7px; font-weight: 900; letter-spacing: .16em; text-align: center; }
+.fest-hero__ticket-mini b { display: grid; place-items: center; min-height: 27px; border: 1px solid #e5d5ba; border-radius: 6px; background: white; font-size: 13px; }
+.fest-hero__ticket-mini b:nth-of-type(2) { color: white; border-color: #cb335f; background: linear-gradient(140deg,#ee6391,#be2359); }
+.fest-scroll-cue { position: absolute; bottom: -48px; left: 50%; display: flex; align-items: center; gap: 12px; transform: translateX(-50%); color: #e4d2e4; font-size: 12px; text-decoration: none; white-space: nowrap; }
+.fest-scroll-cue span { display: grid; place-items: center; width: 25px; height: 25px; border: 1px solid rgba(255,218,126,.46); border-radius: 50%; color: var(--fest-gold); }
+
+.fest-section { position: relative; margin: 0 auto clamp(76px, 10vw, 136px); }
+.fest-section-heading { max-width: 760px; margin-bottom: clamp(26px, 4vw, 42px); }
+.fest-section-heading h2, .fest-how h2, .fest-specials h2, .fest-ticket-section h2, .fest-live h2, .fest-winners h2, .fest-voice h2, .fest-faq h2, .fest-final-cta h2 { font-size: clamp(34px, 5vw, 60px); }
+.fest-section-heading > p:last-child { max-width: 660px; margin: 14px 0 0; color: #d6c5dc; font-size: 15px; line-height: 1.75; }
+.fest-section-heading--center { margin-inline: auto; text-align: center; }
+.fest-section-heading--center > p:last-child { margin-inline: auto; }
+.fest-game-types { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 18px; }
+.fest-type-card { position: relative; min-height: 280px; overflow: hidden; padding: clamp(22px, 3vw, 34px); border: 1px solid rgba(255,220,144,.32); border-radius: 24px; background: linear-gradient(145deg, rgba(63,27,79,.9), rgba(31,16,47,.94)); box-shadow: 0 16px 40px rgba(5,2,14,.24), inset 0 1px rgba(255,255,255,.05); }
+.fest-type-card::after { position: absolute; right: -35px; bottom: -60px; width: 170px; aspect-ratio: 1; border: 1px solid rgba(255,211,106,.2); border-radius: 50%; box-shadow: 0 0 0 16px rgba(236,93,153,.04), 0 0 0 34px rgba(255,195,76,.025); content: ""; pointer-events: none; }
+.fest-type-card--regular { border-top: 2px solid #ffcc56; }.fest-type-card--bumper { border-top: 2px solid #eb55ae; }.fest-type-card--host { border-top: 2px solid #43c9b0; }
+.fest-type-card__crest { display: grid; place-items: center; width: 58px; height: 58px; margin-bottom: 23px; border: 1px solid rgba(255,231,167,.75); border-radius: 19px 19px 19px 5px; color: #391b41; background: linear-gradient(145deg,#fff2ae,#ffb63b); box-shadow: 0 8px 24px rgba(255,174,54,.19); font: 850 25px var(--oh-font-display); }
+.fest-type-card--bumper .fest-type-card__crest { color: #4b1c48; background: linear-gradient(145deg,#ffc2e5,#dc51a8); }
+.fest-type-card--host .fest-type-card__crest { color: #153d3b; background: linear-gradient(145deg,#c2f4d3,#51c8b7); }
+.fest-type-card h3, .fest-session-card h3, .fest-pattern-card h3, .fest-theme-card h3 { margin: 4px 0 10px; color: #fff0cd; font: 650 25px/1.2 var(--oh-font-display); }
+.fest-type-card > p:not(.fest-eyebrow) { max-width: 390px; min-height: 72px; margin: 0 0 19px; color: #d3c4dc; font-size: 14px; line-height: 1.65; }
+.fest-text-link { display: inline-flex; align-items: center; gap: 8px; color: #ffdf86; font-size: 13px; font-weight: 750; text-decoration: none; }
+.fest-text-link:hover { color: white; }
+
+.fest-how { display: grid; grid-template-columns: minmax(0,.92fr) minmax(0,1.08fr); align-items: center; gap: clamp(28px,7vw,100px); padding: clamp(22px,5vw,54px); border: 1px solid rgba(244,153,88,.36); border-radius: 34px; background: radial-gradient(ellipse at 25% 45%, rgba(214,43,134,.15), transparent 50%), linear-gradient(135deg, rgba(42,18,60,.96), rgba(25,13,39,.95)); box-shadow: 0 24px 60px rgba(4,1,12,.25); }
+.fest-how__art { position: relative; display: grid; place-items: center; min-height: 390px; overflow: hidden; isolation: isolate; }
+.fest-orbit { position: absolute; width: min(80%, 350px); aspect-ratio: 1; border: 1px dashed rgba(255,216,123,.45); border-radius: 50%; transform: rotate(-25deg); animation: fest-orbit-spin 30s linear infinite; }
+.fest-orbit::before, .fest-orbit::after { position: absolute; inset: 12%; border: 1px solid rgba(234,73,156,.28); border-radius: 50%; content: ""; }
+.fest-orbit::after { inset: 26%; border-color: rgba(70,206,190,.25); }
+.fest-orbit span { position: absolute; display: grid; place-items: center; width: 38px; aspect-ratio: 1; border: 1px solid #ffefbb; border-radius: 50%; color: #3e2546; background: linear-gradient(#fff3bd,#ffa834); font-weight: 900; animation: fest-orbit-spin 30s linear infinite reverse; }
+.fest-orbit span:nth-child(1) { top: 1%; left: 48%; }.fest-orbit span:nth-child(2) { right: 7%; bottom: 17%; background: linear-gradient(#ffd4e9,#eb48a5); }.fest-orbit span:nth-child(3) { left: 9%; bottom: 22%; background: linear-gradient(#cff9dc,#4fc2a6); }
+.fest-call-ball { position: relative; display: grid; place-items: center; width: clamp(148px,20vw,220px); aspect-ratio: 1; border: 5px solid #fff5ce; border-radius: 50%; color: #552349; background: radial-gradient(circle at 30% 20%, white 0 6%,#fff0b2 18%,#ffc841 51%,#df761f 83%,#8f3860); box-shadow: inset -17px -22px 32px rgba(97,34,60,.32), inset 9px 10px 17px rgba(255,255,255,.7), 0 20px 48px rgba(4,1,12,.45),0 0 65px rgba(254,170,51,.36); font: 900 clamp(60px,9vw,100px)/1 var(--oh-font-num); animation: fest-call-breathe 3.5s ease-in-out infinite; }
+.fest-how__sparkles { position: absolute; bottom: 9%; color: #ffcf62; font-size: 20px; letter-spacing: .5em; text-shadow: 0 0 15px #ff9f38; }
+.fest-how__copy > p:not(.fest-eyebrow) { color: #d4c4dd; line-height: 1.7; }
+.fest-steps { display: grid; gap: 4px; margin: 25px 0 28px; padding: 0; list-style: none; }
+.fest-steps li { display: grid; grid-template-columns: 46px 1fr; gap: 13px; padding: 15px 0; border-bottom: 1px solid rgba(255,229,179,.1); }
+.fest-steps li > b { color: var(--fest-gold); font: 800 14px/1.5 var(--oh-font-num); }
+.fest-steps strong, .fest-steps small { display: block; }.fest-steps strong { color: #fff2dc; font-size: 15px; }.fest-steps small { margin-top: 4px; color: #c6b5d0; font-size: 13px; line-height: 1.5; }
+
+.fest-patterns { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 13px; }
+.fest-pattern-card { min-width: 0; padding: 17px; border: 1px solid rgba(255,215,137,.24); border-radius: 19px; background: linear-gradient(155deg, rgba(55,27,70,.86), rgba(31,16,47,.95)); }
+.fest-pattern-card__mini { display: grid; grid-template-columns: repeat(5,1fr); gap: 3px; width: 100%; max-width: 116px; aspect-ratio: 5/3; margin-bottom: 15px; padding: 6px; border: 1px solid #e1b663; border-radius: 9px; background: #fff0d4; }
+.fest-pattern-card__mini span { border: 1px solid #ddc9a6; border-radius: 3px; background: #fffaf1; }.fest-pattern-card__mini span.hit { border-color: #a62d72; background: linear-gradient(145deg,#ff77b9,#d63387); box-shadow: inset 0 0 0 1px rgba(255,255,255,.35); }
+.fest-pattern-card__mini--4 span.hit { border-color: #ce8521; background: linear-gradient(145deg,#ffe183,#ed962d); }
+.fest-pattern-card h3 { font-size: 17px; }.fest-pattern-card p { margin: 0; color: #d0bfd8; font-size: 12px; line-height: 1.6; }
+
+.fest-theme-grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 14px; }
+.fest-theme-card { --theme-a:#f2a536; --theme-b:#541c66; position: relative; overflow: hidden; min-width: 0; border: 1px solid color-mix(in srgb,var(--theme-a) 48%,transparent); border-radius: 20px; background: linear-gradient(155deg,color-mix(in srgb,var(--theme-b) 82%,#210f32),#1e102b); box-shadow: 0 14px 34px rgba(3,1,10,.27); }
+.fest-theme-card--diwali { --theme-a:#ffc14b;--theme-b:#862747; }.fest-theme-card--holi { --theme-a:#ff75c5;--theme-b:#45268a; }.fest-theme-card--navratri { --theme-a:#f7a449;--theme-b:#851d3b; }.fest-theme-card--durga { --theme-a:#ff7771;--theme-b:#7a1838; }.fest-theme-card--halloween { --theme-a:#b875ff;--theme-b:#32116c; }.fest-theme-card--christmas { --theme-a:#75d59e;--theme-b:#14563b; }.fest-theme-card--eid { --theme-a:#9bdfc2;--theme-b:#175d63; }.fest-theme-card--newyear { --theme-a:#ffd66a;--theme-b:#331350; }
+.fest-theme-card__art { position: relative; display: grid; place-items: center; height: clamp(116px,15vw,190px); overflow: hidden; border-bottom: 1px solid color-mix(in srgb,var(--theme-a) 45%,transparent); background: radial-gradient(ellipse at 50% 75%,color-mix(in srgb,var(--theme-a) 36%,transparent),transparent 65%),linear-gradient(145deg,color-mix(in srgb,var(--theme-b) 94%,#160a22),color-mix(in srgb,var(--theme-a) 17%,#271236)); }
+.fest-theme-card__art svg { position: relative; width: 95%; height: 90%; color: var(--theme-a); opacity: .92; filter: drop-shadow(0 0 11px color-mix(in srgb,var(--theme-a) 44%,transparent)); }
+.fest-theme-card__art svg .stroke, .fest-special-tile svg .stroke { fill: none; stroke: var(--theme-a); stroke-width: 2.3; stroke-linecap: round; stroke-linejoin: round; }
+.fest-theme-card__art svg .stroke.thin, .fest-special-tile svg .stroke.thin { stroke-width: 1.25; }
+.fest-theme-card__art svg .stroke.faint, .fest-special-tile svg .stroke.faint { opacity: .48; }
+.fest-theme-card__art svg .fill, .fest-special-tile svg .fill { fill: var(--theme-a); }
+.fest-theme-card__art svg .fill.soft, .fest-special-tile svg .fill.soft { opacity: .7; }
+.fest-theme-card__shine { position: absolute; inset: 0; background: linear-gradient(118deg,transparent 25%,rgba(255,255,255,.07) 43%,transparent 61%); transform: translateX(-120%); transition: transform .7s ease; }.fest-theme-card:hover .fest-theme-card__shine { transform: translateX(120%); }
+.fest-theme-card__copy { padding: 15px 16px 17px; }.fest-theme-card h3 { margin-bottom: 5px; font-size: 20px; }.fest-theme-card p { margin: 0 0 11px; color: #d8c4dc; font-size: 11px; line-height: 1.5; }.fest-theme-card__status { color: color-mix(in srgb,var(--theme-a) 70%,white); font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.fest-center-action { display: flex; justify-content: center; margin-top: 27px; }
+.fest-specials { display: grid; grid-template-columns: minmax(0,.84fr) minmax(0,1.16fr); align-items: center; gap: clamp(24px,6vw,75px); padding: clamp(25px,5vw,52px); border: 1px solid rgba(255,213,133,.32); border-radius: 30px; background: radial-gradient(ellipse at 75% 50%,rgba(222,54,153,.13),transparent 50%),linear-gradient(135deg,rgba(53,20,70,.97),rgba(26,12,40,.97)); }
+.fest-specials__copy > p:not(.fest-eyebrow) { margin: 16px 0 21px; color: #d4c4dd; line-height: 1.7; }
+.fest-specials__collage { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; transform: rotate(1deg); }
+.fest-special-tile { position: relative; display: grid; place-items: center; min-height: 145px; overflow: hidden; border: 1px solid color-mix(in srgb,var(--theme-a) 55%,transparent); border-radius: 17px; background: radial-gradient(ellipse at 50% 76%,color-mix(in srgb,var(--theme-a) 35%,transparent),transparent 56%),linear-gradient(145deg,color-mix(in srgb,var(--theme-b) 95%,#160a22),color-mix(in srgb,var(--theme-a) 22%,#241231)); box-shadow: 0 10px 26px rgba(4,1,12,.32); }
+.fest-special-tile--diwali { --theme-a:#ffc14b;--theme-b:#862747; }.fest-special-tile--holi { --theme-a:#ff75c5;--theme-b:#45268a; }.fest-special-tile--navratri { --theme-a:#f7a449;--theme-b:#851d3b; }.fest-special-tile--durga { --theme-a:#ff7771;--theme-b:#7a1838; }
+.fest-special-tile svg { position: absolute; inset: 6% 4% 10%; width: 92%; height: 84%; color: var(--theme-a); opacity: .72; }.fest-special-tile span { position: absolute; bottom: 9px; z-index: 2; padding: 5px 13px; border: 1px solid color-mix(in srgb,var(--theme-a) 67%,transparent); border-radius: 999px; color: #fff5e6; background: rgba(25,8,39,.83); font: 750 12px var(--oh-font-display); }
+
+.fest-upcoming { padding: clamp(24px,4vw,42px); border: 1px solid rgba(86,213,197,.33); border-radius: 30px; background: radial-gradient(ellipse at 90% 5%,rgba(55,187,161,.1),transparent 42%),linear-gradient(145deg,rgba(43,26,60,.92),rgba(23,16,40,.97)); }
+.fest-upcoming .fest-section-heading { margin-bottom: 25px; }.fest-upcoming__content { min-height: 90px; }.fest-state { color: #ddd0e2; }.fest-empty { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 20px 22px; border: 1px dashed rgba(255,217,132,.34); border-radius: 17px; background: rgba(22,13,37,.45); }.fest-empty p { max-width: 680px; margin: 0; color: #d8c9df; font-size: 14px; line-height: 1.65; }
+.fest-session-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }.fest-session-card { position: relative; padding: 21px; border: 1px solid rgba(255,216,129,.34); border-radius: 19px; background: linear-gradient(145deg,rgba(55,25,72,.92),rgba(28,18,45,.96)); }.fest-session-card__spark { position: absolute; top: 19px; right: 18px; color: var(--fest-gold); text-shadow: 0 0 14px rgba(255,190,59,.6); }.fest-session-card .fest-eyebrow { padding-right: 24px; color: #71d7c0; }.fest-session-card h3 { padding-right: 14px; font-size: 21px; }.fest-session-card__time { color: #ded0e2; font-size: 13px; }.fest-session-card__free { color: #85e1b0; font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+
+.fest-live { display: grid; grid-template-columns: minmax(180px,.46fr) minmax(0,1fr); align-items: center; gap: clamp(26px,6vw,82px); padding: clamp(26px,5vw,55px); border: 1px solid rgba(254,110,174,.33); border-radius: 30px; background: radial-gradient(ellipse at 20% 50%,rgba(232,55,153,.18),transparent 45%),linear-gradient(135deg,rgba(49,17,69,.94),rgba(22,13,39,.96)); }
+.fest-live__ball { display: grid; place-items: center; width: min(100%,240px); aspect-ratio: 1; margin: auto; border: 5px solid #fff2c4; border-radius: 50%; color: #542353; background: radial-gradient(circle at 28% 19%,white 0 7%,#ffe5a4 18%,#ffb931 56%,#d44a81 90%); box-shadow: inset -18px -20px 30px rgba(70,16,69,.25),inset 8px 9px 15px rgba(255,255,255,.72),0 0 0 14px rgba(236,70,163,.09),0 22px 42px rgba(4,1,13,.45),0 0 60px rgba(255,119,169,.23); font: 900 clamp(70px,10vw,105px)/1 var(--oh-font-num); animation: fest-call-breathe 4s ease-in-out infinite; }
+.fest-live__copy > p:not(.fest-eyebrow) { max-width: 740px; margin: 16px 0 23px; color: #d9c8df; line-height: 1.7; }.fest-live-dot { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: #84db9e; box-shadow: 0 0 12px #54de9c; }
+
+.fest-ticket-section { display: grid; grid-template-columns: minmax(0,.9fr) minmax(0,1.1fr); align-items: center; gap: clamp(26px,7vw,90px); padding: clamp(25px,5vw,50px); border: 1px solid rgba(255,211,115,.31); border-radius: 31px; background: radial-gradient(ellipse at 70% 50%,rgba(234,130,47,.13),transparent 50%),linear-gradient(145deg,rgba(46,19,62,.9),rgba(24,14,39,.96)); }
+.fest-ticket-section__copy > p:not(.fest-eyebrow) { margin: 16px 0 22px; color: #d7c6dd; line-height: 1.7; }.fest-ticket-wrap { width: 100%; max-width: 520px; margin: auto; transform: rotate(1.5deg); }.fest-ticket { position: relative; padding: clamp(17px,3vw,29px); border: 3px double #d8a94e; border-radius: 23px; outline: 1px solid #ffe6a3; outline-offset: 5px; color: var(--fest-ink); background: radial-gradient(ellipse at 50% 0,#fff7e7,#fff0d2 65%,#fae1b2); box-shadow: 0 19px 46px rgba(8,2,16,.48),inset 0 0 0 5px rgba(191,126,36,.09); }
+.fest-ticket::before, .fest-ticket::after { position: absolute; width: 26px; height: 26px; border: 2px solid #c78b33; border-radius: 50%; background: #29123c; content: ""; }.fest-ticket::before { top: 50%; left: -15px; transform: translateY(-50%); }.fest-ticket::after { top: 50%; right: -15px; transform: translateY(-50%); }
+.fest-ticket__heading { display: flex; align-items: center; justify-content: center; gap: 14px; margin-bottom: 17px; color: #a74c48; text-align: center; }.fest-ticket__heading > span { color: #d99d36; font-size: 20px; }.fest-ticket__heading strong, .fest-ticket__heading small { display: block; }.fest-ticket__heading strong { font: italic 700 23px/1 var(--oh-font-display); }.fest-ticket__heading small { margin-top: 6px; color: #9a6550; font: 800 8px/1 var(--oh-font-ui); letter-spacing: .16em; }
+.fest-ticket__grid { display: grid; grid-template-columns: repeat(9,minmax(0,1fr)); gap: 5px; padding: 11px; border: 1px solid #dbbf89; border-radius: 12px; background: rgba(255,255,255,.45); }.fest-ticket__grid span { display: grid; place-items: center; min-width: 0; aspect-ratio: 1; border: 1px solid #ddccb0; border-radius: 6px; color: #382637; background: #fffaf0; font: 800 clamp(10px,2vw,16px)/1 var(--oh-font-num); }.fest-ticket__grid span.is-blank { border-color: transparent; background: transparent; }.fest-ticket__grid span.is-marked { border-color: #a72d70; color: white; background: radial-gradient(circle at 30% 20%,#ff9bc8,#c8327c 77%); box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); }
+.fest-ticket__footer { display: flex; justify-content: space-between; margin-top: 13px; color: #996345; font: 850 9px var(--oh-font-ui); letter-spacing: .15em; }.fest-ticket-note { display: flex; align-items: center; gap: 11px; margin: 22px auto 0; color: #d8c7df; font-size: 12px; line-height: 1.5; }.fest-note-icon { display: grid; place-items: center; flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; color: #462541; background: var(--fest-gold); }
+
+.fest-winners { display: grid; grid-template-columns: 155px minmax(0,1fr); align-items: center; gap: clamp(18px,4vw,44px); padding: clamp(24px,5vw,48px); border: 1px solid rgba(255,198,91,.31); border-radius: 30px; background: linear-gradient(120deg,rgba(96,34,69,.46),rgba(43,20,58,.94) 36%,rgba(26,14,42,.96)); }.fest-winners__ornament { display: grid; place-items: center; width: 130px; aspect-ratio: 1; border: 1px solid rgba(255,218,125,.65); border-radius: 50%; color: #ffd05e; background: radial-gradient(circle,rgba(248,168,50,.18),rgba(230,61,144,.13) 60%,transparent 70%); box-shadow: 0 0 0 13px rgba(251,178,59,.04),0 0 45px rgba(255,175,59,.15); font-size: 70px; text-shadow: 0 0 24px rgba(255,182,62,.75); }.fest-winners__copy > p:not(.fest-eyebrow) { max-width: 820px; color: #dbcae0; line-height: 1.7; }.fest-winners__badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0; }.fest-winners__badges span, .fest-voice__chips span { padding: 8px 11px; border: 1px solid rgba(255,215,130,.27); border-radius: 999px; color: #ffe5a0; background: rgba(29,13,43,.6); font-size: 10px; font-weight: 750; }
+
+.fest-voice { display: grid; grid-template-columns: 170px minmax(0,1fr); align-items: center; gap: clamp(24px,5vw,54px); padding: clamp(25px,5vw,49px); border: 1px solid rgba(104,215,195,.32); border-radius: 29px; background: radial-gradient(ellipse at 12% 50%,rgba(54,192,173,.13),transparent 40%),linear-gradient(145deg,rgba(37,31,65,.95),rgba(24,14,42,.96)); }.fest-voice__icon { position: relative; display: grid; place-items: center; width: 140px; aspect-ratio: 1; border: 1px solid rgba(120,224,206,.56); border-radius: 35px 35px 35px 8px; color: #ffd66e; background: linear-gradient(145deg,rgba(47,171,159,.2),rgba(203,41,132,.2)); box-shadow: 0 0 0 9px rgba(68,198,177,.05),0 18px 36px rgba(4,1,12,.3); }.fest-voice__icon > span { font-size: 58px; text-shadow: 0 0 25px rgba(255,188,65,.6); }.fest-voice__icon i { position: absolute; right: 18px; width: 3px; height: 16px; border-radius: 9px; background: #59d5c2; }.fest-voice__icon i:nth-of-type(1) { right: -12px; height: 24px; }.fest-voice__icon i:nth-of-type(2) { right: -22px; height: 38px; }.fest-voice__icon i:nth-of-type(3) { right: -32px; height: 19px; }.fest-voice__copy > p:not(.fest-eyebrow) { max-width: 800px; color: #d7c9df; line-height: 1.7; }.fest-voice__chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 20px; }.fest-voice__chips span { color: #b4f0df; border-color: rgba(104,215,195,.3); }
+
+.fest-faq { display: grid; grid-template-columns: minmax(260px,.74fr) minmax(0,1.26fr); gap: clamp(24px,7vw,90px); align-items: start; }.fest-faq .fest-section-heading { position: sticky; top: 28px; }.fest-faq-list { border-top: 1px solid rgba(255,218,142,.25); }.fest-faq-list details { border-bottom: 1px solid rgba(255,218,142,.2); }.fest-faq-list summary { position: relative; padding: 20px 40px 20px 3px; color: #fff0d6; cursor: pointer; font: 650 17px/1.4 var(--oh-font-display); list-style: none; }.fest-faq-list summary::-webkit-details-marker { display: none; }.fest-faq-list summary::after { position: absolute; top: 18px; right: 4px; display: grid; place-items: center; width: 27px; height: 27px; border: 1px solid rgba(255,213,112,.4); border-radius: 50%; color: var(--fest-gold); content: "+"; font: 700 17px var(--oh-font-ui); }.fest-faq-list details[open] summary::after { content: "−"; }.fest-faq-list summary:focus-visible { outline: 2px solid var(--fest-gold); outline-offset: 3px; border-radius: 4px; }.fest-faq-list details p { margin: 0; padding: 0 38px 18px 3px; color: #d6c8dd; font-size: 14px; line-height: 1.7; }.fest-faq-list details p + p { padding-top: 0; }.fest-faq-list a { color: #ffdc82; font-weight: 700; text-decoration: none; }
+.fest-final-cta { position: relative; isolation: isolate; overflow: hidden; padding: clamp(34px,7vw,76px) 20px; border: 1px solid rgba(255,226,144,.62); border-radius: 30px; background: radial-gradient(ellipse at 50% 130%,rgba(255,136,41,.24),transparent 55%),radial-gradient(ellipse at 20% 0%,rgba(232,51,148,.2),transparent 45%),linear-gradient(145deg,#40164f,#210d33); box-shadow: inset 0 0 0 5px rgba(255,223,138,.045),0 22px 65px rgba(5,1,13,.36); text-align: center; }.fest-final-cta__lights { position: absolute; z-index: -1; inset: 0 0 auto; height: 40px; background: radial-gradient(circle at 12px 9px,#fff1bb 0 1px,#ffc64e 2px,rgba(255,145,41,.24) 5px,transparent 10px) 0 0/48px 32px repeat-x; filter: drop-shadow(0 0 12px #ffae38); }.fest-final-cta .fest-eyebrow { margin-top: 15px; }.fest-final-cta h2 { margin: 0 auto; max-width: 900px; }.fest-final-cta > p:not(.fest-eyebrow) { margin: 13px auto 0; color: #ded0e2; }.fest-final-cta__actions { justify-content: center; }
+.fest-footer { display: grid; grid-template-columns: 1fr auto 1fr auto; align-items: center; gap: 20px; padding: 27px clamp(18px,5vw,64px) 36px; border-top: 1px solid rgba(255,218,132,.22); background: rgba(17,7,26,.76); color: #bdacc6; font-size: 11px; }.fest-footer__brand { display: flex; align-items: center; gap: 9px; min-width: 0; color: #ffe4a0; }.fest-footer__brand .fest-display { font-size: 21px; }.fest-footer__brand > span:last-child { color: #a894b4; font-size: 9px; letter-spacing: .15em; }.fest-footer__diya { color: var(--fest-gold); font-size: 23px; text-shadow: 0 0 12px #ff9b32; }.fest-footer p { margin: 0; }.fest-footer nav { display: flex; justify-content: center; gap: 15px; }.fest-footer a { color: #d4c3da; text-decoration: none; }.fest-footer__top { white-space: nowrap; }
+
+@keyframes fest-host-arrive { from { opacity: 0; transform: translateY(18px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes fest-ball-float { 0%,100% { transform: translate3d(0,0,0) rotate(-5deg); } 50% { transform: translate3d(0,-12px,0) rotate(5deg); } }
+@keyframes fest-diya-glow { 0%,100% { opacity: .75; filter: brightness(.94); } 50% { opacity: 1; filter: brightness(1.22); } }
+@keyframes fest-orbit-spin { to { transform: rotate(335deg); } }
+@keyframes fest-call-breathe { 0%,100% { transform: scale(1); } 50% { transform: scale(1.025); } }
+
+@media (max-width: 980px) {
+  .fest-hero { min-height: 610px; grid-template-columns: minmax(0,1.05fr) minmax(0,.95fr); padding: clamp(27px,5vw,48px); }
+  .fest-hero__stage { min-height: 420px; }.fest-hero__ticket-mini { right: -2%; }
+  .fest-game-types { grid-template-columns: repeat(2,minmax(0,1fr)); }.fest-type-card:last-child { grid-column: 1/-1; min-height: auto; }
+  .fest-patterns { grid-template-columns: repeat(3,minmax(0,1fr)); }.fest-theme-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  .fest-theme-card__art { height: 130px; }.fest-footer { grid-template-columns: 1fr 1fr; }.fest-footer nav { justify-content: flex-start; }
+}
+@media (max-width: 700px) {
+  .festival-landing main { padding-inline: 15px; }
+  .fest-hero { min-height: 0; display: flex; flex-direction: column; align-items: stretch; gap: 0; margin-top: 14px; padding: 35px 22px 32px; }
+  .fest-hero__copy { text-align: center; }.fest-hero__kicker { justify-content: center; }.fest-hero h1 { font-size: clamp(48px,12.5vw,80px); }.fest-hero__subtitle,.fest-hero__support { margin-inline: auto; }.fest-hero__actions { justify-content: center; }.fest-hero__promise { justify-content: center; }
+  .fest-hero__stage { align-self: center; width: min(100%, 475px); min-height: clamp(280px,82vw,430px); margin-top: 8px; }.fest-hero__host { width: min(100%,470px); max-height: 440px; }.fest-hero__halo { top: 6%; left: 8%; width: 83%; }.fest-ball--45 { right: 0; top: 10%; }.fest-ball--67 { left: -1%; top: 42%; }.fest-ball--11 { left: 4%; bottom: 10%; }.fest-hero__ticket-mini { right: 0; bottom: 0; transform: rotate(-3deg) scale(.88); transform-origin: bottom right; }.fest-diya { bottom: 5%; }.fest-scroll-cue { bottom: -43px; }
+  .fest-section { margin-bottom: 75px; }.fest-section-heading { margin-bottom: 26px; }.fest-game-types { grid-template-columns: 1fr; }.fest-type-card,.fest-type-card:last-child { grid-column: auto; min-height: auto; }.fest-type-card > p:not(.fest-eyebrow) { min-height: 0; }
+  .fest-how { grid-template-columns: 1fr; gap: 7px; padding: 24px; }.fest-how__art { min-height: 280px; }.fest-orbit { width: min(70%,280px); }.fest-call-ball { width: 150px; }.fest-patterns { grid-template-columns: repeat(2,minmax(0,1fr)); }.fest-pattern-card { padding: 14px; }
+  .fest-theme-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 11px; }.fest-theme-card__art { height: clamp(110px,34vw,175px); }.fest-theme-card__copy { padding: 12px; }.fest-theme-card h3 { font-size: 18px; }
+  .fest-specials { grid-template-columns: 1fr; }.fest-specials__collage { max-width: 540px; width: 100%; margin: 5px auto 0; }.fest-special-tile { min-height: clamp(112px,35vw,170px); }
+  .fest-upcoming { padding: 22px; }.fest-session-grid { grid-template-columns: 1fr; }.fest-empty { align-items: flex-start; flex-direction: column; }
+  .fest-live { grid-template-columns: 1fr; gap: 20px; }.fest-live__ball { width: 155px; }.fest-ticket-section { grid-template-columns: 1fr; }.fest-ticket-wrap { max-width: 460px; }.fest-ticket-section__copy { max-width: 620px; }
+  .fest-winners { grid-template-columns: 1fr; }.fest-winners__ornament { width: 76px; font-size: 42px; }.fest-voice { grid-template-columns: 1fr; }.fest-voice__icon { width: 100px; border-radius: 28px 28px 28px 7px; }.fest-voice__icon > span { font-size: 43px; }
+  .fest-faq { grid-template-columns: 1fr; gap: 5px; }.fest-faq .fest-section-heading { position: static; }.fest-faq-list summary { font-size: 16px; }
+  .fest-footer { grid-template-columns: 1fr; justify-items: center; text-align: center; }.fest-footer nav { justify-content: center; }.fest-footer__brand { justify-content: center; }
+}
+@media (max-width: 400px) {
+  .festival-landing main { padding-inline: 11px; }.fest-hero { padding: 31px 16px 26px; }.fest-hero__actions { gap: 8px; }.fest-button { min-height: 45px; padding-inline: 16px; font-size: 13px; }.fest-hero__actions .fest-button--outline { width: 100%; }.fest-hero__stage { min-height: 265px; }.fest-hero__ticket-mini { transform: rotate(-3deg) scale(.74); }.fest-pattern-card { padding: 11px; }.fest-pattern-card h3 { font-size: 15px; }.fest-ticket { padding: 14px; }.fest-ticket__grid { gap: 3px; padding: 8px; }.fest-ticket__grid span { border-radius: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fest-hero__host, .fest-ball, .fest-diya, .fest-orbit, .fest-orbit span, .fest-call-ball, .fest-live__ball { animation: none !important; }
+  .fest-button, .fest-theme-card__shine { transition: none !important; }
+}
+
+/* Landing diagrams mirror a complete 3×9 server ticket, including its blanks. */
+.fest-pattern-section .fest-patterns { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
+.fest-pattern-section .fest-pattern-card { min-width: 0; }
+.fest-pattern-section .fest-pattern-card__mini {
+  display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr));
+  width: 100%; max-width: 250px; aspect-ratio: 3 / 1; gap: 2px; margin: 0 0 16px; padding: 4px;
+  border: 1px solid #d9b366; border-radius: 8px; background: #fff0d4;
+}
+.fest-pattern-section .fest-pattern-card__mini span {
+  display: grid; min-width: 0; place-items: center; border: 1px solid #ddc9a6; border-radius: 2px;
+  color: #432b3a; background: #fffaf1; font-size: clamp(7px, .7vw, 10px); font-weight: 750; line-height: 1;
+}
+.fest-pattern-section .fest-pattern-card__mini span[data-empty="true"] { background: #eadbc3; }
+.fest-pattern-section .fest-pattern-card__mini span.hit { border-color: #a62d72; color: #fff; background: linear-gradient(145deg,#ff77b9,#d63387); box-shadow: inset 0 0 0 1px rgba(255,255,255,.35); }
+.fest-pattern-section .fest-pattern-card__note { display: block; margin-top: 9px; color: #f1cf8f; font-size: 11px; line-height: 1.45; }
+.fest-pattern-section .fest-pattern-card__ticket-set { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin-bottom: 16px; }
+.fest-pattern-section .fest-pattern-card__ticket-set .fest-pattern-card__mini { aspect-ratio: 3 / 1; margin: 0; padding: 3px; }
+.fest-pattern-section .fest-pattern-card__ticket-set .fest-pattern-card__mini span { font-size: 5px; }
+@media (max-width: 980px) {
+  .fest-pattern-section .fest-patterns { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .fest-pattern-section .fest-patterns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 400px) {
+  .fest-pattern-section .fest-patterns { grid-template-columns: 1fr; }
+  .fest-pattern-section .fest-pattern-card__mini { max-width: 300px; }
+}
+
+/* Full-bleed landing composition: section bands run to the viewport edges and
+   hold their own content grid, so the festival atmosphere never sits as a
+   stack of floating SaaS panels on a bare canvas. */
+.festival-landing { background: #160a23; }
+.festival-landing__main { width: 100% !important; max-width: none !important; margin: 0 !important; padding: 0 0 0 !important; }
+.fest-hero {
+  width: 100%; min-height: min(860px, calc(100svh - 70px)); margin: 0; padding-inline: max(22px, calc((100vw - 1300px) / 2));
+  border: 0; border-radius: 0; box-shadow: none;
+  background:
+    linear-gradient(90deg, rgba(30, 6, 42, .98) 0%, rgba(37, 8, 49, .88) 35%, rgba(34, 6, 43, .38) 65%, rgba(24, 6, 34, .25) 100%),
+    linear-gradient(0deg, rgba(21, 8, 34, .72), transparent 42%),
+    var(--fest-hero-scene, url("/brand/festival-courtyard-hero-v1.webp")) center 54% / cover no-repeat,
+    linear-gradient(142deg, #39104a, #240932 65%, #150823);
+}
+.fest-hero::before { inset: 0; border: 0; border-radius: 0; background: radial-gradient(circle at 50% 0, rgba(255,220,117,.09), transparent 50%), linear-gradient(180deg,rgba(19,6,31,.16),transparent 25%,rgba(19,6,31,.16)); }
+.fest-hero::after { inset: auto 0 0; height: 1px; background: linear-gradient(90deg,transparent,rgba(255,202,94,.8),rgba(232,65,157,.6),rgba(81,209,191,.45),transparent); }
+.fest-hero__lights { inset-inline: 0; border-radius: 0; }
+.fest-hero__stage { min-height: min(74vh, 650px); }
+.fest-hero__host { max-height: min(74vh, 660px); }
+.fest-scroll-cue { bottom: 22px; left: 50%; }
+.fest-display { text-shadow: 0 3px 0 rgba(95,26,58,.3),0 10px 34px rgba(255,152,54,.15); }
+
+.fest-section {
+  width: 100%; margin: 0; padding: clamp(64px,8vw,112px) max(22px, calc((100vw - 1300px) / 2));
+  border: 0; border-radius: 0; box-shadow: none;
+}
+
+/* The landing canvas itself is viewport-wide. Only section content is
+   constrained by its internal responsive padding; the hero is never framed. */
+.festival-landing main { width: 100%; max-width: none; margin: 0; padding: 0 0 50px; }
+.fest-hero {
+  width: 100%; max-width: none; min-height: clamp(620px, 66vw, 850px);
+  margin: 0 0 0; padding: clamp(58px, 8vw, 110px) max(24px, calc((100vw - 1300px) / 2));
+  border: 0; border-radius: 0; box-shadow: none;
+  background:
+    linear-gradient(90deg, rgba(33, 9, 47, .96) 0%, rgba(37, 9, 51, .82) 43%, rgba(32, 7, 42, .22) 100%),
+    radial-gradient(ellipse at 52% 10%, rgba(255, 174, 50, .16), transparent 38%),
+    radial-gradient(ellipse at 88% 60%, rgba(238, 40, 142, .18), transparent 45%),
+    var(--fest-hero-scene, url("/brand/festival-courtyard-hero-v1.webp")) center 54% / cover no-repeat,
+    linear-gradient(142deg, #39104a 0%, #240932 48%, #150823 100%);
+}
+.fest-hero::before { content: none; }
+.fest-hero__lights { border-radius: 0; }
+.fest-theme-card--diwali .fest-theme-card__art,
+.fest-special-tile--diwali { background-image: linear-gradient(180deg, rgba(20, 8, 30, .14), rgba(20, 8, 30, .54)), url("/brand/festival-courtyard-hero-v1.webp"); background-size: cover; background-position: center; }
+.fest-theme-card--holi .fest-theme-card__art,
+.fest-special-tile--holi { background-image: linear-gradient(180deg, rgba(20, 8, 30, .12), rgba(20, 8, 30, .5)), url("/brand/festival-holi-environment-v1.webp"); background-size: cover; background-position: center; }
+.fest-theme-card--navratri .fest-theme-card__art,
+.fest-special-tile--navratri { background-image: linear-gradient(180deg, rgba(20, 8, 30, .12), rgba(20, 8, 30, .5)), url("/brand/festival-navratri-environment-v1.webp"); background-size: cover; background-position: center; }
+.fest-theme-card--durga .fest-theme-card__art,
+.fest-special-tile--durga { background-image: linear-gradient(180deg, rgba(20, 8, 30, .12), rgba(20, 8, 30, .5)), url("/brand/festival-durga-puja-environment-v1.webp"); background-size: cover; background-position: center; }
+.fest-theme-card--halloween .fest-theme-card__art { background-image: linear-gradient(180deg, rgba(20, 8, 30, .12), rgba(20, 8, 30, .5)), url("/brand/festival-halloween-environment-v1.webp"); background-size: cover; background-position: center; }
+.fest-theme-card--ganesh .fest-theme-card__art { background-image: linear-gradient(180deg, rgba(20, 8, 30, .12), rgba(20, 8, 30, .5)), url("/brand/festival-ganesh-chaturthi-environment-v1.webp"); background-size: cover; background-position: center; }
+.fest-theme-card--onam .fest-theme-card__art { background-image: linear-gradient(180deg, rgba(20, 8, 30, .12), rgba(20, 8, 30, .5)), url("/brand/festival-onam-environment-v1.webp"); background-size: cover; background-position: center; }
+.fest-theme-card--newyear .fest-theme-card__art { background-image: linear-gradient(180deg, rgba(20, 8, 30, .12), rgba(20, 8, 30, .5)), url("/brand/festival-new-year-environment-v1.webp"); background-size: cover; background-position: center; }
+.fest-theme-card--pongal .fest-theme-card__art { background-image: linear-gradient(180deg, rgba(20, 8, 30, .12), rgba(20, 8, 30, .5)), url("/brand/festival-pongal-environment-v1.webp"); background-size: cover; background-position: center; }
+.fest-theme-card--eid .fest-theme-card__art,
+.fest-special-tile--eid { background-image: linear-gradient(180deg, rgba(20, 8, 30, .12), rgba(20, 8, 30, .5)), url("/brand/festival-eid-environment-v1.webp"); background-size: cover; background-position: center; }
+.fest-theme-card--christmas .fest-theme-card__art,
+.fest-special-tile--christmas { background-image: linear-gradient(180deg, rgba(20, 8, 30, .12), rgba(20, 8, 30, .5)), url("/brand/festival-christmas-environment-v1.webp"); background-size: cover; background-position: center; }
+.fest-section::before { position: absolute; inset: 0 0 auto; height: 1px; background: linear-gradient(90deg,transparent,rgba(255,213,117,.45),rgba(228,67,158,.3),transparent); content: ""; pointer-events: none; }
+.fest-welcome { background: radial-gradient(ellipse at 16% 0,rgba(225,55,150,.19),transparent 50%),linear-gradient(118deg,#281035,#1c0d2c 48%,#20102f); }
+.fest-how { background: radial-gradient(ellipse at 22% 56%,rgba(233,62,154,.22),transparent 43%),radial-gradient(ellipse at 88% 2%,rgba(255,176,52,.09),transparent 40%),linear-gradient(115deg,#32103f,#1e0c2e 60%,#211035); }
+.fest-pattern-section { background: radial-gradient(ellipse at 83% 60%,rgba(66,190,170,.12),transparent 42%),linear-gradient(118deg,#190c27,#261037 50%,#180b26); }
+.fest-themes-section { background: radial-gradient(ellipse at 92% 10%,rgba(225,58,146,.19),transparent 48%),linear-gradient(118deg,#291039,#1b0c29 55%,#261038); }
+.fest-specials { background: radial-gradient(ellipse at 72% 50%,rgba(234,72,154,.16),transparent 52%),linear-gradient(115deg,#1a0b28,#2b103b 54%,#1b0c2a); }
+.fest-upcoming { background: radial-gradient(ellipse at 82% 0,rgba(68,202,184,.13),transparent 48%),linear-gradient(120deg,#201034,#17102b 60%,#211139); }
+.fest-live { background: radial-gradient(ellipse at 18% 48%,rgba(236,59,148,.23),transparent 48%),linear-gradient(116deg,#32103e,#1e0c2b 62%,#260f35); }
+.fest-ticket-section { background: radial-gradient(ellipse at 80% 55%,rgba(255,174,55,.13),transparent 46%),linear-gradient(120deg,#211030,#30123d 54%,#1c0c2a); }
+.fest-winners { background: radial-gradient(ellipse at 13% 50%,rgba(255,179,51,.13),transparent 34%),linear-gradient(118deg,#271034,#1a0c29 58%,#2d103c); }
+.fest-voice { background: radial-gradient(ellipse at 15% 50%,rgba(68,207,186,.17),transparent 36%),linear-gradient(115deg,#1c203b,#211030 57%,#170a25); }
+.fest-faq { background: radial-gradient(ellipse at 92% 16%,rgba(186,65,156,.12),transparent 45%),linear-gradient(120deg,#190b27,#21102f 55%,#170a24); }
+.fest-final-cta { width: 100%; margin: 0; padding: clamp(72px,9vw,120px) max(22px, calc((100vw - 1300px) / 2)); border: 0; border-radius: 0; box-shadow: inset 0 1px rgba(255,224,141,.4); background: radial-gradient(ellipse at 50% 130%,rgba(255,136,41,.32),transparent 56%),radial-gradient(ellipse at 22% 15%,rgba(232,51,148,.24),transparent 48%),linear-gradient(115deg,#351045,#210b32 50%,#331044); }
+.fest-footer { padding-inline: max(22px, calc((100vw - 1300px) / 2)); background: linear-gradient(110deg,#140820,#210c30 50%,#160921); }
+
+/* Content uses rhythm and trim, while the pages themselves provide the color
+   fields. Keep card-like treatments for actual tickets and compact previews. */
+.fest-game-types { gap: 0; }
+.fest-type-card, .fest-type-card:last-child { min-height: 0; padding: 12px clamp(20px,3vw,42px) 14px; border: 0; border-top: 2px solid rgba(255,217,125,.3); border-radius: 0; background: transparent; box-shadow: none; }
+.fest-type-card:first-child { padding-left: 0; border-top-color: #ffca58; }
+.fest-type-card:nth-child(2) { border-top-color: #e94da6; }
+.fest-type-card:last-child { padding-right: 0; border-top-color: #48ccb5; }
+.fest-type-card::after { content: none; }
+.fest-type-card + .fest-type-card { border-left: 1px solid rgba(255,218,145,.2); }
+.fest-patterns { gap: 0; border-top: 1px solid rgba(255,218,142,.21); border-bottom: 1px solid rgba(255,218,142,.21); }
+.fest-pattern-card { padding: 22px 18px; border: 0; border-radius: 0; background: transparent; }
+.fest-pattern-card + .fest-pattern-card { border-left: 1px solid rgba(255,218,142,.18); }
+.fest-theme-grid { gap: 0 14px; }
+.fest-theme-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.fest-theme-card__art { border: 1px solid color-mix(in srgb,var(--theme-a) 46%,transparent); border-radius: 4px; box-shadow: inset 0 0 30px color-mix(in srgb,var(--theme-a) 12%,transparent); }
+.fest-theme-card__copy { border-bottom: 1px solid color-mix(in srgb,var(--theme-a) 39%,transparent); }
+.fest-specials__collage { transform: none; }
+.fest-special-tile { border-radius: 4px; box-shadow: inset 0 0 25px color-mix(in srgb,var(--theme-a) 10%,transparent); }
+.fest-upcoming__content { border-top: 1px solid rgba(255,218,142,.2); padding-top: 20px; }
+.fest-empty { border: 0; border-radius: 0; padding: 6px 0; background: transparent; }
+.fest-session-grid { gap: 0; }
+.fest-session-card { padding: 10px 24px 10px 0; border: 0; border-radius: 0; background: transparent; }
+.fest-session-card + .fest-session-card { padding-left: 24px; border-left: 1px solid rgba(255,218,142,.2); }
+.fest-ticket-section, .fest-live, .fest-winners, .fest-voice { display: grid; }
+.fest-live__ball, .fest-winners__ornament, .fest-voice__icon { margin-block: 12px; }
+.fest-faq-list { border-top-color: rgba(255,218,142,.31); }
+.fest-faq-list details { border-bottom-color: rgba(255,218,142,.24); }
+
+@media (max-width: 980px) {
+  .fest-hero { padding-inline: max(24px, calc((100vw - 920px) / 2)); }
+  .fest-section, .fest-final-cta, .fest-footer { padding-inline: max(24px, calc((100vw - 920px) / 2)); }
+  .fest-theme-grid { gap: 12px; }
+}
+@media (max-width: 700px) {
+  .fest-hero { min-height: 0; width: 100%; margin: 0; padding: 43px 18px 76px; border: 0; border-radius: 0; }
+  .fest-hero__stage { min-height: clamp(290px,82vw,430px); margin-top: 14px; }
+  .fest-scroll-cue { bottom: 24px; }
+  .fest-section { width: 100%; padding: 62px 20px; margin: 0; border: 0; border-radius: 0; }
+  .fest-game-types { display: block; }
+  .fest-type-card, .fest-type-card:last-child { padding: 24px 0; border-top: 1px solid rgba(255,218,142,.22); }
+  .fest-type-card:first-child { border-top: 0; }
+  .fest-type-card + .fest-type-card { border-left: 0; }
+  .fest-patterns { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .fest-pattern-card { padding: 17px 13px; }
+  .fest-pattern-card:nth-child(odd) { border-left: 0; }
+  .fest-pattern-card:nth-child(even) { border-left: 1px solid rgba(255,218,142,.18); }
+  .fest-pattern-card:nth-child(n+3) { border-top: 1px solid rgba(255,218,142,.18); }
+  .fest-theme-grid { gap: 14px 10px; }
+  .fest-theme-card__art { border-radius: 3px; }
+  .fest-specials { display: grid; gap: 22px; padding: 62px 20px; border: 0; border-radius: 0; }
+  .fest-session-grid { display: block; }
+  .fest-session-card, .fest-session-card + .fest-session-card { padding: 17px 0; border-left: 0; border-bottom: 1px solid rgba(255,218,142,.18); }
+  .fest-live { display: grid; padding: 62px 20px; border: 0; border-radius: 0; }
+  .fest-ticket-section { display: grid; padding: 62px 20px; border: 0; border-radius: 0; }
+  .fest-winners { display: grid; padding: 62px 20px; border: 0; border-radius: 0; }
+  .fest-voice { display: grid; padding: 62px 20px; border: 0; border-radius: 0; }
+  .fest-faq { display: grid; padding: 62px 20px; }
+  .fest-final-cta { width: 100%; margin: 0; padding: 70px 20px; border: 0; border-radius: 0; }
+  .fest-footer { padding: 30px 20px; }
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title">
+  <title id="title">Regular Tambola</title>
+  <rect x="4" y="4" width="88" height="88" rx="25" fill="#10231c" stroke="#42c98a" stroke-width="3"/>
+  <path d="M23 26h50v42H23z" fill="#153027" stroke="#9cf0c5" stroke-width="2" rx="5"/>
+  <path d="M39.7 26v42M56.3 26v42M23 40h50M23 54h50" stroke="#6aa88a" stroke-width="2"/>
+  <circle cx="48" cy="47" r="10" fill="#42c98a"/>
+  <text x="48" y="51" text-anchor="middle" fill="#07110f" font-family="Arial,sans-serif" font-size="11" font-weight="800">90</text>
+  <path d="M31 78h34" stroke="#ff7165" stroke-width="4" stroke-linecap="round"/>
+</svg>

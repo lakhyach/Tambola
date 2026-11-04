@@ -12,7 +12,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { GameState, IntegrityError } from "../server/game/engine.js";
 import { buildHydrationSource } from "../server/persist/recovery.js";
-import { TICKET_A, TICKET_B, makeRoom } from "./helpers.js";
+import { PATTERNS, evaluateClaimAcrossTickets } from "../server/game/patterns.js";
+import { generateTicket } from "../server/game/ticket.js";
+import { TICKET_A, TICKET_B, makeRoom, makeRng } from "./helpers.js";
 
 const FULL_DRAW = Array.from({ length: 90 }, (_, i) => i + 1);
 
@@ -73,6 +75,18 @@ test("a room hydrated with legal persisted tickets is trusted", () => {
   ]);
   assert.deepEqual(room.integrityErrors(), []);
   assert.doesNotThrow(() => room.assertIntegrity());
+});
+
+test("a hydrated room rejects stored draws that are not permutations of 1–90", () => {
+  const repeated = FULL_DRAW.slice();
+  repeated[89] = repeated[88];
+  const repeatedRoom = hydrate([{ no: 1, grid: TICKET_A }], { source: { draw: repeated } });
+  assertRefused(repeatedRoom, /draw contains a repeated number|not a permutation of 1-90/);
+
+  const outOfRange = FULL_DRAW.slice();
+  outOfRange[89] = 91;
+  const outOfRangeRoom = hydrate([{ no: 1, grid: TICKET_A }], { source: { draw: outOfRange } });
+  assertRefused(outOfRangeRoom, /not a permutation of 1-90/);
 });
 
 test("a seat that joined a running round is a spectator, not a corruption", () => {
@@ -138,7 +152,7 @@ function bundle({ tickets = [], status = GameState.RUNNING } = {}) {
       config: {},
       created_at: new Date("2026-10-31T00:00:00Z"),
     },
-    game: { draw_sequence: FULL_DRAW, started_at: new Date("2026-10-31T00:01:00Z") },
+    game: { game_number: 1, status: "RUNNING", draw_sequence: FULL_DRAW, started_at: new Date("2026-10-31T00:01:00Z") },
     members: [{ player_id: "p1", display_name: "Hostess", ticket_count: tickets.length || 1, joined_at: null }],
     tickets,
     calls: [],
@@ -185,4 +199,145 @@ test("recovery accepts legal rows and keeps the seat's numbering", () => {
   assert.equal(source.players[0].tickets.length, 2);
   assert.deepEqual(source.players[0].tickets.map((t) => t.no), [1, 2], "sorted by ticket number");
   assert.deepEqual(source.players[0].tickets[0].grid, TICKET_A);
+});
+
+test("recovery rejects room/game lifecycle split-brain", () => {
+  assert.throws(
+    () => buildHydrationSource(bundle({ status: GameState.COMPLETED })),
+    /lifecycle states do not agree/
+  );
+  assert.throws(
+    () => buildHydrationSource(bundle({ status: GameState.WAITING })),
+    /unfinished game row/
+  );
+});
+
+test("reset waiting recovery validates but does not hydrate the prior completed game's projection", () => {
+  const previousRound = bundle({
+    status: GameState.WAITING,
+    tickets: [{ player_id: "p1", ticket_no: 1, grid: TICKET_A }],
+  });
+  previousRound.game.status = "COMPLETED";
+  previousRound.game.completed_at = new Date("2026-10-31T00:03:00Z");
+  previousRound.calls = [{ call_index: 1, number: FULL_DRAW[0], source: "host", called_at: new Date() }];
+
+  const source = buildHydrationSource(previousRound);
+  assert.equal(source.state, GameState.WAITING);
+  assert.deepEqual(source.draw, []);
+  assert.deepEqual(source.calledNumbers, []);
+  assert.equal(source.cursor, 0);
+  assert.deepEqual(source.players[0].tickets, []);
+
+  previousRound.calls[0].number = FULL_DRAW[1];
+  assert.throws(
+    () => buildHydrationSource(previousRound),
+    /stored draw says/,
+    "completed history still has to pass integrity checks before the room reopens"
+  );
+});
+
+test("reset waiting recovery still validates prior award history before omitting it from the new round", () => {
+  const previousRound = bundle({
+    status: GameState.WAITING,
+    tickets: [{ player_id: "p1", ticket_no: 1, grid: TICKET_A }],
+  });
+  previousRound.game.status = "COMPLETED";
+  previousRound.game.completed_at = new Date("2026-10-31T00:03:00Z");
+  previousRound.awards = [{
+    player_id: "p1",
+    display_name: "Hostess",
+    pattern: "not-a-supported-pattern",
+    points: 5,
+    call_index: 1,
+    winner_ordinal: 1,
+    ticket_no: 1,
+  }];
+
+  assert.throws(() => buildHydrationSource(previousRound), /unknown pattern/);
+});
+
+test("recovery rejects awards whose points, call, winner, or ticket attribution is corrupt", () => {
+  const base = bundle({ tickets: [{ player_id: "p1", ticket_no: 1, grid: TICKET_A }] });
+  base.calls = FULL_DRAW.slice(0, 24).map((number, index) => ({ call_index: index + 1, number, source: "host", called_at: new Date() }));
+  const award = {
+    player_id: "p1", display_name: "Hostess", pattern: "earlyFive", points: 20,
+    call_index: 24, winner_ordinal: 1, ticket_no: 1,
+  };
+  base.awards = [award];
+  assert.doesNotThrow(() => buildHydrationSource(base));
+
+  for (const [change, expected] of [
+    [{ points: 21 }, /points do not match pattern/],
+    [{ call_index: 25 }, /refers to a call that is not in the stored history/],
+    [{ call_index: 5 }, /not claimable by its winner at the recorded call/],
+    [{ player_id: "missing" }, /participant who is gone/],
+    [{ ticket_no: 2 }, /ticket not held by its winner/],
+  ]) {
+    const corrupted = { ...base, awards: [{ ...award, ...change }] };
+    assert.throws(() => buildHydrationSource(corrupted), expected);
+  }
+});
+
+test("recovery cross-checks awarded claim history while retaining rejected decisions", () => {
+  const fixture = bundle({ tickets: [{ player_id: "p1", ticket_no: 1, grid: TICKET_A }] });
+  fixture.calls = FULL_DRAW.slice(0, 24).map((number, index) => ({ call_index: index + 1, number, source: "host", called_at: new Date() }));
+  const award = {
+    player_id: "p1", display_name: "Hostess", pattern: "earlyFive", points: 20,
+    call_index: 24, winner_ordinal: 1, ticket_no: 1,
+  };
+  const winningClaim = { player_id: "p1", pattern: "earlyFive", status: "AWARDED", call_index: 24 };
+  fixture.awards = [award];
+  fixture.claims = [winningClaim, { player_id: "p1", pattern: "legacyOrUnknown", status: "REJECTED", call_index: 24 }];
+  assert.doesNotThrow(() => buildHydrationSource(fixture), "a real award and even an unknown-pattern rejection remain recoverable");
+
+  for (const claims of [
+    [],
+    [{ ...winningClaim, call_index: 23 }],
+    [winningClaim, winningClaim],
+    [winningClaim, { player_id: "missing", pattern: "earlyFive", status: "REJECTED", call_index: 24 }],
+    [winningClaim, { player_id: "p1", pattern: "earlyFive", status: "REJECTED", call_index: 25 }],
+  ]) {
+    assert.throws(() => buildHydrationSource({ ...fixture, claims }), /claim|Claim|participant|history/i);
+  }
+});
+
+test("recovery rejects duplicate or non-contiguous award ordinals", () => {
+  const fixture = bundle({ tickets: [{ player_id: "p1", ticket_no: 1, grid: TICKET_A }] });
+  fixture.calls = FULL_DRAW.slice(0, 24).map((number, index) => ({ call_index: index + 1, number, source: "host", called_at: new Date() }));
+  fixture.awards = [
+    { player_id: "p1", display_name: "Hostess", pattern: "earlyFive", points: 20, call_index: 24, winner_ordinal: 2, ticket_no: 1 },
+  ];
+  assert.throws(() => buildHydrationSource(fixture), /ordinals are not contiguous/);
+  fixture.awards[0].winner_ordinal = 1;
+  fixture.awards.push({ ...fixture.awards[0] });
+  assert.throws(() => buildHydrationSource(fixture), /duplicate awards/);
+});
+
+test("recovery requires seat-scoped awards to retain the complete winning ticket set", () => {
+  const grids = [TICKET_A, TICKET_B];
+  for (let seed = 1; grids.length < 3; seed++) {
+    const grid = generateTicket(makeRng(seed));
+    if (!grids.some((existing) => JSON.stringify(existing) === JSON.stringify(grid))) grids.push(grid);
+  }
+  const tickets = grids.map((grid, index) => ({ no: index + 1, grid }));
+  const config = { patterns: { halfSheet: true } };
+  let callIndex = 0;
+  let verdict;
+  for (let count = 1; count <= FULL_DRAW.length; count++) {
+    verdict = evaluateClaimAcrossTickets("halfSheet", tickets, FULL_DRAW.slice(0, count), config, { claimantId: "p1" });
+    if (verdict.valid) { callIndex = count; break; }
+  }
+  assert.ok(verdict?.valid, "the deterministic full draw eventually completes the seat pattern");
+  const fixture = bundle({ tickets: tickets.map((ticket) => ({ player_id: "p1", ticket_no: ticket.no, grid: ticket.grid })) });
+  fixture.room.config = config;
+  fixture.calls = FULL_DRAW.slice(0, callIndex).map((number, index) => ({ call_index: index + 1, number, source: "host", called_at: new Date() }));
+  const award = {
+    player_id: "p1", display_name: "Hostess", pattern: "halfSheet", points: PATTERNS.halfSheet.points,
+    call_index: callIndex, winner_ordinal: 1, ticket_no: verdict.ticketNo, ticket_nos: verdict.winningTickets,
+  };
+  fixture.awards = [award];
+  assert.doesNotThrow(() => buildHydrationSource(fixture));
+
+  fixture.awards = [{ ...award, ticket_nos: [verdict.winningTickets[0]] }];
+  assert.throws(() => buildHydrationSource(fixture), /does not match its winning ticket set/);
 });

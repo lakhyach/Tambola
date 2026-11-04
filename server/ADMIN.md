@@ -148,7 +148,7 @@ request. A mismatch is refused with `403 CSRF_FAILED` before any owner check.
 table (migration `003_hardening.sql`), keyed by `(scope, sha256(key))` and
 incremented inside a `SELECT ... FOR UPDATE` row lock, so two concurrent guesses
 cannot both read "7 of 8", and a process restart - or a second process pointed at
-the same database - cannot reset a lockout. There are independent budgets:
+the same database schema - cannot reset a lockout. There are independent budgets:
 `username | sha256(address)` gets 8 failures per 15 minutes → 5 minute lock,
 doubling per repeat offence up to 60 minutes; a bare-address budget (25 failures
 → 15 minutes) makes spraying many usernames from one source expensive; the
@@ -325,3 +325,14 @@ tables, sessions, audit, totals, room detail without the draw plan, history).
   successful.
 - **No money, prizes or payments.** The game is free to play; there is nothing
   financial to manage and no wagering feature to gate.
+# Moderator management
+
+Super Admin-only moderator provisioning and access management is mounted at
+`/api/admin/moderators`, behind the same owner session, MFA policy, CSRF check,
+and mutation throttle as other admin writes. See
+[`MODERATOR-SECURITY.md`](MODERATOR-SECURITY.md) for the permissions, invitation
+procedure, lifecycle, and moderator API/socket contracts.
+
+## Instance reports
+
+`GET /api/admin/reports/instances?instanceId=regular&from=2026-11-01&to=2026-11-30` returns date-bounded counts and daily activity. Omit `instanceId` to report all instances. Dates are UTC, inclusive, and limited to a maximum 366-day span. The owner-only page is available at `/admin/reports` and `/super-admin/reports`; CSV exports contain aggregate counts only.

@@ -102,9 +102,9 @@ export function Boot({ label = "Opening the control centre…" }) {
   );
 }
 
-export function Table({ children, caption, className = "" }) {
+export function Table({ children, caption, className = "", wrapClassName = "" }) {
   return (
-    <div className="adm-table-wrap">
+    <div className={`adm-table-wrap ${wrapClassName}`.trim()} tabIndex={0} aria-label={caption ? `${caption} table` : undefined}>
       <table className={`adm-table ${className}`}>
         {caption ? <caption className="adm-table__caption">{caption}</caption> : null}
         {children}

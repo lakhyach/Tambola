@@ -4,6 +4,15 @@ import TicketCell from "./TicketCell.jsx";
 import Panel from "./Panel.jsx";
 import { APP_NAME } from "../brand.js";
 import { ticketProgress } from "../lib/ticketview.js";
+import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
+import { getFestivalThemeArt } from "../festival-themes.js";
+import "./ticket-theme-identity.css";
+
+function currentThemeArt() {
+  if (typeof document === "undefined") return null;
+  const themeId = document.documentElement?.dataset?.themeId;
+  return getFestivalThemeArt(themeId);
+}
 
 /**
  * The player's actual 3×9, 15-number ticket — exactly as the server issued it.
@@ -19,53 +28,50 @@ import { ticketProgress } from "../lib/ticketview.js";
  * line claim depends on. The grid is a real ARIA grid (rows + gridcells), so a
  * screen reader can move cell by cell and hear the row and column.
  */
-const TambolaTicket = ({ ticket, calledNumbers = [], currentNumber = null, playerName, ticketNo = null, ticketTotal = null }) => {
+const TambolaTicket = ({ ticket, calledNumbers = [], currentNumber = null, playerName, ticketNo = null, ticketTotal = null, language = "en" }) => {
   const calledSet = useMemo(() => new Set(calledNumbers), [calledNumbers]);
   const rows = useMemo(() => (ticket && ticket.length === 3 ? ticket : [[], [], []]), [ticket]);
   const progress = useMemo(() => ticketProgress(ticket, calledSet), [ticket, calledSet]);
+  const themeArt = currentThemeArt();
 
-  const gridLabel =
-    ticketNo != null
-      ? `Ticket ${ticketNo}${ticketTotal ? " of " + ticketTotal : ""}: ${progress.marked} of ${progress.total} numbers called`
-      : `Your ${APP_NAME} ticket: ${progress.marked} of ${progress.total} numbers called`;
+  const t = (key, variables) => bookingCopy(language, key, variables);
+  const number = (value) => formatBookingNumber(value, language);
+  const serialLabel = typeof ticketNo === "string" && !/^\d+$/.test(ticketNo) ? ticketNo : null;
+  const title = serialLabel
+    ? serialLabel
+    : ticketNo != null
+      ? ticketTotal ? t("ticketNumberOfTotal", { number: number(ticketNo), total: number(ticketTotal) }) : t("ticketNumberCount", { number: number(ticketNo), total: "" })
+      : playerName ? t("ticketNamedTitle", { name: playerName }) : t("ticketYourTicket");
+  const gridLabel = `${title}: ${t("ticketCallProgress", { marked: number(progress.marked), total: number(progress.total) })}`;
 
   return (
-    <Panel className="p-4" data-ticket-no={ticketNo ?? 1}>
+    <Panel className="oh-ticket-paper p-4" data-ticket-no={ticketNo ?? 1} data-theme-art={typeof document !== "undefined" ? document.documentElement?.dataset?.themeId : undefined} data-ticket-trim={themeArt?.trim} data-call-marker={themeArt?.marker}>
       <div
-        className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 mb-3"
-        style={{
-          background: "linear-gradient(180deg, rgba(207,171,99,.16), rgba(207,171,99,.04))",
-          border: "1px solid var(--oh-line-gold)",
-        }}
+        className="oh-ticket-paper__header"
       >
-        <div className="leading-tight" style={{ minWidth: 0 }}>
-          <div className="oh-display" style={{ fontSize: 15, letterSpacing: ".14em" }}>
-            {APP_NAME.toUpperCase()}
-          </div>
-          <div className="oh-eyebrow" style={{ marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {playerName ? `${playerName}'s ticket` : "Your ticket"}
-            {ticketNo != null ? ` · No. ${ticketNo}${ticketTotal ? ` of ${ticketTotal}` : ""}` : ""}
-          </div>
+        <div className="oh-ticket-paper__identity">
+          <div className="oh-ticket-paper__brand">{APP_NAME}</div>
+          <div className="oh-ticket-paper__title">{title}</div>
         </div>
-        <div className="oh-num text-right" style={{ flex: "0 0 auto" }}>
-          <div style={{ color: "var(--oh-gold-bright)", fontWeight: 700, fontSize: 20, lineHeight: 1.05 }}>
-            {progress.marked}
-            <span style={{ color: "var(--oh-text-faint)", fontSize: 13, fontWeight: 600 }}>/{progress.total}</span>
+        <div className="oh-ticket-paper__progress">
+          <div className="oh-num oh-ticket-paper__progress-value">
+            {number(progress.marked)}
+            <span>/{number(progress.total)}</span>
           </div>
-          <div className="oh-eyebrow" style={{ color: progress.complete ? "var(--oh-gold)" : "var(--oh-text-faint)", marginTop: 2 }}>
-            {progress.complete ? "complete" : `${progress.toGo} to go`}
+          <div className="oh-ticket-paper__progress-label" data-complete={String(progress.complete)}>
+            {progress.complete ? t("ticketComplete") : t("ticketToGo", { count: number(progress.toGo) })}
           </div>
         </div>
       </div>
 
-      <div className="oh-ticket-rowstats" role="group" aria-label="Row progress">
+      <div className="oh-ticket-rowstats" role="group" aria-label={t("ticketRowsGroup")}>
         {progress.rows.map((row) => (
           <span key={row.index} className="oh-ticket-rowstat" data-complete={String(row.complete)}>
-            <span aria-hidden="true" className="oh-ticket-rowstat__label">R{row.index + 1}</span>
+            <span aria-hidden="true" className="oh-ticket-rowstat__label">{t("ticketRowShort", { row: number(row.index + 1) })}</span>
             <span aria-hidden="true" className="oh-num">
-              {row.marked}/{row.filled}
+              {number(row.marked)}/{number(row.filled)}
             </span>
-            <span className="oh-sr-only">{`Row ${row.index + 1}: ${row.marked} of ${row.filled} called`}</span>
+            <span className="oh-sr-only">{t("ticketRowProgress", { row: number(row.index + 1), marked: number(row.marked), total: number(row.filled) })}</span>
           </span>
         ))}
       </div>
@@ -83,6 +89,8 @@ const TambolaTicket = ({ ticket, calledNumbers = [], currentNumber = null, playe
                   col={c}
                   called={n != null && calledSet.has(n)}
                   current={n != null && n === currentNumber}
+                  callMarker={themeArt?.marker}
+                  language={language}
                 />
               );
             })}

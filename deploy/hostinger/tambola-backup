@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+repo=/opt/tambola
+backup_dir=/var/backups/tambola
+stamp=$(date -u +%Y%m%dT%H%M%SZ)
+final="$backup_dir/tambola-$stamp.dump"
+partial="$final.partial"
+
+install -d -m 0700 "$backup_dir"
+cd "$repo"
+/usr/bin/docker compose --env-file .env -f deploy/hostinger/compose.yml \
+  exec -T db sh -ec 'pg_dump --format=custom --compress=6 --no-owner --no-privileges "$POSTGRES_DB"' \
+  > "$partial"
+test -s "$partial"
+pg_restore --list "$partial" > /dev/null
+mv -- "$partial" "$final"
+sha256sum "$final" > "$final.sha256"
+printf 'created backup %s\n' "$final"

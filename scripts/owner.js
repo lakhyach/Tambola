@@ -7,7 +7,7 @@
  * makes anyone the owner.
  *
  *   npm run owner:create                    create the single owner account
- *   npm run owner:list                      list owner usernames (no secrets)
+ *   npm run owner:list                      read-only list of owner usernames (no secrets)
  *   npm run owner:reset   -- <username>     rotate a password + revoke sessions
  *   npm run owner:mfa-reset -- <username>   destroy a lost second factor
  *   npm run owner:remove  -- <username>     delete an owner (and its sessions)
@@ -18,10 +18,10 @@
  * password only exists in memory long enough to be hashed with scrypt, and the
  * digest stored is self-describing (see server/admin/password.js).
  *
- * The CLI deliberately does NOT take the running server's instance lease: it
- * only runs migrations and writes owner rows, both of which are safe while the
- * game server is up. Prefer the hidden prompt over an environment variable, so a
- * password never lands in shell history.
+ * The CLI deliberately does NOT take the running server's instance lease. The
+ * read-only `list` command never runs migrations; create/reset/remove commands
+ * migrate before changing owner rows. Prefer the hidden prompt over an
+ * environment variable, so a password never lands in shell history.
  *
  * MFA recovery is the one command here that weakens an account on purpose. It is
  * the documented answer to "I lost the authenticator", and the barrier it leans
@@ -117,13 +117,13 @@ async function main() {
 
   const db = createPool({ connectionString, schema: process.env.DB_SCHEMA || "public" });
   try {
-    await migrate({ db });
-    const store = createOwnerStore({ db });
-    const sessions = createOwnerSessionStore({ db });
-    const challenges = createMfaChallengeStore({ db });
-    const audit = createAdminAudit({ db });
-
     if (command === "list") {
+      const initialized = await db.query("SELECT to_regclass('owner_accounts') IS NOT NULL AS present");
+      if (!initialized.rows[0]?.present) {
+        console.log("Owner schema is not initialized; no migrations were run.");
+        return;
+      }
+      const store = createOwnerStore({ db });
       const owners = await store.list();
       if (!owners.length) {
         console.log("No owner account exists yet. Run: npm run owner:create");
@@ -136,6 +136,12 @@ async function main() {
       }
       return;
     }
+
+    await migrate({ db });
+    const store = createOwnerStore({ db });
+    const sessions = createOwnerSessionStore({ db });
+    const challenges = createMfaChallengeStore({ db });
+    const audit = createAdminAudit({ db });
 
     if (command === "create") {
       const existing = await store.count();

@@ -1,0 +1,173 @@
+.public-theme-store .public-theme-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 20px; margin-top: 24px; }
+.public-theme-card { min-width: 0; overflow: hidden; border: 1px solid var(--oh-line); border-radius: var(--oh-r-lg); background: linear-gradient(160deg, var(--oh-panel), var(--oh-graphite)); box-shadow: var(--oh-shadow); }
+.public-theme-card__body { padding: 18px; }
+.public-theme-card__body h2 { margin: 4px 0 8px; }
+.public-theme-card__body h2 small { color: var(--oh-text-faint); font: 600 .75rem var(--oh-font-ui); }
+.public-theme-card__body > p:not(.oh-eyebrow) { color: var(--oh-text-muted); }
+.public-theme-card .public-link-button, .public-theme-modal .public-link-button { display: inline-flex; align-items: center; justify-content: center; min-height: 42px; margin-top: 8px; border: 1px solid var(--oh-line); border-radius: var(--oh-r-sm); padding: 8px 14px; background: var(--oh-panel-raised); color: var(--oh-text); font: inherit; cursor: pointer; text-decoration: none; }
+.public-theme-card .public-link-button:hover, .public-theme-modal .public-link-button:hover { border-color: var(--oh-gold); color: var(--oh-gold-bright); }
+.theme-store-current { border: 1px solid var(--oh-line); border-radius: var(--oh-r-md); padding: 12px 16px; background: var(--oh-panel); color: var(--oh-text-muted); }
+.theme-store-current strong { color: var(--oh-gold-bright); }
+.public-theme-modal > .public-link-button { margin-top: 16px; }
+
+/* Each reviewed theme previews its own original ticket trim, ball surface and
+   winning-pattern marks alongside the unchanged 1–90 sample. */
+.theme-preview[data-theme-art] .theme-preview__ticket {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--oh-gold) 54%, var(--oh-line));
+  background:
+    radial-gradient(circle at 50% 0, color-mix(in srgb, var(--oh-gold) 11%, transparent), transparent 76%),
+    var(--oh-panel);
+}
+.theme-preview__ticket-art {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: .22;
+  pointer-events: none;
+}
+.theme-art__ticket-frame { fill: none; stroke: var(--oh-gold-bright); stroke-width: 1.1; }
+.theme-art__signature { fill: none; stroke: var(--oh-gold); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; opacity: .8; }
+.theme-art__seal { fill: var(--oh-gold-bright); }
+.theme-preview__ticket[data-ticket-trim="keyline"] { border-style: double; border-width: 3px; }
+.theme-preview__ticket[data-ticket-trim="crescent"] { border-radius: 20px 20px 7px 7px; }
+.theme-preview__ticket[data-ticket-trim="garland"] { border-style: dotted; border-width: 2px; }
+.theme-preview__ticket[data-ticket-trim="electric"] { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--oh-gold) 44%, transparent), 0 0 16px color-mix(in srgb, var(--oh-gold) 14%, transparent); }
+.theme-preview__ticket[data-ticket-trim="arch"] { border-radius: 32px 32px 10px 10px; }
+.theme-preview__ticket[data-ticket-trim="rain"] { border-style: dashed; }
+.theme-preview__ticket[data-ticket-trim="lantern"] { border-radius: 9px 9px 22px 22px; }
+.theme-preview__ticket[data-ticket-trim="frost"] { border-radius: 5px; border-style: solid; }
+.theme-preview__ticket[data-ticket-trim="crest"] { border-style: double; border-width: 4px; }
+.theme-preview__ticket[data-ticket-trim="diya"] { border-radius: 24px 24px 8px 8px; border-color: color-mix(in srgb, var(--oh-warn) 68%, var(--oh-line)); }
+.theme-preview__ticket[data-ticket-trim="gulal"] { border-style: dotted; border-width: 3px; }
+.theme-preview__ticket[data-ticket-trim="dhak"] { border-radius: 18px 4px; border-style: double; }
+.theme-preview__ticket[data-ticket-trim="mirrorwork"] { border-style: dashed; border-width: 2px; }
+.theme-preview__ticket[data-ticket-trim="modak"] { border-radius: 28px 28px 10px 10px; }
+.theme-preview__ticket[data-ticket-trim="pookalam"] { border-style: double; border-width: 5px; }
+.theme-preview__ticket[data-ticket-trim="kolam"] { border-radius: 8px 24px; border-style: dotted; }
+.theme-preview__ticket[data-ticket-trim="crescent-arch"] { border-radius: 24px 24px 8px 8px; border-style: double; }
+.theme-preview__ticket[data-ticket-trim="holly"] { border-radius: 16px 4px; border-style: dashed; }
+.theme-preview__ticket[data-ticket-trim="cobweb"] { border-style: dotted; border-width: 3px; }
+.theme-preview__ticket[data-ticket-trim="jaali"] { border-style: double; border-width: 4px; border-radius: 18px; }
+.theme-preview__ticket[data-ticket-trim="woven-border"] { border-style: double; border-width: 5px; border-radius: 4px; }
+.theme-preview__ticket[data-ticket-trim="fireworks"] { border-style: double; border-width: 4px; }
+.theme-preview__ticket .theme-preview__ticket-head,
+.theme-preview__ticket .theme-preview__grid,
+.theme-preview__pattern { position: relative; z-index: 1; }
+.theme-preview__grid > span.is-called { position: relative; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--oh-ticket-ink) 22%, transparent); }
+.theme-preview__ticket[data-call-marker="star"] .theme-preview__grid > span.is-called { border-radius: 50% 50% 4px 50%; }
+.theme-preview__ticket[data-call-marker="petal"] .theme-preview__grid > span.is-called { border-radius: 50% 50% 48% 18%; }
+.theme-preview__ticket[data-call-marker="pixel"] .theme-preview__grid > span.is-called { border-radius: 0; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--oh-ticket-ink) 28%, transparent); }
+.theme-preview__ticket[data-call-marker="arch"] .theme-preview__grid > span.is-called { border-radius: 50% 50% 3px 3px; }
+.theme-preview__ticket[data-call-marker="drop"] .theme-preview__grid > span.is-called { border-radius: 55% 55% 48% 5%; }
+.theme-preview__ticket[data-call-marker="lantern"] .theme-preview__grid > span.is-called { border-radius: 5px 5px 9px 9px; }
+.theme-preview__ticket[data-call-marker="snow"] .theme-preview__grid > span.is-called { border-radius: 50%; outline: 1px dashed color-mix(in srgb, var(--oh-ticket-ink) 60%, transparent); outline-offset: -3px; }
+.theme-preview__ticket[data-call-marker="crest"] .theme-preview__grid > span.is-called { border-radius: 9px 9px 3px 3px; }
+.theme-preview__ticket[data-call-marker="flame"] .theme-preview__grid > span.is-called { border-radius: 50% 50% 50% 4px; }
+.theme-preview__ticket[data-call-marker="splash"] .theme-preview__grid > span.is-called { border-radius: 50% 20% 50% 35%; }
+.theme-preview__ticket[data-call-marker="trident"] .theme-preview__grid > span.is-called { border-radius: 50% 50% 3px 3px; outline: 1px solid color-mix(in srgb, var(--oh-danger) 44%, transparent); }
+.theme-preview__ticket[data-call-marker="diamond"] .theme-preview__grid > span.is-called { border-radius: 3px; outline: 1px solid var(--oh-gold); outline-offset: -3px; }
+.theme-preview__ticket[data-call-marker="modak"] .theme-preview__grid > span.is-called { border-radius: 55% 55% 35% 35%; }
+.theme-preview__ticket[data-call-marker="petal-ring"] .theme-preview__grid > span.is-called { border-radius: 50%; outline: 1px dotted var(--oh-gold); outline-offset: -3px; }
+.theme-preview__ticket[data-call-marker="sunrise"] .theme-preview__grid > span.is-called { border-radius: 50% 50% 3px 3px; box-shadow: inset 0 2px 0 var(--oh-gold-bright); }
+.theme-preview__ticket[data-call-marker="crescent-star"] .theme-preview__grid > span.is-called { border-radius: 50% 4px 50% 4px; }
+.theme-preview__ticket[data-call-marker="holly-berry"] .theme-preview__grid > span.is-called { border-radius: 50% 3px 50% 3px; outline: 1px solid color-mix(in srgb, var(--oh-ok) 55%, transparent); }
+.theme-preview__ticket[data-call-marker="bat-wing"] .theme-preview__grid > span.is-called { border-radius: 50% 50% 4px 4px; }
+.theme-preview__ticket[data-call-marker="petal-heart"] .theme-preview__grid > span.is-called { border-radius: 50% 50% 35% 35%; }
+.theme-preview__ticket[data-call-marker="woven-diamond"] .theme-preview__grid > span.is-called { border-radius: 2px; outline: 1px dashed var(--oh-gold); outline-offset: -3px; }
+.theme-preview__ticket[data-call-marker="confetti"] .theme-preview__grid > span.is-called { border-radius: 50%; outline: 1px dashed var(--oh-gold-bright); outline-offset: -3px; }
+.theme-preview__pattern {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  color: var(--oh-text-muted);
+  font: 700 .52rem var(--oh-font-ui);
+  letter-spacing: .07em;
+}
+.theme-preview__pattern-art { flex: 0 0 48px; width: 48px; height: 34px; }
+.theme-art__pattern-cell { fill: var(--oh-inset); stroke: var(--oh-line); stroke-width: 1.4; }
+.theme-art__pattern-cell.is-won { fill: var(--oh-board-called); stroke: var(--oh-gold-bright); }
+.theme-preview__call-showcase {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: var(--oh-text-muted);
+  font: 700 .54rem var(--oh-font-ui);
+  letter-spacing: .09em;
+}
+.theme-preview__number-ball { position: relative; display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 42px; }
+.theme-preview__ball-art { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .26)); }
+.theme-art__ball { fill: var(--oh-gold); stroke: color-mix(in srgb, var(--oh-ivory) 70%, var(--oh-gold)); stroke-width: 2; }
+.theme-art__ball-highlight { fill: var(--oh-ivory); opacity: .8; }
+.theme-art__ball-signature { fill: none; stroke: var(--oh-ticket-ink); stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; opacity: .65; }
+.theme-preview__number-ball strong { position: relative; z-index: 1; color: var(--oh-ticket-ink); font: 850 1rem var(--oh-font-num); text-shadow: 0 1px 0 rgba(255,255,255,.45); }
+.theme-preview__board-head { align-items: center; }
+.theme-preview__board-head > strong { color: var(--oh-ivory); }
+.theme-preview__balls > span.is-called { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--oh-ticket-ink) 20%, transparent); }
+
+/* Distinct original festival environments in real package previews. Paper
+   ticket and board surfaces stay opaque so actual rendered numbers remain
+   crisp and readable over the art. */
+.theme-preview[data-theme-art="diwali-celebration"],
+.theme-preview[data-theme-art="holi-colours"],
+.theme-preview[data-theme-art="navratri-garba"],
+.theme-preview[data-theme-art="durga-puja"],
+.theme-preview[data-theme-art="halloween-night"],
+.theme-preview[data-theme-art="ganesh-chaturthi"],
+.theme-preview[data-theme-art="onam-pookalam"],
+.theme-preview[data-theme-art="pongal-harvest"],
+.theme-preview[data-theme-art="new-year-celebration"],
+.theme-preview[data-theme-art="eid-moonlight"],
+.theme-preview[data-theme-art="christmas-winter"] {
+  background-image:
+    linear-gradient(180deg, rgba(20, 8, 30, .32), rgba(20, 8, 30, .72)),
+    var(--theme-environment);
+  background-size: cover;
+  background-position: center;
+}
+.theme-preview[data-theme-art="diwali-celebration"] { --theme-environment: url("/brand/festival-courtyard-hero-v1.webp"); }
+.theme-preview[data-theme-art="holi-colours"] { --theme-environment: url("/brand/festival-holi-environment-v1.webp"); }
+.theme-preview[data-theme-art="navratri-garba"] { --theme-environment: url("/brand/festival-navratri-environment-v1.webp"); }
+.theme-preview[data-theme-art="durga-puja"] { --theme-environment: url("/brand/festival-durga-puja-environment-v1.webp"); }
+.theme-preview[data-theme-art="halloween-night"] { --theme-environment: url("/brand/festival-halloween-environment-v1.webp"); }
+.theme-preview[data-theme-art="ganesh-chaturthi"] { --theme-environment: url("/brand/festival-ganesh-chaturthi-environment-v1.webp"); }
+.theme-preview[data-theme-art="onam-pookalam"] { --theme-environment: url("/brand/festival-onam-environment-v1.webp"); }
+.theme-preview[data-theme-art="pongal-harvest"] { --theme-environment: url("/brand/festival-pongal-environment-v1.webp"); }
+.theme-preview[data-theme-art="new-year-celebration"] { --theme-environment: url("/brand/festival-new-year-environment-v1.webp"); }
+.theme-preview[data-theme-art="eid-moonlight"] { --theme-environment: url("/brand/festival-eid-environment-v1.webp"); }
+.theme-preview[data-theme-art="christmas-winter"] { --theme-environment: url("/brand/festival-christmas-environment-v1.webp"); }
+
+.theme-preview__art--banner { position: relative; }
+.theme-preview[data-theme-art="obsidian-hall"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-gold-deep) 48%, var(--oh-gold)); }
+.theme-preview[data-theme-art="midnight-indigo"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-info) 35%, var(--oh-gold)); }
+.theme-preview[data-theme-art="marigold-festival"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-warn) 30%, var(--oh-gold)); }
+.theme-preview[data-theme-art="cobalt-arcade"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-info) 42%, var(--oh-gold)); }
+.theme-preview[data-theme-art="terracotta-house"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-danger) 26%, var(--oh-gold)); }
+.theme-preview[data-theme-art="monsoon-garden"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-ok) 30%, var(--oh-gold)); }
+.theme-preview[data-theme-art="paper-lantern"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-coral) 36%, var(--oh-gold)); }
+.theme-preview[data-theme-art="snowlight-minimal"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-info) 24%, var(--oh-ivory)); }
+.theme-preview[data-theme-art="kesar-royale"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-gold-deep) 60%, var(--oh-gold)); }
+.theme-preview[data-theme-art="new-year-celebration"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-info) 34%, var(--oh-gold)); }
+.theme-preview[data-theme-art="diwali-celebration"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-warn) 42%, var(--oh-gold)); }
+.theme-preview[data-theme-art="holi-colours"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-coral) 48%, var(--oh-gold)); }
+.theme-preview[data-theme-art="durga-puja"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-danger) 46%, var(--oh-gold)); }
+.theme-preview[data-theme-art="navratri-garba"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-info) 42%, var(--oh-gold)); }
+.theme-preview[data-theme-art="ganesh-chaturthi"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-warn) 48%, var(--oh-coral)); }
+.theme-preview[data-theme-art="onam-pookalam"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-ok) 38%, var(--oh-gold)); }
+.theme-preview[data-theme-art="pongal-harvest"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-warn) 42%, var(--oh-gold)); }
+.theme-preview[data-theme-art="eid-moonlight"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-info) 40%, var(--oh-ok)); }
+.theme-preview[data-theme-art="christmas-winter"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-ok) 46%, var(--oh-gold)); }
+.theme-preview[data-theme-art="halloween-night"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-warn) 48%, var(--oh-danger)); }
+.theme-preview[data-theme-art="wedding-celebration"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-coral) 40%, var(--oh-gold)); }
+.theme-preview[data-theme-art="indian-textile-heritage"] .theme-art__ball { fill: color-mix(in srgb, var(--oh-info) 42%, var(--oh-gold)); }
+@media (max-width: 600px) {
+  .theme-preview__content { grid-template-columns: minmax(0, 1fr); }
+  .theme-preview__pattern { font-size: .56rem; }
+  .theme-preview__balls > span { font-size: clamp(.48rem, 3vw, .62rem); }
+}

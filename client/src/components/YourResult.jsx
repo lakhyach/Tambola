@@ -2,6 +2,7 @@
 import { useMemo } from "react";
 import Panel from "./Panel.jsx";
 import { myAwards, ordinal, placeOf, ticketSummaries } from "../lib/ticketview.js";
+import { bookingCopy, bookingPatternName, formatBookingNumber } from "../i18n/booking-locale.js";
 
 /**
  * The seat's own result, once the round is over.
@@ -11,7 +12,7 @@ import { myAwards, ordinal, placeOf, ticketSummaries } from "../lib/ticketview.j
  * It exists because the end of a round used to be a list of who won what —
  * a player had to scan it to work out how they did.
  */
-const YourResult = ({ state, leaderboard = [], awards = [], myPlayerId, playerName, tickets = [], calledNumbers = [] }) => {
+const YourResult = ({ state, leaderboard = [], awards = [], myPlayerId, playerName, tickets = [], calledNumbers = [], language = "en" }) => {
   const completed = state === "COMPLETED";
   const place = useMemo(() => placeOf(leaderboard, myPlayerId), [leaderboard, myPlayerId]);
   const mine = useMemo(() => myAwards(awards, myPlayerId), [awards, myPlayerId]);
@@ -21,35 +22,37 @@ const YourResult = ({ state, leaderboard = [], awards = [], myPlayerId, playerNa
 
   const entry = leaderboard.find((row) => row && row.playerId === myPlayerId);
   const points = entry?.points ?? 0;
+  const t = (key, variables) => bookingCopy(language, key, variables);
+  const placeLabel = place ? language === "hi" ? `${formatBookingNumber(place, language)}.` : ordinal(place) : "—";
 
   return (
     <Panel className="p-4" data-your-result="true">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="leading-tight">
           <h2 className="oh-eyebrow" style={{ color: "var(--oh-gold)" }}>
-            Your result
+            {t("yourResult")}
           </h2>
           <div className="oh-display" style={{ fontSize: 22, marginTop: 2 }}>
-            {playerName || "This seat"}
+            {playerName || t("thisSeat")}
           </div>
         </div>
         <div className="flex items-end gap-5">
           <div className="text-right leading-tight">
-            <div className="oh-eyebrow">Finished</div>
+            <div className="oh-eyebrow">{t("finished")}</div>
             <div className="oh-num" style={{ fontSize: 22, fontWeight: 700, color: "var(--oh-gold-bright)" }}>
-              {place ? ordinal(place) : "—"}
+              {placeLabel}
               {place && leaderboard.length ? (
                 <span style={{ fontSize: 12, color: "var(--oh-text-faint)", fontWeight: 600 }}>
                   {" "}
-                  of {leaderboard.length}
+                  {t("placeOf", { count: formatBookingNumber(leaderboard.length, language) })}
                 </span>
               ) : null}
             </div>
           </div>
           <div className="text-right leading-tight">
-            <div className="oh-eyebrow">Points</div>
+            <div className="oh-eyebrow">{t("points")}</div>
             <div className="oh-num" style={{ fontSize: 22, fontWeight: 700, color: "var(--oh-gold-bright)" }}>
-              {points}
+              {formatBookingNumber(points, language)}
             </div>
           </div>
         </div>
@@ -66,30 +69,33 @@ const YourResult = ({ state, leaderboard = [], awards = [], myPlayerId, playerNa
               style={{ fontSize: 14 }}
             >
               <span style={{ color: "var(--oh-text)" }}>
-                {award.label || award.pattern}
-                {Number.isInteger(award.ticketNo) ? (
+                {bookingPatternName(language, award.pattern, award.label || award.pattern)}
+                {award.ticketNo != null ? (
                   <span className="oh-eyebrow" style={{ marginLeft: 8, color: "var(--oh-text-faint)" }}>
-                    Ticket {award.ticketNo}
+                    {t("ticketLabel", { number: typeof award.ticketNo === "string" && !/^\d+$/.test(award.ticketNo) ? award.ticketNo : formatBookingNumber(award.ticketNo, language) })}
                   </span>
                 ) : null}
               </span>
               <span className="oh-num" style={{ color: "var(--oh-gold-bright)", fontWeight: 700 }}>
-                +{award.points}
+                +{formatBookingNumber(award.points, language)}
               </span>
             </li>
           ))}
         </ul>
       ) : (
         <p style={{ margin: 0, fontSize: 13, color: "var(--oh-text-muted)" }}>
-          No prizes this round — your tickets and points stay on the board for the host.
+          {t("noPrizesThisRound")}
         </p>
       )}
 
       {sheets.length ? (
         <p className="oh-eyebrow" style={{ marginTop: 12, color: "var(--oh-text-faint)" }}>
-          {sheets.length} {sheets.length === 1 ? "ticket" : "tickets"} ·{" "}
-          {sheets.reduce((sum, sheet) => sum + sheet.marked, 0)} of{" "}
-          {sheets.reduce((sum, sheet) => sum + sheet.total, 0)} numbers called
+          {t("ticketSummary", {
+            count: formatBookingNumber(sheets.length, language),
+            tickets: t(sheets.length === 1 ? "oneTicket" : "manyTickets"),
+            marked: formatBookingNumber(sheets.reduce((sum, sheet) => sum + sheet.marked, 0), language),
+            total: formatBookingNumber(sheets.reduce((sum, sheet) => sum + sheet.total, 0), language),
+          })}
         </p>
       ) : null}
     </Panel>

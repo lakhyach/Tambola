@@ -109,7 +109,7 @@ test("quickMessagesFor flattens a language and celebrate interpolates variables"
   assert.equal(flat.length, allMessages().filter((m) => m.lang === "en").length);
   assert.ok(flat.every((m) => m.text && m.category));
   assert.equal(celebrate("en", "patternWin", { name: "Ravi", label: "Full House" }), "Ravi wins Full House! 🎉");
-  assert.equal(celebrate("hi", "patternWin", { name: "रवि", label: "फुल हाउस" }), "रवि ने फुल हाउस जीता! 🎉");
+  assert.equal(celebrate("hi", "patternWin", { name: "रवि", label: "फुल हाउस" }), "रवि wins फुल हाउस! 🎉");
   // unknown language falls back to the default template rather than crashing
   assert.equal(celebrate("fr", "patternWin", { name: "X", label: "Y" }), "X wins Y! 🎉");
 });

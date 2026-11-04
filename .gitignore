@@ -38,3 +38,6 @@ yarn-error.log*
 .idea/
 .DS_Store
 Thumbs.db
+
+# user-local reconstruction and temporary project evidence; preserve locally, never stage by default
+.tmp/

@@ -10,7 +10,17 @@ import CallerControls from "./CallerControls.jsx";
 import CallerLog from "./CallerLog.jsx";
 import RoomOverview from "./RoomOverview.jsx";
 import VoicePanel from "./VoicePanel.jsx";
+import TicketRail from "../TicketRail.jsx";
+import TicketPicker from "../TicketPicker.jsx";
+import ClaimFeedback from "../ClaimFeedback.jsx";
+import YourResult from "../YourResult.jsx";
+import CallerGameInfo from "./CallerGameInfo.jsx";
+import CallerPattern from "./CallerPattern.jsx";
+import CallerClaims from "./CallerClaims.jsx";
+import { FaComments, FaMicrophoneAlt, FaKeyboard } from "react-icons/fa";
+import "./caller-console.css";
 import { listSpeechVoices } from "../../lib/announce.js";
+import { bookingCallerText, bookingCopy, formatBookingNumber, useBookingLanguage } from "../../i18n/booking-locale.js";
 import {
   callerActions,
   hotkeyCommand,
@@ -35,6 +45,8 @@ import {
  * hunting while the room is live.
  */
 const CallerConsole = ({ view }) => {
+  const language = useBookingLanguage();
+  const t = (key, variables) => bookingCopy(language, key, variables);
   const {
     state,
     remaining,
@@ -53,7 +65,7 @@ const CallerConsole = ({ view }) => {
     message,
   } = view;
 
-  const lang = sound?.speechLang === "hi" ? "hi" : "en";
+  const lang = ["hi", "hinglish"].includes(sound?.speechLang) ? sound.speechLang : "en";
   const seats = useMemo(() => roomSummary({ players, maxPlayers }), [players, maxPlayers]);
   const actions = useMemo(
     () => callerActions({ state, connected: view.connected !== false, busy, seated: seats.seated, remaining }),
@@ -75,10 +87,16 @@ const CallerConsole = ({ view }) => {
         speaking: Number.isInteger(sound?.speaking) ? sound.speaking : null,
         lang,
         voices,
+        providerAvailable: Boolean(sound?.voiceSupport?.provider),
         state,
       }),
     [sound, lang, voices, state]
   );
+  const localizedVoice = useMemo(() => ({
+    ...voice,
+    label: bookingCallerText(language, voice.label),
+    detail: bookingCallerText(language, voice.detail),
+  }), [voice, language]);
 
   // A repeat needs a number to say, a live voice, and no engine failure. The
   // queue itself refuses an overlap, so pressing this twice quickly is safe.
@@ -135,34 +153,46 @@ const CallerConsole = ({ view }) => {
         : { label: "Call next", action: null, enabled: false, reason: actions.call.reason };
 
   return (
-    <div className="oh-console-shell">
-      <div className="oh-console">
+    <div className="oh-console-shell festival-caller-console" lang={language === "hi" ? "hi" : "en"}>
+      <div className="oh-console festival-caller-console__inner">
+        <a className="public-skip-link" href="#main-content">{t("skipToGame")}</a>
         <GameHeader
           roomId={view.roomId}
+          state={state}
+          playerCount={players.length}
+          language={language}
           sound={sound}
           onToggleSound={view.onToggleSound}
           onToggleSpeech={view.onToggleSpeech}
           onToggleSpeechLang={view.onToggleSpeechLang}
         />
+        <main id="main-content" tabIndex="-1">
+        <h1 className="oh-sr-only">{t("callerConsoleHeading")}</h1>
         <Toast message={message} />
 
-        <div className="oh-console-grid" data-oh-console="true">
-          <div className="oh-console-col">
+        <div className="caller-desk" data-oh-console="true">
+          <div className="caller-desk__draw">
             <CallerHero
               state={state}
               gameNumber={view.gameNumber}
               lastCall={last}
+              language={language}
               previous={previous}
               calledCount={calledCount}
               remaining={remaining}
               elapsedMs={elapsedMs}
               receivedAt={receivedAt}
-              voice={voice}
+              voice={localizedVoice}
               speaking={sound?.speaking}
               onRepeat={view.onRepeatNumber}
               repeatEnabled={repeatEnabled}
+              callouts={Boolean(sound?.callouts)}
+              calloutLanguage={lang}
+              calloutPersonality={sound?.personality}
+              calloutFestival={sound?.festival}
             />
             <CallerControls
+              language={language}
               state={state}
               autoCall={autoCall}
               callIntervalMs={callIntervalMs}
@@ -171,46 +201,62 @@ const CallerConsole = ({ view }) => {
               onAction={view.onHostAction}
               onSetInterval={setInterval}
             />
-            <VoicePanel
-              sound={sound || {}}
-              voice={voice}
-              onChange={view.onVoiceSetting}
-              onRetry={view.onToggleSpeech}
-            />
           </div>
 
-          <div className="oh-console-col">
-            <NumberBoard calledNumbers={calledNumbers} currentNumber={lastCall} />
-            <CallerLog calledNumbers={calledNumbers} />
+          <div className="caller-desk__center">
+            <div className="caller-desk__board">
+              <NumberBoard calledNumbers={calledNumbers} currentNumber={lastCall} language={language} />
+            </div>
+            <section className="oh-console-bottom__tickets" aria-label={t("myTickets")}>
+              {state === "WAITING" && view.onSelectTicketCount ? <TicketPicker value={view.ticketCount ?? 1} max={view.maxTickets ?? 1} disabled={busy} language={language} onPick={view.onSelectTicketCount} /> : null}
+              <TicketRail tickets={view.tickets || []} calledNumbers={calledNumbers} currentNumber={lastCall} playerName={view.name} roomId={view.roomId} state={state} language={language} />
+              <YourResult state={state} leaderboard={leaderboard} awards={view.awards || []} myPlayerId={view.playerId} playerName={view.name} tickets={view.tickets || []} calledNumbers={calledNumbers} language={language} />
+            </section>
+          </div>
+          <div className="caller-desk__information">
+            <CallerLog calledNumbers={calledNumbers} language={language} />
+            <CallerGameInfo view={view} summary={seats} language={language} />
           </div>
 
-          <div className="oh-console-col">
+          <div className="caller-desk__players">
             <RoomOverview
               players={players}
               leaderboard={leaderboard}
               state={state}
               maxPlayers={maxPlayers}
+              language={language}
             />
+            <CallerPattern patterns={view.patternViews || []} example={view.patternExample} awards={view.awards || []} language={language} />
+          </div>
+
+          <section className="oh-console-bottom__claims" aria-label={t("winningPatterns")}>
+            <CallerClaims view={view} language={language} />
+            <ClaimFeedback awards={view.awards || []} leaderboard={leaderboard} state={state} language={language} />
+          </section>
+        </div>
+
+        <div className="caller-utility-dock">
+          <details className="caller-utility caller-utility--voice">
+            <summary><FaMicrophoneAlt aria-hidden="true" />{t("voicePanel")}</summary>
+            <VoicePanel language={language} sound={sound || {}} voice={localizedVoice} onChange={view.onVoiceSetting} onRetry={view.onToggleSpeech} />
+          </details>
+          <details className="caller-utility caller-utility--chat">
+            <summary><FaComments aria-hidden="true" />{language === "hi" ? "लाइव चैट" : "Live chat"}</summary>
             <GameChat />
-            <div className="oh-console-footnote">
-              <p className="oh-caller-note" style={{ marginBottom: 6 }}>
-                Every number is drawn, stored and broadcast by the server. This console only asks.
-              </p>
-              <p className="oh-caller-note">
-                <span className="oh-kbd">C</span> call · <span className="oh-kbd">P</span> pause/resume ·{" "}
-                <span className="oh-kbd">R</span> repeat
-              </p>
-            </div>
+          </details>
+          <div className="caller-keyboard-help">
+            <FaKeyboard aria-hidden="true" />
+            <span><kbd>C</kbd> {t("callNextNumber")} · <kbd>P</kbd> {t("pauseRound")} · <kbd>R</kbd> {t("repeatNumber")}</span>
           </div>
         </div>
 
-        <div className="oh-console-bar" role="region" aria-label="Draw control bar">
+        <div className="oh-console-bar" role="region" aria-label={t("drawControlBar")}>
           <div className="oh-console-bar__meta">
             <span className="oh-statechip" data-tone={state.toLowerCase()}>
-              {state}
+              {t(`state${state}`)}
             </span>
             <span className="oh-num" style={{ fontSize: 12, color: "var(--oh-text-muted)" }}>
-              {calledCount}/90 · {remaining == null ? 90 - calledCount : remaining} left
+              {formatBookingNumber(calledCount, language)}/{formatBookingNumber(90, language)} · {t("numbersLeft", { count: formatBookingNumber(remaining == null ? 90 - calledCount : remaining, language) })}
             </span>
           </div>
           <div className="oh-console-bar__actions">
@@ -220,9 +266,9 @@ const CallerConsole = ({ view }) => {
                 size="sm"
                 disabled={!actions.pause.enabled}
                 onClick={() => view.onHostAction("game:pause")}
-                title={actions.pause.reason || "Pause the round"}
+                title={bookingCallerText(language, actions.pause.reason || "Pause the round")}
               >
-                Pause
+                {t("pauseRound")}
               </Button>
             ) : null}
             <Button
@@ -230,12 +276,13 @@ const CallerConsole = ({ view }) => {
               size="sm"
               disabled={!bar.enabled}
               onClick={() => bar.action && view.onHostAction(bar.action)}
-              title={bar.reason || nextCallHint({ state, autoCall, callIntervalMs, remaining })}
+              title={bookingCallerText(language, bar.reason || nextCallHint({ state, autoCall, callIntervalMs, remaining }))}
             >
-              {bar.label}
+              {t(bar.label === "Start" ? "startRound" : bar.label === "Resume" ? "resumeRound" : "callNextNumber")}
             </Button>
           </div>
         </div>
+        </main>
       </div>
     </div>
   );

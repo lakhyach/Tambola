@@ -141,16 +141,23 @@ export function connectionArgs(conn) {
  * ledger, the base-table inventory in `schema`, and a per-table row count.
  * This is what a backup promises to contain and what a restore must reproduce.
  */
-export async function collectSnapshot(connectionString, schema = "public") {
+export async function collectSnapshot(connectionString, schema = "public", snapshotId = null) {
   assertSchemaLiteral(schema);
-  const pool = new Pool({ connectionString, max: 1, connectionTimeoutMillis: 8000 });
+  // The migration ledger lives inside the selected application schema just
+  // like the tables whose counts are collected below. Pin search_path so the
+  // source and restored snapshots inspect the same schema instead of silently
+  // reading a possibly empty `public.schema_migrations` table.
+  const pool = new Pool({ connectionString, options: `-c search_path=${schema},public`, max: 1, connectionTimeoutMillis: 8000 });
   try {
+    await pool.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    if (snapshotId !== null) {
+      if (!/^[0-9A-Fa-f]+-[0-9A-Fa-f]+-[0-9]+$/.test(snapshotId)) throw new Error("invalid PostgreSQL snapshot identifier");
+      await pool.query(`SET TRANSACTION SNAPSHOT '${snapshotId}'`);
+    }
     let ledger = [];
-    try {
-      const r = await pool.query("SELECT version, name, checksum FROM schema_migrations ORDER BY version");
+    if (await tableExists(pool, schema, "schema_migrations")) {
+      const r = await pool.query(`SELECT version, name, checksum FROM ${schemaQuoted(schema)}.schema_migrations ORDER BY version`);
       ledger = r.rows;
-    } catch {
-      ledger = []; // a fresh, pre-migration dump has no ledger
     }
     const tablesResult = await pool.query(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = $1 AND table_type = 'BASE TABLE' ORDER BY table_name",
@@ -164,6 +171,20 @@ export async function collectSnapshot(connectionString, schema = "public") {
     }
     return { schema, ledger, tables, rows };
   } finally {
+    await pool.query("ROLLBACK").catch(() => {});
+    await pool.end();
+  }
+}
+
+/** Hold one MVCC snapshot while pg_dump and its manifest read the same state. */
+export async function withExportedSnapshot(connectionString, work) {
+  const pool = new Pool({ connectionString, max: 1, connectionTimeoutMillis: 8000 });
+  try {
+    await pool.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    const result = await pool.query("SELECT pg_export_snapshot() AS snapshot");
+    return await work(result.rows[0].snapshot);
+  } finally {
+    await pool.query("ROLLBACK").catch(() => {});
     await pool.end();
   }
 }

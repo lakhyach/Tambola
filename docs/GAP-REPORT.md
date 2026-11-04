@@ -1,5 +1,23 @@
 # Final product gap report
 
+> **Platform-owner follow-up, 31 October 2026:** migrations 006–008 and a first
+> owner-managed instance foundation were added after this report's Phase 18
+> baseline. The report below predates that work and is not the current status of
+> the multi-instance request. See [`PLATFORM-IMPLEMENTATION-STATUS.md`](PLATFORM-IMPLEMENTATION-STATUS.md)
+> and the follow-up section in [`TEST-REPORT.md`](../TEST-REPORT.md). Moderator
+> authorization has been implemented for the defined backend surface; complete
+> instance scoping, runtime branding, and public instance-bound player routing
+> remain open. The newest moderator gaps are recorded at the end of this report.
+
+> **Security closure update, 31 October 2026:** migration 010 adds owner-initiated
+> moderator account recovery. Assigned moderators now have a safe description-only
+> settings operation, eligible room-member removal, and instance-scoped report
+> summaries. Ticket mutation remains unsupported by design. The multi-tenant
+> manual inventory and threat model are in `SECURITY-THREAT-MODEL.md`; test and
+> audit evidence is in `TEST-REPORT.md`. The request's full Cartesian
+> cross-identifier test matrix, populated moderator-data backup drill, and
+> independent security review remain open and are not represented as complete.
+
 Phase 16 · 31 October 2026 · build `2063f0b` (pushed to `origin/main`) · **updated in Phase 16B**,
 base `0a4de55` · **updated in Phase 17**, base `108c6aa` · **updated in Phase 18**, base `e5c6e99` ·
 evidence in `TEST-REPORT.md`, `docs/MARKET-BENCHMARK.md`, `docs/RULES-DECISIONS.md`,
@@ -48,7 +66,7 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
 | **Chat** | Room chat, EN + HI content, rate-limited, not persisted; sits in a panel, never over the hero number | Profanity filter, report flow, host broadcast banner, kick/ban | P1 (public rooms) / P2 (banner) | Partly |
 | **Administration** | Owner sign-in with TOTP MFA, room audit, health snapshot, durable history, backup/restore verification | No in-room host moderation (kick/ban); no player approval or ticket approval | P1 | **Yes** — admission policy |
 | **Branding** | A complete, working default identity ("Tambola" / "Obsidian Hall", Champagne-gold accent, generated icon set), every part overridable through `VITE_*` build vars — but it is an example, not the client's brand | All of §1 of `docs/CLIENT-REQUIREMENTS.md`: real name, logo, icon set, colours, tagline. Now asked for on one page in `docs/CLIENT-SIGNOFF.md` | P0 | **Yes** |
-| **Security** | 51/51 live probe (headers, CORS origin echo, CSRF, body limits, socket contract, rate budgets); secret scan clean and now run in CI; admin boundary tested; production dependency audit **0 vulnerabilities** after the `socket.io`/`ws` patch upgrades; **L3 deep security review run before the 16B push, `findings_count: 0`** | No third-party pentest and no review by anyone outside this project. Client bundle still carries **2 moderate `react-router-dom` 6.x advisories** whose fix is the 7.x major (SSR-only paths this app does not use) | P1 (before public launch) | No |
+| **Security** | 51/51 live probe (headers, CORS origin echo, CSRF, body limits, socket contract, rate budgets); secret scan clean and now run in CI; admin boundary tested; current root and client dependency audits both report **0 vulnerabilities** after the `socket.io`/`ws` updates and `react-router-dom` 7 upgrade; **L3 deep security review run before the 16B push, `findings_count: 0`** | No third-party pentest and no review by anyone outside this project. The prior router advisory is resolved; local browser route smoke after the major upgrade passed with zero errors and no booking writes. Independent review remains outstanding | P1 (before public launch) | No |
 | **Performance** | 400 concurrent joins, 0 failures; call-to-screen p95 53 ms; call ack p95 70 ms; event-loop p99 32 ms; 800 room lifecycles, 0 errors. **Phase 16B, durable PostgreSQL, 50 rooms × 250 players**: 250 joins, 0 failures, 750 acks, ack p50 44.6 / p95 84.8 ms with the default pool, p95 65.0 ms at `DB_POOL_MAX=16`, 150/150 room syncs, 50/50 reconnects, **0 duplicate calls**, RSS 143 MB, and a database profiler proving the queue was pool checkout (peak 7 active, longest query 23 ms, cache hit 100%, 0 deadlocks). **Phase 18, durable, 1 + 4 + 12 ticket seats**: 1 343 / 1 727 / 2 752-byte snapshots, 77-byte `number:called` (the only event per call, independent of ticket count), call p50 4.65 / p95 15.98 ms, **2 rows written per call and 0 ticket rows updated**, integrity pass p50 0.09 ms; in the browser 4 seats vs 1 ticket were 351 vs 333 DOM nodes with 0 long tasks | No hours-long soak, no test above 250 concurrent players, no slow-phone profiling | P1 | No |
 | **Deployment** | Docker image, compose, Render/Fly/Railway manifests, Supabase TLS pinning verified, runbook complete. **Phase 16B adds**: `npm run env:check` (production gate), `npm run smoke -- --full` (live proof, 11/11 against a running server), a CI workflow that runs every gate and builds the image, rollback and pool-sizing procedures, and `docs/DEPLOYMENT-READINESS.md` | **Nothing is deployed.** A host, a domain and the account owner must be chosen; the zero-cost options are a workstation behind a Quick Tunnel (URL changes on restart) or Oracle Always Free (card required) | P0 | **Yes** |
 | **Host experience** | A dedicated caller console at `/host/game`: current/previous number, sealed next slot, 1–90 board, full call sheet, server round clock, start/pause/resume/end with two-click confirmation, cadence control, voice panel, hall roster; `C`/`P`/`R` hotkeys; desktop/tablet/390/360 verified with 0 page errors. **Phase 17** | No in-room moderation controls (no kick/ban/approve exists server-side); no caller notes or per-round commentary; no printable call sheet | P1 (moderation) / P2 (print) | **Yes** (admission policy) |
@@ -85,11 +103,11 @@ Priority: **P0** blocks client acceptance · **P1** blocks a public launch · **
    multiple winners above ~10 seats.
 5. **One real handset pass** — the mobile evidence is Chrome emulation at 360, 390, 430, 768 and
    1440 pixels wide (Phase 18), not iOS Safari on glass.
-6. **An independent security review** and a dependency audit. *(Phase 16B ran the audit,
-   patched the production dependencies to 0 vulnerabilities and ran the L3 deep review
-   before the push — `findings_count: 0`. The client bundle still carries 2 moderate
-   `react-router-dom` advisories that need a 7.x major. What is still missing is a review
-   by someone who is not the author.)*
+6. **An independent security review**. *(Current root and client dependency audits report 0
+   vulnerabilities; the router advisory was addressed by the 7.x upgrade and the built public
+   directory-to-booking route passes a local Chromium check. The L3 deep review before the
+   Phase 16B push reported `findings_count: 0`. A review by someone outside this project is
+   still outstanding.)*
 
 ## 4. Optional future enhancements (P2)
 
@@ -298,3 +316,47 @@ coordinates: `docs/NEW-WINNING-PATTERNS.md`.
 - **No new pattern beyond the five**, and no Phase 19 work. Middle Number, 1 2 3 / 143 and Pyramid
   remain unbuilt pending written definitions.
 - **No deployment, no purchase, no payment surface.** Unchanged.
+# Moderator security implementation status (1 November 2026)
+
+## Poster Studio status correction (3 November 2026)
+
+The historical Phase 18/gap entries below predate the prompt-driven implementation and must not be read as current status. Prompt-first UI, OpenAI server adapter, session/timezone/pattern/availability binding, private generated-asset persistence, revisions, export, explicit publication, public poster page, OG tags and share controls have now been implemented in code. The provider remains unconfigured, so no true image was generated; no authenticated browser screenshots were captured. Synthetic provider/database tests and client lint/build passed. Real provider invocation, generated-art quality, browser screenshots/export, rendered social metadata, external share testing and retention behavior remain open. The redesign is not complete.
+
+Migrations 009–010 and a distinct moderator auth/RBAC path now exist. The detailed contract and explicit permission matrix are in [`server/MODERATOR-SECURITY.md`](../server/MODERATOR-SECURITY.md). Focused tests cover Regular, Bumper and Legacy room ownership; foreign room/player lookups; permission grants; live HTTP/socket revocation; and a moderator backup/restore fixture. Settings updates are allowlisted, player removal retains room history, and reports/history are instance-filtered.
+
+Remaining gaps: the identifier matrix is route- and data-model-aware rather than a full Cartesian fuzz campaign; no moderator API currently addresses a ticket, game, claim, award, player-session or host-session directly, and no moderator ticket mutation exists. The permission-adaptive moderator workspace is implemented; authenticated browser verification remains open. `tickets.manage` has no mutation operation; room-detail ticket visibility remains governed by read access. MFA encryption key escrow, target-host/proxy/database-role settings, and an independent L3 security review require separate production verification. See [`SECURITY-THREAT-MODEL.md`](SECURITY-THREAT-MODEL.md) and [`TEST-REPORT.md`](../TEST-REPORT.md) for scope and evidence. The worktree is not a production deployment.
+
+## Current platform deltas (1 November 2026)
+
+This file's Phase 18 gap matrix is a historical release baseline; its single-instance and admission-control
+statements do not describe the current multi-instance worktree. Use the active
+[`MASTER-BUILD-IMPLEMENTATION-TRACKER.md`](MASTER-BUILD-IMPLEMENTATION-TRACKER.md) and current
+[`TEST-REPORT.md`](../TEST-REPORT.md) for live status. Since that baseline:
+
+- Regular, Bumper and Legacy have persisted tenant ownership; public hall pages include an instance-bound
+  host setup path. Durable browser coverage runs Regular and Bumper games concurrently and verifies that
+  their call histories remain independent.
+- Hosts can remove a non-host seat in the waiting room. The server checks the connected host socket and
+  WAITING state, revokes the seat credential, removes its socket from the room, retains the seat/history,
+  and records the host actor. Permanent bans, approval queues and live-round host removal remain open.
+- Owner and moderator control planes, scoped booking workflows, themes, posters and runtime branding have
+  advanced beyond the report's Phase 18 status. External security review, physical handset testing and a
+  multi-hour soak are still outstanding.
+
+## Festival redesign status (3 November 2026)
+
+Durable ticket inventory has a direct-grid visual pass. Owner and public catalogs render actual server-issued grids beside serial/status without a per-ticket Preview step. The public UI browser assertion covers serial fidelity (`TKT-0001`, no “Ticket NaN”) and isolated PostgreSQL screenshots at five widths. See `design-qa.md`, `MASTER-BUILD-IMPLEMENTATION-TRACKER.md`, and `DURABLE-TICKET-INVENTORY.md`.
+
+Still open: Poster Studio has no configured image-generation provider and remains reviewed-template/SVG based. Natural-language prompt generation with actual session/prize data, generated-image persistence/versioning, social sharing/Open Graph verification and provider configuration are not implemented. Also open are broader full-page route review, latest Moderator grant workspace captures, claim/result/reconnect visual scenarios, all-theme contrast/accessibility and low-end performance. No completion claim is made.
+
+## Current-turn remaining milestone blockers (3 November 2026)
+
+- Caller/player layout and brand identity changes compile and pass focused tests, but no revision-matched browser screenshots were possible in this environment (CUA failed to initialize; no local UI listener was active). Do not infer visual correctness from a successful build.
+- The prompt poster integration still lacks configured provider credentials; generated artwork, exports and public social rendering remain unverified.
+- Full real local lifecycle (host create → player join → start → calls → claim → completion → reconnect), responsive five-width screenshots, access/security suite, and final release review remain pending. No production state was changed.
+
+## Live runtime milestone status (3 November 2026)
+
+The local game runtime is now verifiably available on a task-owned isolated API/UI/DB stack. Real browser waiting/live flows for host and player, three-call reconnect restoration, Early Five and Full House claims, visible awards, and completed results have current-turn evidence under `.preflight/live-runtime/`. Full serial suite passed 723/723; lint/build/diff checks passed. The corrected player name duplication and caller score/illustration crowding are closed for the inspected layouts.
+
+Remaining gaps: no real image-provider credentials/model, so actual generated poster art is blocked; the complete poster browser publishing lifecycle and all admin/moderator route screenshot reviews are not established by this gameplay-focused run; this does not close full reference-parity, all-theme contrast, screen-reader/keyboard, mobile touch-target, or physical low-end profiling criteria. Do not mark the full redesign complete.

@@ -11,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { api, setUnauthenticatedHandler } from "./api.js";
 import { AdminContext } from "./context.js";
+import "./admin.css";
 
 const LOADING = { status: "loading", owner: null, setupRequired: false, durable: false, mfa: null, error: null };
 const ANONYMOUS = { status: "anonymous", owner: null, setupRequired: false, durable: false, mfa: null, error: null };

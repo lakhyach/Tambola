@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { assertSchemaName } from "./pool.js";
 
 const MIGRATION_NAME = /^(\d{3,})_[A-Za-z0-9_]+\.sql$/;
-const MIGRATE_LOCK_KEY = 728439273842318;
+const MIGRATE_LOCK_SEED = 728439273842318;
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 export function listMigrations(dir = path.join(here, "migrations")) {
@@ -57,7 +57,12 @@ export async function migrate({ db, dir, log = () => {} } = {}) {
   const client = await db.pool.connect();
   try {
     await ensureSchema(db, client);
-    await client.query("SELECT pg_advisory_lock($1)", [MIGRATE_LOCK_KEY]);
+    // Serialize migrations only within this schema. Test workers use isolated
+    // schemas in the same database, so a database-wide lock needlessly makes
+    // independent suites queue behind each other until their statement timeout.
+    // The schema seed remains stable across processes; two boots on one schema
+    // still take the same lock and cannot race DDL.
+    await client.query("SELECT pg_advisory_lock(hashtextextended($1::text,$2::bigint))", [db.schema || "public", MIGRATE_LOCK_SEED]);
     await client.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         version    text PRIMARY KEY,
@@ -108,7 +113,7 @@ export async function migrate({ db, dir, log = () => {} } = {}) {
       pending: migrations.filter((m) => !byVersion.has(m.version)).map((m) => m.name),
     };
   } finally {
-    await client.query("SELECT pg_advisory_unlock($1)", [MIGRATE_LOCK_KEY]).catch(() => {});
+    await client.query("SELECT pg_advisory_unlock(hashtextextended($1::text,$2::bigint))", [db.schema || "public", MIGRATE_LOCK_SEED]).catch(() => {});
     client.release();
   }
 }

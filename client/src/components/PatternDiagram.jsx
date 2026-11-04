@@ -1,5 +1,13 @@
 /* eslint-disable react/prop-types */
 import { useMemo } from "react";
+import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
+import { getFestivalThemeArt } from "../festival-themes.js";
+
+function currentThemeArt() {
+  if (typeof document === "undefined") return null;
+  const themeId = document.documentElement?.dataset?.themeId;
+  return getFestivalThemeArt(themeId);
+}
 
 /**
  * A winning pattern drawn on the ticket grid — the server's own coordinates,
@@ -17,17 +25,22 @@ import { useMemo } from "react";
  * cells are supplied (the pattern cells it has already completed) they mark the
  * cell so eligibility reads at a glance without implying any local claim.
  */
-const PatternDiagram = ({ cells, example = null, note = null, hit = null, label }) => {
+const PatternDiagram = ({ cells, example = null, note = null, hit = null, label, language = "en" }) => {
+  const t = (key, variables) => bookingCopy(language, key, variables);
+  const imageLabel = label
+    ? t("patternDiagramLabel", { pattern: label, note: note ? t("patternDiagramNotePrefix", { note }) : "" })
+    : t("winningPattern");
   const patternSet = useMemo(() => new Set((cells || []).map(([r, c]) => `${r}-${c}`)), [cells]);
   const hitSet = useMemo(() => new Set((hit || []).map(([r, c]) => `${r}-${c}`)), [hit]);
   const rows = example && example.length === 3 ? example : [[], [], []];
+  const themeArt = currentThemeArt();
 
   return (
-    <div className="oh-pattern-diagram">
+    <div className="oh-pattern-diagram" data-theme-art={typeof document !== "undefined" ? document.documentElement?.dataset?.themeId : undefined} data-pattern-trim={themeArt?.trim} data-call-marker={themeArt?.marker}>
       <div
         className="oh-pattern-grid"
         role="img"
-        aria-label={label ? `${label} pattern${note ? ". " + note : ""}` : "Winning pattern"}
+        aria-label={imageLabel}
       >
         {Array.from({ length: 3 }, (_, r) => (
           <div key={`r-${r}`} className="oh-pattern-row">
@@ -43,8 +56,9 @@ const PatternDiagram = ({ cells, example = null, note = null, hit = null, label 
                   data-pattern={String(isPattern)}
                   data-hit={String(isHit)}
                   data-empty={String(empty)}
+                  data-call-marker={isPattern && themeArt?.marker ? themeArt.marker : undefined}
                 >
-                  {n == null ? "" : n}
+                  {n == null ? "" : formatBookingNumber(n, language)}
                 </span>
               );
             })}

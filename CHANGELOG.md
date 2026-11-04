@@ -1,9 +1,159 @@
 # Changelog
 
+## Hostinger Compose shutdown and log bounds (2 November 2026)
+
+- The Hostinger VPS stack now retains at most five 10 MB JSON log files per container and allows the app 60 seconds to drain Socket.IO and complete its orderly shutdown before Docker force-stops it.
+- This closes the documented mismatch where the runbook required bounded logs and graceful shutdown but the included Compose stack did not configure them. No VPS or production service was changed.
+
+## Booking expiry and session closure consistency (1 November 2026)
+
+- Session cancellation now expires any elapsed, unobserved holds before cancelling remaining active reservations. Each hold keeps the correct final state and audit event regardless of which operation observes it first.
+- Added a durable regression asserting an elapsed hold ends as `expired` with `hold.create` → `hold.expire`, while session cancellation proceeds. The focused booking suite passes **3/3**, including isolated backup/restore.
+
+## Durable booking assignment recovery integrity (1 November 2026)
+
+- Room hydration now cross-checks each assigned reservation against its durable room member, player identity, and locked ticket count. A mismatch freezes recovery before the room enters the live registry.
+- A corruption regression verifies `RECOVERY_REQUIRED`, the recorded freeze reason, and no fabricated reservation audit event. The full serial PostgreSQL suite passed **665/665** through migration 021 on a fresh disposable PostgreSQL 17.11 container.
+
+## Waiting-room host moderation (1 November 2026)
+
+- Hosts can remove a non-host seat before starting a round. The server checks the connected host socket and WAITING state, revokes the seat credential, removes its socket from room broadcasts, preserves the seat/ticket history, and records the host seat ID in the audit detail. The removed browser clears its credential and returns to join. The control requires confirmation and is absent after play starts.
+- Socket integration passed **1/1** for host-only authority, invalidation and post-start refusal. Durable Chromium verified retained `left_at`, revoked session, actor audit, responsive 390px roster and simultaneous Regular/Bumper game histories; browser errors: **0**. Client lint/build passed.
+- Permanent bans, approval queues and removal during a live round remain outside this slice.
+
+## Public hall host routing (1 November 2026)
+
+- Public instance pages now offer “Host in this hall.” The host form loads active public halls, preselects the requested hall, and sends its slug with room creation. The server resolves that slug only to an active, public instance, so paused, archived, hidden or unknown halls cannot be selected by forging the socket payload.
+- Isolated PostgreSQL integration and Chromium verification passed: Regular and Bumper rooms were created from their own hall pages, both games ran concurrently, and call histories remained independent (Regular: 2 calls, Bumper: 1). Browser errors: 0; disposable schema dropped.
+
+## Durable game process-restart browser verification (1 November 2026)
+
+- A live Chromium host/player journey created a durable game in a fresh isolated PostgreSQL schema, made one official call, then stopped and recreated the application on the same local port. Boot recovery restored the running room, exact call history, same player seat and exact server-issued ticket grids.
+- Host and player browser sessions reauthenticated after reload with zero browser errors. The harness removed its disposable schema after the check. No reservation rows were created, and retained booking schemas and port 4000 were untouched.
+- Repeatable check: `.preflight/tools/durable-game-process-restart-browser-check.mjs`.
+
+## Host setup and waiting-room localization (1 November 2026)
+
+- Added persistent English/Hindi copy and language selection to host room creation and the host waiting room. Shared public navigation follows the selection; ticket controls, ticket numbers, grid labels, optional prize names/descriptions and invite text are localized.
+- A live in-memory Chromium host flow verified language switching, server-created waiting room, five optional prize labels, Devanagari ticket limits/points/row labels and localized accessible ticket labels, with no overflow at 390/1440 px in either language. Browser errors: 0. Client lint, locale tests (7/7), and production build pass.
+- The post-change player-board regression also passes: authoritative first call, all 90 accessible board items, localized language-control contrast, six screen sizes from 320 px through desktop, and zero browser errors.
+- Extracted the language preference store from the full locale dictionary so the entry chunk stays split at 209.23 KB minified / 69.38 KB gzip. Broader host copy review, caller accessibility and real-device review remain open.
+
+## Expired reservation recovery in the booking page (1 November 2026)
+
+- Looking up a hold after its expiry now clears the stale confirmation panel so the player sees the durable `expired` status returned by the server. Expired holds no longer leave an active confirm action visible.
+- Chromium created one synthetic two-ticket hold in isolated schema `codex_booking_expired_hold_1793554705955`, then looked it up after expiry. The record remains expired with ordered `hold.create`/`hold.expire` audit after app shutdown; no confirm, join or cancel action remains, no browser storage contains its private credential, and browser errors were 0.
+- Reservation `84497534-69f5-4d74-a3e9-be5ffdee3f45` and its audit rows are retained under the keep-until-policy instruction. Screenshot: `.preflight/booking-expired-hold-recovered-390.png`.
+
+## Durable booking expiry and unavailability browser check (1 November 2026)
+
+- Chromium exercised an expired booking window and a cancelled session against the live app backed by a fresh isolated PostgreSQL schema. Both return the same generic not-found UI, expose no ticket-hold action, and produce no booking API writes.
+- The run used no reservation rows, recorded zero browser errors at 390×844, and removed its disposable schema. Screenshots: `.preflight/booking-window-expired-390.png` and `.preflight/booking-window-unavailable-390.png`.
+- Durable expired-reservation lookup/recovery remains open; this check covers expired session windows and unavailable sessions.
+
+## Player and booking error localization (1 November 2026)
+
+- Routed player join, ticket selection, live game and host operation refusals through the shared English/Hindi formatter. Known public booking API error codes now map to translated messages; Hindi uses a generic translated fallback for future server codes, while English retains server detail.
+- Public booking requests pass the active language to the error formatter. Locale tests pass **7/7**, client lint passes, and the production build succeeds.
+- This closes localization of known API refusal messages in these journeys. Remaining language gaps in non-error screen copy and broader accessibility review are tracked separately.
+
+## Scoped moderator booking assignment (1 November 2026)
+
+- Added the explicit, instance-scoped `bookings.assign` permission for attaching an eligible scheduled session to one waiting room. It is separate from `bookings.manage`, requires `room.read`, remains ungranted by default, and cannot change reservations, player seats, or ticket grids.
+- Added moderator availability/list and assignment endpoints with live MFA/session/grant checks, same-instance room eligibility, atomic uniqueness, and append-only reservation/platform audit. Super Admin can grant the capability explicitly.
+- Migration 021 preserves the existing player `hold.assign` audit action alongside the new moderator `session.assign_room` action. The complete serial PostgreSQL suite passes **663/663** through migrations 001–021; focused PostgreSQL assignment and Super Admin grant tests pass **2/2**. Client lint/build and mocked authenticated Chromium permission checks pass.
+- The separately approved retained cancellation fixture was reopened in authenticated Chromium at 390 px. It was already cancelled, so this resumed pass verified the persisted cancelled state and history read-only; no duplicate cancellation was submitted. Reservation and audit rows remain retained under the keep-until-policy.
+
+## Player language coverage expanded (1 November 2026)
+
+- Extended persistent English/Hindi selection across session discovery, booking, join, waiting-room and player live-game views. Added localized ticket controls, current-call/progress readout, board/history, pattern names/hints, claim/result panels and chat controls; Hindi number output uses Devanagari digits.
+- At 390×844, a built-app browser smoke check verified language persistence, translated join validation/game headings/status/board/claim/chat labels, and no horizontal overflow. This used an idle synthetic game state; active-round result and chat behavior still need browser review.
+- Full serial suite passes 651/651 across 20 suites; client lint/build, focused locale tests and secret scan pass. Vite warns that the 526.64 KB main chunk exceeds its advisory threshold.
+
+## Public instance join isolation and narrow-screen footer (1 November 2026)
+
+- Verified the built app in a real browser against a generated, migrated PostgreSQL schema: a Bumper-tagged URL cannot join a Regular room or create a player seat, while the matching Regular URL succeeds.
+- Directory, Regular hall and denial pages measured no horizontal overflow at 360, 390, 768, 1024 and 1440 px; the public hall did not reveal the host room code. The 390 px denial screenshot exposed overlapping player connection/helper text, so the join-screen footer now stacks on narrow viewports and the recaptured page is readable.
+- Client lint/build and secret scan pass; current serial suite remains 648/648 across 20 suites. The ephemeral app and test schema were stopped/dropped, leaving port 4000 and the retained booking schema untouched.
+
+## Keyboard skip navigation across public pages (1 November 2026)
+
+- Added a keyboard-visible “Skip to main content” link to the shared public header and focusable main-content targets to every header-backed public, host, player, moderator and poster route.
+- Corrected the poster page landmark order so the site header is a sibling of `main`, including loading and error states.
+- Client lint and production build pass. Authenticated browser review, broader accessibility checks and multi-viewport visual review remain open.
+
+## Backup visibility and restore integrity (1 November 2026)
+
+- Added owner-only read-only backup status to Settings. It summarizes recent local archives, manifest/size state, row/table counts and isolated restore-check results without returning paths, database names, credentials or MFA keys. The endpoint returns
+o-store` and requires the existing owner session.
+- `db:restore-check` now verifies each manifest SHA-256 before opening a database connection or creating its scratch database. It writes a credential-free `.restore-check.json` result sidecar; the Settings page reports that result and checksum state. Modified archives are refused before database access.
+- Focused owner/backup/booking/restore suites pass; full suite passes 648/648 across 20 suites. Client lint/build, secret scan (325 files), and CRLF-aware diff check pass. No backup or restore was run against the existing application database.
+
+## Responsive public navigation (1 November 2026)
+
+- Reworked the shared public header into a responsive navigation landmark. On narrow screens, links move into an explicit Menu/Close control with `aria-expanded` and `aria-controls`, Escape closes the menu, link activation closes it, touch targets are at least 44 px, and focus indicators remain visible. Desktop keeps the same four navigation links in one row.
+- Client lint and production build pass; full serial suite passes 645/645 across 20 suites. Authenticated owner browser review and a device-width visual pass remain open.
+
+## Instance detail control center (1 November 2026)
+
+- Added an owner-only durable instance overview API and detail pages under both Admin and Super Admin. It shows lifecycle/public visibility, database probe, per-instance room/game/participant/claim/award totals, recent rooms, active moderator grants and sessions, scoped audit, and a link to aggregate reports.
+- Added recent game-round and player activity tables so the instance view exposes real tenant-scoped records as well as aggregate counts.
+- All activity is scoped by persisted instance ownership. No private draw plan, reservation credentials, or contact details are returned. Tests verify foreign rooms and audit rows do not enter another instance's detail view.
+- Full serial suite passes 645/645 across 20 suites; focused admin/instance suites pass 36/36; client lint/build, secret scan (323 files), and CRLF-aware diff check pass. Browser review of the authenticated owner page remains open.
+
+## Platform footprint in the owner overview (1 November 2026)
+
+- Added durable instance and moderator lifecycle counts to the owner dashboard, including active instance grants and unrevoked, unexpired moderator sessions. These are read-only database totals; memory mode does not show invented platform counts.
+- Focused instance query test passes; full serial suite passes 645/645 across 20 suites. Client lint/build and secret scan pass.
+
+## Instance identity controls and poster template rollback (1 November 2026)
+
+- Added per-instance browser icon selection alongside the existing curated local logos. The runtime now applies and restores tab and Apple touch icons with instance branding.
+- Added owner poster studio history and rollback: an earlier approved and published design can be restored as a new immutable version and publication, with prior releases and published posters retained.
+- Focused poster and public instance suites pass (4/4), and the full serial suite passes (645/645 across 20 suites). Client lint/build and secret scan pass. Authenticated browser review remains open.
+
+## Permission-adaptive moderator workspace (1 November 2026)
+
+- Expanded the moderator console with grant-filtered room creation/lifecycle, player lookup and removal, room history, operational summaries and limited instance description settings. Backend authorization remains the authority for every action.
+- Split moderator workspace and credential pages into lazy chunks; client lint/build and the full serial suite (645/645 across 20 suites) pass, and the main bundle is below 500 KB. Browser review and permission-combination UI checks remain open.
+
+## Moderator invitation and recovery experience (1 November 2026)
+
+- Added moderator invitation acceptance and recovery pages, with password confirmation, CSRF-protected submissions and URL-fragment tokens removed from the address bar after load.
+- Added copyable moderator invitation acceptance links in owner access management and linked the sign-in screen to invitation and recovery flows. Sign-in and authenticator enrollment continue to use the existing moderator APIs and HttpOnly session cookie.
+- Owner-issued invitation and recovery links use URL fragments so one-time secrets are not sent in HTTP request URLs. Client lint/build and focused moderator security/management API suites pass (3/3). Authenticated browser verification remains open.
+
+## Final multi-instance verification and product specification (1 November 2026)
+
+- Added owner-issued moderator account recovery with single-use hashed tokens, full session/socket-ticket revocation, MFA re-enrollment, and migration `010_moderator_recovery.sql`.
+- Added scoped moderator settings, player removal, history and report operations; tightened the socket-room switching guard and made migration advisory locks schema-scoped.
+- Added an isolated synthetic moderator backup/restore drill covering account/grant/session/recovery/audit state. The throwaway schema and database are removed after the check.
+- Added the route/surface threat model, timestamped full-video observations and complete product requirements. The supplied Super777 routes remain unobservable because of TLS certificate name mismatches; the video publisher is a distinct domain.
+- Final verification is recorded in [`TEST-REPORT.md`](TEST-REPORT.md). No deployment, commit or push was performed; independent L3 review and target-environment checks remain open.
+
+## Moderator security milestone (31 October 2026)
+
+- Added migration `009_moderator_auth.sql`, separate moderator password/invite/session/MFA/socket-ticket lifecycle, CSRF-protected moderator APIs, instance-scoped permission checks, and Super Admin moderator/grant management.
+- Moderator sockets use a separate event namespace and re-check the live session, MFA, authoritative room instance, and current grant on every operation; they do not join gameplay broadcast rooms.
+- Added [`server/MODERATOR-SECURITY.md`](server/MODERATOR-SECURITY.md) with permission behavior, API contracts, key backup, and current capability limits. This milestone is not production-ready and has not received an independent L3 review.
+
 What changed in this product, and what is still open. Dates are the dates the work
 was verified, not the dates a feature was first sketched. Entries describe
 behaviour a player or an operator can actually notice; internal file moves are only
 mentioned where they explain a boundary.
+
+## Multi-instance foundation (31 October 2026)
+
+### Added
+
+- Migrations `006_game_instances.sql` and `007_room_instance_lock.sql` seed Regular Tambola, Bumper Tambola, and a hidden Legacy instance, and make room ownership durable. Existing rooms are assigned to Legacy because their original product identity cannot be proven; no game history is rewritten.
+- Rooms now have a required database instance foreign key. Owner-created rooms can select an active instance; direct host-created rooms default to Regular. Paused/archived instances refuse new room creation and player joins, while current running rounds continue.
+- `/api/admin/instances` provides owner-session and CSRF-protected list, create, and lifecycle operations. `/super-admin/instances` exposes the current owner control-centre UI for those operations.
+- The database now has moderator identity/grant tables, allowed permission constraints, platform audit schema with mutation-blocking trigger, and platform settings storage; subsequent moderator milestones add authentication and enforcement, documented in `server/MODERATOR-SECURITY.md`.
+
+### Verification status
+
+- Migration and client lint/build passed in this work session. Existing test suite and focused instance integration test results are recorded in `TEST-REPORT.md`; this foundation does not close the complete multi-instance acceptance criteria.
 
 Format is roughly [Keep a Changelog](https://keepachangelog.com/) with the
 deliberate difference that each entry names the thing a reader would see, because
@@ -109,19 +259,23 @@ behaviour in [`docs/PLAYER-GAMEPLAY.md`](docs/PLAYER-GAMEPLAY.md); numbers in
   40px; both are now 44px.
 - **GitHub CI was red on every run since the workflow was written** while all six
   local gates were green, because the suite ran before the environment it assumes
-  existed: `npm test` ran before the client build (the smoke suite asks a live
+  existed:
+pm test` ran before the client build (the smoke suite asks a live
   server for `client/dist`, and `/` answers 503 without it) and against a service
   database that had never been migrated (the backup suite dumps that database and
   asserts the manifest records its migration ledger, and an unmigrated database
   reports an empty one). `ci.yml` now migrates and builds before it tests, and
-  `npm run verify` runs `lint → build → test → secret-scan` for the same reason.
+
+pm run verify` runs `lint → build → test → secret-scan` for the same reason.
   Both causes were reproduced against a scratch database before either line was
   changed; no assertion was relaxed and no test was skipped. Run 41202342043 is
   green — the first CI run this repository has ever passed.
 
 ### Verified
 
-`npm test` printed **516 tests / 516 pass / 0 fail** (18 suites); `npm run lint`
+
+pm test` printed **516 tests / 516 pass / 0 fail** (18 suites);
+pm run lint`
 clean at `--max-warnings 0`; production build 132 modules, CSS 46.53 kB (gzip
 9.75), JS 385.05 kB (gzip 116.07); `secret-scan` clean over 221 files;
 `security-probe` **51 of 51**; `e2e` and `e2e:durable` each played a full game to
@@ -205,17 +359,24 @@ deployed and no payment surface was added. Full behaviour in
 - **The console no longer promises a next call after the round ends** — the voice
   line and the sealed slot both read "round complete".
 - **`utter` construction is guarded**: a browser that throws on
-  `new SpeechSynthesisUtterance` degrades to "failed" instead of breaking the
+
+ew SpeechSynthesisUtterance` degrades to "failed" instead of breaking the
   announcement queue.
 
 ### Verified
 
-- `npm test`: **447 of 447**, `skipped 0`, 12.6 s.
-- `npm run verify`: tests + lint (0 warnings) + build + secret scan, all clean.
-- `npm run security-probe`: **51 of 51**.
-- `npm run e2e` and `npm run e2e:durable`: a full round to `COMPLETED` on both
+-
+pm test`: **447 of 447**, `skipped 0`, 12.6 s.
+-
+pm run verify`: tests + lint (0 warnings) + build + secret scan, all clean.
+-
+pm run security-probe`: **51 of 51**.
+-
+pm run e2e` and
+pm run e2e:durable`: a full round to `COMPLETED` on both
   stacks, with valid and refused claims.
-- `node .preflight/tools/p17-caller.mjs`: console, 90 tiles, three manual calls,
+-
+ode .preflight/tools/p17-caller.mjs`: console, 90 tiles, three manual calls,
   keyboard focus outlines, the `C` hotkey, pause (clock equal twice), resume,
   cadence change to 5s, the voice panel, tablet/390/360 layouts with no horizontal
   overflow, a reload during a live round, resume after it, and the two-click end of
@@ -231,13 +392,15 @@ exactly which free infrastructure is genuinely free. Full evidence in
 
 ### Added
 
-- **`npm run env:check`** — the production environment gate. It reads the same
+- **
+pm run env:check`** — the production environment gate. It reads the same
   environment the server reads and exits non-zero on a missing or unparseable
   `DATABASE_URL`, a default database password, a remote database without
   TLS verification, `ALLOW_MEMORY_ONLY=1`, a missing/non-https `PUBLIC_ORIGIN`,
   `TRUST_PROXY` off, insecure cookies, a malformed `OWNER_MFA_KEY`, or
   `DB_POOL_MAX` above the ceiling. It prints no values.
-- **`npm run smoke`** — proves a running deployment instead of a build: `/livez`,
+- **
+pm run smoke`** — proves a running deployment instead of a build: `/livez`,
   `/readyz` (refusing a memory-mode server), `/healthz` (requiring current
   migrations), the SPA, a real Socket.IO handshake, and with `--full` one complete
   round in a room of its own.
@@ -269,9 +432,12 @@ exactly which free infrastructure is genuinely free. Full evidence in
 
 ### Changed
 
-- `npm run env:check` loads `.env` exactly as `npm start` does, so the gate sees
+-
+pm run env:check` loads `.env` exactly as
+pm start` does, so the gate sees
   the configuration that will actually run.
-- `nodemon` moved from `dependencies` to `devDependencies`: it is a development
+-
+odemon` moved from `dependencies` to `devDependencies`: it is a development
   runner, and the production image no longer installs it.
 - `.env.example` documents `DB_POOL_MAX` and `DB_POOL_ACQUIRE_TIMEOUT_MS` and
   points at the gate and the smoke test.
@@ -291,7 +457,7 @@ exactly which free infrastructure is genuinely free. Full evidence in
   repository's pre-push gate: `{"layer":"l3","findings_count":0,"findings":[]}`. A
   clean review of one commit range is not a penetration test; the remaining gap is an
   independent review, recorded in `docs/GAP-REPORT.md`.
-- `socket.io`, `ws`, `engine.io` and `socket.io-parser` updated within their    
+- `socket.io`, `ws`, `engine.io` and `socket.io-parser` updated within their
   majors to clear the reported denial-of-service advisories. Production dependency
   audit is now **0 vulnerabilities** at the repository root.
 - The client's production audit still reports **2 moderate advisories in
@@ -330,7 +496,8 @@ do and do not back each change.
   becomes a one-tap `RETRY`, and a reload never re-reads the history. Speech and
   chime are separate opt-ins that persist per device, and win sounds use the same
   chime switch — no new autoplay surface. `client/src/lib/announce-queue.js` and
-  `number-words.js`; browser evidence: seven scenarios with zero overlapping
+
+umber-words.js`; browser evidence: seven scenarios with zero overlapping
   utterances, zero duplicates and order preserved (31 October, Phase B).
 - **Chat keeps a short tail.** A seat that joins while the room is already talking
   asks `chat:history` and sees what it missed (last `CHAT_HISTORY = 24` messages,
@@ -349,13 +516,18 @@ do and do not back each change.
 - **Second-click confirmation for End game and Reset**, replacing native dialogs:
   the control re-labels, the panel says what is lost, and the arm clears on Cancel,
   on expiry, or as soon as the server reports a different state.
-- **Scripts that make the product checkable:** `npm run e2e` and `npm run e2e:durable`
+- **Scripts that make the product checkable:**
+pm run e2e` and
+pm run e2e:durable`
   (a full game to a COMPLETED state, including three claims that must never score),
-  `npm run secret-scan` (shipped content *and* the built bundle),
-  `npm run security-probe` (51 live checks of the HTTP and socket surface against
+
+pm run secret-scan` (shipped content *and* the built bundle),
+
+pm run security-probe` (51 live checks of the HTTP and socket surface against
   two in-process instances),
   `scripts/loadtest.mjs` (the staged capacity run quoted in the runbook), and
-  `npm run verify` to run test + lint + build + secret-scan as one gate.
+
+pm run verify` to run test + lint + build + secret-scan as one gate.
 
 ### Changed
 
@@ -399,9 +571,14 @@ do and do not back each change.
   `github.com/lakhyach/Tambola`; the remote and local `main` both resolve to
   `2063f0b6ec217f74cdb6fcd3a29b14af9d7b54ad`. Nothing was deployed, no production
   database was connected to, and no provider account or paid resource was created.
-- **Every gate re-run on the committed tree, not remembered:** `npm run verify`
-  (383/383, lint, build, secret scan) exit 0, `npm run security-probe` 51/51,
-  `npm run e2e` and `npm run e2e:durable` both COMPLETED, `npm run db:backup` plus
+- **Every gate re-run on the committed tree, not remembered:**
+pm run verify`
+  (383/383, lint, build, secret scan) exit 0,
+pm run security-probe` 51/51,
+
+pm run e2e` and
+pm run e2e:durable` both COMPLETED,
+pm run db:backup` plus
   `db:restore-check` PASSED (18 tables, 10 498 rows).
 - **The market research was re-checked against the live sources** rather than
   trusted from the previous note: all four full sources re-read, every competitor
@@ -470,4 +647,70 @@ are recorded in `DEFERRED_PATTERNS` in `server/game/patterns.js` with the reason
 - **Chat is unmoderated** beyond length and rate limits, and there are no player
   accounts — both are product boundaries, agreed, not unfinished work.
 - `caniuse-lite` in the build toolchain reports outdated browser data; refreshing it
-  (`npx update-browserslist-db@latest`) is a maintenance chore, not a behaviour fix.
+  (
+px update-browserslist-db@latest`) is a maintenance chore, not a behaviour fix.
+
+## Owner room recovery retry and narrow-screen detail fix (1 November 2026)
+
+- Added an owner-authenticated, CSRF-protected and audited recovery retry for frozen durable rooms. It re-runs the existing integrity checks, keeps failed rooms frozen, and restores controls only when recovery succeeds. The owner must correct the underlying durable rows before retrying; the action does not repair or rewrite room data.
+- Controller coverage confirms a repeated corrupt-state check remains frozen and a corrected ticket-count mismatch can recover without fabricating reservation history. Authenticated Chromium verified anonymous denial, successful recovery and owner audit at 390×844 and 1280×900 with zero browser errors.
+- The browser check found a 7 px overflow in the owner room roster at 390 px. The roster now uses labelled mobile cards; the recheck has no overflow at either viewport. Client lint/build pass. Full serial PostgreSQL suite: **665/665**, 20 suites, no failures or skips, migrations 001–021, with both backup/restore checks passing on a fresh disposable PostgreSQL 17.11 container.
+
+## Booking-linked recovery integrity matrix (2 November 2026)
+
+- Added a table-driven recovery regression for all six persisted reservation/seat checks: room binding, assigned player presence, confirmed status, linked player, linked room, and locked ticket quantity. The existing durable test still verifies fail-closed freeze, no synthetic booking history, and recovery after the authoritative ticket count is repaired.
+- Focused durable recovery tests passed **2/2**. The complete serial PostgreSQL suite passed **666/666**, 20 suites, 0 failures/skips/todos, through migrations 001–021. Backup and restore checks passed in the same fresh disposable PostgreSQL 17.11 database, which was removed afterward.
+
+## Cold recovery after resetting a completed game (2 November 2026)
+
+- Fixed hydration for the durable `COMPLETED → WAITING` reset path. The completed game's draw, calls, tickets and awards remain historical records and are validated, but are not restored into the new waiting-room projection. Recovery also rejects room/game round-status mismatches.
+- Added a PostgreSQL restart regression that ends and resets a room, reconstructs it after a cold process restart with empty live-game state, preserves prior calls/tickets, resumes the host session, and starts the next round without replacing history. Focused persistence/recovery/ticket tests passed **41/41**.
+- Full serial PostgreSQL suite passed **669/669**, 20 suites, 0 failures/skips/todos, through migrations 001–021, including both backup/restore checks on fresh disposable PostgreSQL 17.11. Client lint/build and secret scan passed; root and client dependency audits found **0 vulnerabilities**.
+
+### Reset recovery verification refinement (2 November 2026)
+
+- Previous-round awards are integrity-checked before the completed game's projection is omitted. Historical ticket validation uses the prior round's stored ticket rows, so a player's legitimate new waiting-room quantity does not rewrite or invalidate old round data.
+- The reset recovery test now starts with a two-ticket player and changes their next-round selection to one before restart; after recovery the player has no old live grid, retains the new choice, resumes the same host seat, and starts game 2. A separate regression refuses a corrupt prior award instead of silently dropping it.
+- Final full serial PostgreSQL result: **670/670**, 20 suites, no failures or skips, migrations 001–021, including both backup/restore checks. Build/lint, secret scan and dependency audits pass.
+
+## Award recovery relationship checks (2 November 2026)
+
+- Recovery now fails closed on awards with unknown patterns, mismatched point values, missing winners, calls outside stored history, ticket references the winner does not own, duplicate winners, or non-contiguous winner ordinals. Legacy nullable ticket attribution and ordinal fields remain accepted when absent.
+- Added focused corruption regressions and corrected the durable standings fixture to record a call before inserting its award. Full serial PostgreSQL suite: **672/672**, 20 suites, no failures/skips/todos, migrations 001–021, including both backup/restore checks on disposable PostgreSQL 17.11.
+- The CUA browser bridge could not initialize during this turn, so the previously authorized moderator cancellation click was not submitted. The retained local fixture and its audit rows were left untouched.
+
+## Owner overview activity and backup signals (2 November 2026)
+
+- The owner overview now includes an eight-item, read-only platform activity feed combining owner audit decisions and moderator platform actions, alongside runtime health and a concise backup/restore-check summary. The feed reports outcome, actor, instance/room context and time; the full audit remains available in History.
+- Durable query regression covers both audit sources and failure results. Owner API tests pass **36/36** and the full serial PostgreSQL suite passes **673/673**, 20 suites, no failures/skips/todos, migrations 001–021. Lint, build, root/client dependency audits, secret scan and diff check pass. Verification used a fresh disposable PostgreSQL 17.11 container and removed it afterward.
+- Retried Windows computer-use initialization twice after the prescribed wait; the helper fails to write kernel assets and does not expose app/window state. The previously authorized moderator cancellation action is still pending; its retained fixture and audit rows were not touched.
+
+## Instance-scoped room defaults (2 November 2026)
+
+- Super Admin can now configure defaults for newly created rooms in each instance: room capacity (2–500), per-seat ticket cap (1–12), auto-call interval (1–120 seconds), and auto-call on/off. The backend rejects unknown/out-of-range settings, preserves other instance configuration, audits the validated values, and applies the selected tenant's defaults only at room creation; existing rooms retain their saved configuration.
+- Durable tests prove API validation/audit, old-room immutability, Bumper/Regular isolation, and correct application to new managed/public rooms. The full serial PostgreSQL suite passed **675/675** across 20 suites with both backup/restore checks; latest focused instance/API suite passed **3/3**, and the final audit-value assertion passed **1/1**. Lint, build, root/client dependency audits, secret scan and diff check passed. Disposable PostgreSQL 17.11 containers were removed.
+- Read-only inspection of the retained moderator-cancellation schemas confirms both reservations already have `cancelled` status, each has one `hold.cancel` event, and each has a matching successful `moderator.booking.cancel` audit entry. No cancellation or retained-data mutation was performed in this turn; the previous “pending” note is superseded by this database evidence.
+
+## Instance defaults owner-browser acceptance (2 November 2026)
+
+- Authenticated Chromium verified independent Regular/Bumper defaults end to end through the owner UI, durable config and audit, reload, old-room immutability and correct new-room inheritance. At 390 px and 1440 px there was no horizontal overflow or browser error.
+- The check used and removed a dedicated PostgreSQL 17.11 container and disposable schema. Retained booking schemas and port 4000 were untouched.
+
+## Moderator tenant identifier matrix expanded (2 November 2026)
+
+- Durable isolation coverage now crosses real foreign and unknown room, player, session and reservation IDs across mismatched instance paths, including all five moderator room actions and player removal. Denied operations leave foreign state and reservation audit unchanged; assigned-instance discovery returns only the granted tenant.
+- Four focused moderator PostgreSQL test files passed **5/5** on disposable PostgreSQL 17.11. The container was removed; retained booking schemas and port 4000 were untouched. Exhaustive Cartesian fuzzing and independent external security review remain open.
+
+## Live gameplay layout and brand identity checkpoint (3 November 2026)
+
+- Reorganized caller and player gameplay composition around the supplied festival live-game reference, including host ticket/claim area and player tickets, board, history, patterns and results. Server-authoritative state and action callbacks remain the source of truth.
+- Added original Tambola House SVG identity assets and centralized defaults for platform branding, game header, manifest and social fallback. Existing stored tenant branding is not rewritten.
+- Client lint/build passed and 84 focused tests passed (2 DB-backed skips). No current-turn browser screenshots or full game lifecycle were available; visual approval remains pending. No real poster provider request was made because configuration is absent.
+
+## 3 November 2026 — Live gameplay runtime and visual checkpoint
+
+- Restored local API/UI using a disposable isolated PostgreSQL database and verified migrations through 026.
+- Refined caller/player layout after live browser review and captured 20 host/player waiting/live full-page screenshots at 390, 430, 768, 1440 and 1920 px.
+- Verified join/start/manual calls/player reload restoration, approved Early Five and Full House claims, celebration/award states and game completion. Durable engine E2E validated rejected/duplicate cases.
+- Full serial suite: 723 passed; client lint/build and whitespace check passed.
+- Real poster-provider execution remains unconfigured; overall redesign and full-platform visual/accessibility/performance review remain open. No production changes or release actions.

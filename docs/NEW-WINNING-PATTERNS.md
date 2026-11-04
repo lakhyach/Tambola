@@ -61,16 +61,20 @@ row 3:   9   .   27   38    .   59   .    .   90
 
 ## 2. Configuration and approval model
 
-* Each of the five is registered with `optional: true` and `enabledByDefault:
-  false`. Registration only means the server *can* evaluate it; being switched
-  off means **no room pays for a rule its owner never chose**.
+* Each of the five is registered with `optional: true` and server-level
+  `enabledByDefault: false`. Registration only means the server *can* evaluate
+  it; a room pays only for the rules in its saved config.
 * Effective state per room = `config.patterns[id] ?? enabledByDefault`. With the
-  default config the five are off and the room plays the classic six.
-* A host turns them on **before the round starts** through the "Extra prizes"
-  panel in the waiting room (`room:set-patterns`, host-only, WAITING-only; the
-  engine refuses it once the round has started, so a player always sees the full
-  prize list before buying in). The approved operator console can tick the same
-  five on when creating a room; its default selection is still the classic six.
+  server default config the five are off and the room plays the classic six.
+* The Ninety Club frontend now includes all eleven supported patterns in the
+  operator's create-room selection, checked by default. The quick Host flow
+  creates a room with `room:create`, then enables the five extras through the
+  existing host-only `room:set-patterns` callback before entering the waiting
+  room. If that second call fails, the Host room displays a review state so the
+  host can check the prize panel. The operator console submits its selected
+  pattern IDs through the existing create-room API. In either flow, pattern
+  changes are available only before the round starts; the engine refuses them
+  after play begins, so a player sees the prize list before buying in.
 * `getPattern(id, config)` returns `null` for any pattern that is not enabled,
   and the claim path rejects an unknown/disabled pattern with `UNKNOWN_PATTERN`.
   A client can therefore never win a prize the room never opted into, even by

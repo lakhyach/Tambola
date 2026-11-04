@@ -1,0 +1,76 @@
+# Hostinger VPS stack. Run from the repository root with:
+#   docker compose --env-file .env -f deploy/hostinger/compose.yml up -d --build
+# The app is reachable only from the VPS itself; Caddy terminates public TLS.
+# This stack intentionally starts one app container and one PostgreSQL container.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tambola-db
+    restart: unless-stopped
+    # Keep a noisy database/container failure from filling the VPS disk.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tambola}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-tambola}
+    volumes:
+      - tambola-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # No public or host port: Postgres is only reachable on the private bridge.
+    networks: [tambola]
+
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: tambola-app
+    restart: unless-stopped
+    # Give the app time to drain sockets and persist its orderly room shutdown.
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgres://${POSTGRES_USER:-tambola}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-tambola}
+      DB_SCHEMA: ${DB_SCHEMA:-public}
+      DB_POOL_MAX: ${DB_POOL_MAX:-8}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN to your HTTPS origin}
+      TRUST_PROXY: "1"
+      TAMBOLA_COOKIE_SECURE: "1"
+      OWNER_MFA_KEY: ${OWNER_MFA_KEY:?set OWNER_MFA_KEY in .env}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - tambola-backups:/app/backups
+    ports:
+      - "127.0.0.1:4000:4000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    networks: [tambola]
+
+volumes:
+  tambola-pgdata:
+  tambola-backups:
+
+networks:
+  tambola:
+    driver: bridge

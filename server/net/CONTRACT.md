@@ -1,5 +1,10 @@
 # Socket.IO event contract (v3)
 
+Moderator sockets use single-use tickets and `moderator:room:*` acknowledged
+events. They never subscribe to gameplay room broadcasts; session, MFA, room
+ownership, lifecycle, and current grants are checked on every operation. See
+[`../MODERATOR-SECURITY.md`](../MODERATOR-SECURITY.md).
+
 Phase 3 replaced the raw engine credentials (`hostToken`, `playerToken`) with a
 single **server-backed session token**. The browser holds only `sessionToken`
 (48 hex, one per seat per room) plus the `roomId`; every privileged event is
@@ -26,11 +31,12 @@ Conventions
 
 | Event | Payload | Requires | Response |
 |---|---|---|---|
-| `room:create` | `{ name }` | - | `{ ok, roomId, sessionToken, playerId, role: "host", state, enabledPatterns }` |
-| `room:join` | `{ roomId, name }` | - | `{ ok, playerId, sessionToken, role: "player", name, state, snapshot }` (ticket is inside `snapshot`, sent only to this seat) |
+| `room:create` | `{ name, instanceSlug? }` | - | `{ ok, roomId, sessionToken, playerId, role: "host", state, enabledPatterns }`; the server resolves an optional slug only to an active, public instance (omitted means Regular) |
+| `room:join` | `{ roomId, name, instanceSlug? }` | - | `{ ok, playerId, sessionToken, role: "player", name, state, snapshot }` (ticket is inside `snapshot`, sent only to this seat). When supplied by an instance public page, the server compares the slug with the room's persisted owner before issuing a seat; mismatches return the same room-not-found response. |
 | `session:resume` | `{ roomId, sessionToken }` | - | `{ ok, resumed, role, playerId, roomId, sessionId, snapshot }` |
 | `session:rotate` | `{ sessionToken }` | - | `{ ok, sessionToken, sessionId }` (the old token dies with this ack) |
 | `room:state` | - | in a room | `{ ok, snapshot }` |
+| `voice:audio` | `{ number, index, language: "en" | "hi" | "hinglish", includeCallout?, festival? }` | in a room | `{ ok, contentType: "audio/wav", audio: base64, cache, latencyMs }`; the server verifies the exact official call number/index before generating text or requesting audio |
 | `room:leave` | - | in a room | `{ ok, left }` |
 | `game:start` | - | **host** | `{ ok, state, ticketsIssued, snapshot }` |
 | `game:call-next` | - | **host** | `{ ok, number, index, remaining }` |
@@ -39,6 +45,7 @@ Conventions
 | `game:end` | - | **host** | `{ ok, state }` |
 | `game:reset` | - | **host** | `{ ok, state, snapshot }` |
 | `game:set-autocall` | `{ enabled?, intervalMs? }` | **host** | `{ ok, autoCall, callIntervalMs }` |
+| `room:remove-player` | `{ playerId }` | **host; WAITING only** | `{ ok, removed }`; never removes the host seat; revokes the target seat credential and writes the host actor ID to room audit history |
 | `tickets:select` | `{ count }` | in a room | `{ ok, ticketCount, maxTickets, tickets: [{ no, grid }] }` (WAITING only; `{ ok: false, code: "TICKET_LIMIT", max }` when `count` exceeds the room ceiling, `INVALID_STATE` once the game has started) |
 | `claim:submit` | `{ pattern, ticketNo? }` | in a room | `{ ok, pattern, label, won, name, points, ticketNo, leaderboard, awards }` |
 | `chat:send` | `{ text }` | in a room | `{ ok, sent, text, id }` |
@@ -62,6 +69,7 @@ server (`TICKET_LIMIT`), not by the browser.
 | Event | Scope | Payload |
 |---|---|---|
 | `room:updated` | room | `{ players: [{ id, name, connected, isHost, points, tickets }] }` (`tickets` is how many that seat is playing — the chosen count, which is what `game:start` issues — never a grid and never the number of grids minted so far) |
+| `room:removed` | **target socket only** | `{ reason: "removed-by-host" }`; the client clears its seat credential and returns to join, and the socket leaves the room before further room broadcasts |
 | `game:state` | room | `{ roomId, state, calledCount, remaining, lastCall, autoCall, callIntervalMs, enabledPatterns }` |
 | `number:called` | room | `{ number, index, remaining }` |
 | `ticket:assigned` | **private** | `{ ticket: 3x9 grid, ticketNo, ticketCount }` (one push per owned ticket) |
@@ -106,6 +114,12 @@ server (`TICKET_LIMIT`), not by the browser.
 
 Claims, chat and every `game:*` action resolve the acting player from the
 socket's server-side session; a `playerId` in a payload is never trusted.
+
+`voice:audio` is a presentation request, not a game action. It uses the same
+room-bound seat session, accepts only an already committed `(number, index)`,
+and never accepts caller-supplied speech text, model, or speaker. Sarvam's key
+stays server-side. `GET /api/voice/status` exposes only whether the provider is
+configured and its supported language identifiers.
 
 ## Game states
 

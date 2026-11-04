@@ -19,6 +19,7 @@
  * instead of throwing on a replay, so a retried request can never double-write.
  */
 
+import { createHash } from "node:crypto";
 import { IntegrityError } from "../game/engine.js";
 
 /** Postgres error codes this module translates into game answers. */
@@ -27,6 +28,17 @@ const FOREIGN_KEY_VIOLATION = "23503";
 
 function isUniqueError(error) {
   return error && (error.code === UNIQUE_VIOLATION || error.cause?.code === UNIQUE_VIOLATION);
+}
+
+function safeBookingHash(token) {
+  return createHash("sha256").update(String(token)).digest("hex");
+}
+
+function safeHashEqual(left, right) {
+  if (typeof left !== "string" || typeof right !== "string" || left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index += 1) mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return mismatch === 0;
 }
 
 /** 90 numbers, positions 1..90 - the shape the engine's draw must have. */
@@ -50,14 +62,14 @@ export function createStore({ db, log = () => {} } = {}) {
   // ------------------------------------------------------------- rooms & seats
 
   /** Rooms are created durable-first: no ack until the row exists. */
-  async function createRoom({ roomId, config, host } = {}) {
+  async function createRoom({ roomId, config, host, instanceId = "regular" } = {}) {
     if (!roomId) throw new Error("createRoom needs a room id");
     if (!host || !host.playerId) throw new Error("createRoom needs a host participant");
     await db.withTransaction(async (client) => {
       await client.query("INSERT INTO players (player_id, display_name) VALUES ($1, $2)", [host.playerId, host.name]);
       await client.query(
-        "INSERT INTO rooms (room_code, status, game_number, host_player_id, config) VALUES ($1, 'WAITING', 0, $2, $3)",
-        [roomId, host.playerId, json(config || {})]
+        "INSERT INTO rooms (room_code, status, game_number, host_player_id, config, game_instance_id) VALUES ($1, 'WAITING', 0, $2, $3, $4)",
+        [roomId, host.playerId, json(config || {}), instanceId]
       );
       await client.query(
         "INSERT INTO room_members (room_code, player_id, role, connected) VALUES ($1, $2, 'host', $3)",
@@ -66,6 +78,46 @@ export function createStore({ db, log = () => {} } = {}) {
       await audit(client, { roomId, playerId: host.playerId, type: "room-created", detail: { config } });
     });
     return { roomId };
+  }
+
+  async function instanceStatusForRoom({ roomId } = {}) {
+    const result = await db.query(`SELECT i.status FROM rooms r JOIN game_instances i ON i.instance_id=r.game_instance_id WHERE r.room_code=$1`, [roomId]);
+    return result.rows[0]?.status || null;
+  }
+
+  async function instanceSlugForRoom({ roomId } = {}) {
+    const result = await db.query(`SELECT i.slug FROM rooms r JOIN game_instances i ON i.instance_id=r.game_instance_id WHERE r.room_code=$1`, [roomId]);
+    return result.rows[0]?.slug || null;
+  }
+
+  async function instanceStatus({ instanceId } = {}) {
+    const result = await db.query("SELECT status FROM game_instances WHERE instance_id=$1", [instanceId]);
+    return result.rows[0]?.status || null;
+  }
+
+  async function instanceRoomDefaults({ instanceId } = {}) {
+    const result = await db.query("SELECT config->'roomDefaults' AS room_defaults FROM game_instances WHERE instance_id=$1", [instanceId]);
+    return result.rows[0]?.room_defaults || {};
+  }
+
+  async function publicInstanceIdBySlug({ slug } = {}) {
+    const result = await db.query(
+      "SELECT instance_id FROM game_instances WHERE slug=$1 AND status='active' AND public_visible=true",
+      [slug]
+    );
+    return result.rows[0]?.instance_id || null;
+  }
+
+  async function themeVersionForInstance({ instanceId } = {}) {
+    const result = await db.query(`SELECT CASE
+      WHEN i.theme_mode='fixed' THEN i.theme_version_id
+      WHEN i.theme_mode='latest' THEN (SELECT p.theme_version_id FROM theme_publications p
+        JOIN theme_versions v USING(theme_version_id) JOIN theme_catalog c USING(theme_id)
+        WHERE c.status='approved' ORDER BY p.published_at DESC,p.publication_id DESC LIMIT 1)
+      ELSE s.active_version_id END AS theme_version_id
+      FROM game_instances i CROSS JOIN platform_theme_state s
+      WHERE i.instance_id=$1 AND s.singleton=true`, [instanceId]);
+    return result.rows[0]?.theme_version_id || null;
   }
 
   async function addParticipant({ roomId, playerId, name, connected = true } = {}) {
@@ -88,6 +140,137 @@ export function createStore({ db, log = () => {} } = {}) {
     return { ok: true, registered: created };
   }
 
+  async function bookingSessionForRoom({ roomId } = {}) {
+    const result = await db.query(
+      `SELECT s.session_id,s.instance_id,s.status,s.starts_at,s.booking_closes_at,r.game_instance_id,r.status AS room_status,r.game_number,i.status AS instance_status
+         FROM game_sessions s JOIN rooms r ON r.room_code=s.room_code
+         JOIN game_instances i ON i.instance_id=s.instance_id
+        WHERE s.room_code=$1`, [roomId]
+    );
+    return result.rows[0] || null;
+  }
+
+  async function reservationForRoomJoin({ roomId, reservationId, bookingToken } = {}) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(reservationId || "")) || !/^[a-f0-9]{64}$/.test(String(bookingToken || ""))) return null;
+    const result = await db.query(
+      `SELECT r.reservation_id,r.session_id,r.display_name,r.ticket_count,r.booking_token_hash,
+              s.instance_id,s.status AS session_status,s.starts_at,s.inventory_mode,s.inventory_state,i.status AS instance_status,
+              room.status AS room_status,room.game_number
+         FROM ticket_reservations r
+         JOIN game_sessions s ON s.session_id=r.session_id
+         JOIN game_instances i ON i.instance_id=s.instance_id
+         JOIN rooms room ON room.room_code=s.room_code
+        WHERE r.reservation_id=$1 AND s.room_code=$2 AND r.status='confirmed'
+          AND r.player_id IS NULL AND s.status='open' AND i.status='active'
+          AND room.status='WAITING' AND room.game_number=0 AND s.starts_at>now()
+          AND r.booking_token_hash=$3`,
+      [reservationId, roomId, safeBookingHash(bookingToken)]
+    );
+    const row = result.rows[0];
+    if (!row || !safeHashEqual(row.booking_token_hash, safeBookingHash(bookingToken))) return null;
+    let tickets = [];
+    if (row.inventory_mode === "numbered") {
+      if (row.inventory_state !== "ready") return null;
+      const inventory = await db.query(
+        `SELECT st.ticket_id,st.serial,st.serial_ordinal,st.grid,a.released_at
+           FROM ticket_reservation_items a JOIN session_tickets st
+             ON st.session_id=a.session_id AND st.ticket_id=a.ticket_id
+          WHERE a.session_id=$1 AND a.reservation_id=$2 ORDER BY st.serial_ordinal`,
+        [row.session_id, row.reservation_id]
+      );
+      if (inventory.rows.length !== Number(row.ticket_count) || inventory.rows.some((ticket) => ticket.released_at)) return null;
+      tickets = inventory.rows.map((ticket) => ({
+        inventoryTicketId: ticket.ticket_id,
+        serial: ticket.serial,
+        serialOrdinal: Number(ticket.serial_ordinal),
+        grid: ticket.grid,
+      }));
+    }
+    return {
+      reservationId: row.reservation_id,
+      displayName: row.display_name,
+      ticketCount: Number(row.ticket_count),
+      sessionId: row.session_id,
+      inventoryMode: row.inventory_mode || "legacy",
+      tickets,
+    };
+  }
+
+  async function addParticipantFromBooking({ roomId, playerId, name, connected = true, reservationId, bookingToken, expectedTicketIds = [] } = {}) {
+    const hash = safeBookingHash(bookingToken);
+    try {
+      return await db.withTransaction(async (client) => {
+        const reservation = await client.query(
+          `SELECT r.*,s.status AS session_status,s.starts_at,i.status AS instance_status,
+                  room.status AS room_status,room.game_number,s.room_code AS session_room,
+                  s.inventory_mode,s.inventory_state FROM ticket_reservations r JOIN game_sessions s ON s.session_id=r.session_id
+             JOIN game_instances i ON i.instance_id=s.instance_id JOIN rooms room ON room.room_code=s.room_code
+            WHERE r.reservation_id=$1 AND s.room_code=$2 FOR UPDATE OF r,s`, [reservationId, roomId]
+        );
+        const row = reservation.rows[0];
+        if (!row || !safeHashEqual(row.booking_token_hash, hash) || row.status !== "confirmed" || row.player_id ||
+            row.session_status !== "open" || row.instance_status !== "active" || row.room_status !== "WAITING" ||
+            Number(row.game_number) !== 0 || new Date(row.starts_at) <= new Date()) {
+          return { ok: false, code: "RESERVATION_NOT_FOUND", error: "that confirmed booking is not available for this room" };
+        }
+        if (name !== row.display_name) return { ok: false, code: "RESERVATION_NOT_FOUND", error: "that confirmed booking is not available for this room" };
+        let inventoryTickets = [];
+        if (row.inventory_mode === "numbered") {
+          if (row.inventory_state !== "ready") return { ok: false, code: "TICKET_INVENTORY_INCOMPLETE", error: "the booked ticket inventory is not ready" };
+          const allocated = await client.query(
+            `SELECT st.ticket_id,st.serial,st.serial_ordinal,st.grid,a.released_at
+               FROM ticket_reservation_items a JOIN session_tickets st
+                 ON st.session_id=a.session_id AND st.ticket_id=a.ticket_id
+              WHERE a.session_id=$1 AND a.reservation_id=$2
+              ORDER BY st.serial_ordinal FOR UPDATE OF a,st`,
+            [row.session_id, reservationId]
+          );
+          const expected = Array.isArray(expectedTicketIds) ? expectedTicketIds.map(String).map((id) => id.toLowerCase()).sort() : [];
+          const actual = allocated.rows.map((ticket) => String(ticket.ticket_id).toLowerCase()).sort();
+          if (allocated.rows.length !== Number(row.ticket_count) || allocated.rows.some((ticket) => ticket.released_at) ||
+              expected.length !== actual.length || expected.some((id, index) => id !== actual[index])) {
+            return { ok: false, code: "TICKET_INVENTORY_INCOMPLETE", error: "the booked ticket inventory no longer matches this reservation" };
+          }
+          inventoryTickets = allocated.rows.map((ticket) => ({
+            inventoryTicketId: ticket.ticket_id,
+            serial: ticket.serial,
+            serialOrdinal: Number(ticket.serial_ordinal),
+            grid: ticket.grid,
+          }));
+        } else if (expectedTicketIds?.length) {
+          return { ok: false, code: "TICKET_INVENTORY_INCOMPLETE", error: "a legacy booking cannot carry numbered inventory tickets" };
+        }
+        await client.query("INSERT INTO players(player_id,display_name) VALUES($1,$2)", [playerId, name]);
+        await client.query(
+          `UPDATE ticket_reservations SET player_id=$2,room_code=$3 WHERE reservation_id=$1 AND status='confirmed' AND player_id IS NULL`,
+          [reservationId, playerId, roomId]
+        );
+        await client.query(
+          `INSERT INTO room_members(room_code,player_id,role,connected,last_seen_at,ticket_count,booking_reservation_id)
+           VALUES($1,$2,'player',$3,now(),$4,$5)`, [roomId, playerId, connected, Number(row.ticket_count), reservationId]
+        );
+        await audit(client, { roomId, playerId, type: "join", detail: { name, reservationId, ticketCount: Number(row.ticket_count) } });
+        await client.query(
+          `INSERT INTO ticket_reservation_audit(session_id,reservation_id,action,actor_type,actor_label,metadata)
+           VALUES($1,$2,'hold.assign','player',$3,$4)`,
+          [row.session_id, reservationId, name, JSON.stringify({ ticketCount: Number(row.ticket_count), roomCode: roomId })]
+        );
+        return { ok: true, registered: true, ticketCount: Number(row.ticket_count), inventoryTickets };
+      });
+    } catch (error) {
+      if (isUniqueError(error)) return { ok: false, code: "RESERVATION_NOT_FOUND", error: "that confirmed booking is not available for this room" };
+      throw error;
+    }
+  }
+
+  async function bookedTicketCount({ roomId, playerId } = {}) {
+    const result = await db.query(
+      `SELECT m.ticket_count FROM room_members m WHERE m.room_code=$1 AND m.player_id=$2 AND m.booking_reservation_id IS NOT NULL`,
+      [roomId, playerId]
+    );
+    return result.rowCount ? Number(result.rows[0].ticket_count) : null;
+  }
+
   /**
    * Projection of live socket state. Not a game rule: it is false for every
    * seat after a boot, and the session layer flips it as sockets arrive.
@@ -106,7 +289,7 @@ export function createStore({ db, log = () => {} } = {}) {
    * A seat vacates. The row survives (left_at) so the tickets and awards that
    * player earned stay attached to the room's history.
    */
-  async function markSeatLeft({ roomId, playerId, reason = "left" } = {}) {
+  async function markSeatLeft({ roomId, playerId, reason = "left", actorPlayerId = null, actorRole = null } = {}) {
     await db.withTransaction(async (client) => {
       await client.query(
         "UPDATE room_members SET left_at = now(), connected = false WHERE room_code = $1 AND player_id = $2",
@@ -117,7 +300,7 @@ export function createStore({ db, log = () => {} } = {}) {
           WHERE room_code = $1 AND player_id = $2 AND revoked_at IS NULL`,
         [roomId, playerId, reason]
       );
-      await audit(client, { roomId, playerId, type: "left", detail: { reason } });
+      await audit(client, { roomId, playerId, type: "left", detail: { reason, ...(actorPlayerId ? { actorPlayerId, actorRole } : {}) } });
     });
     return { ok: true };
   }
@@ -145,12 +328,16 @@ export function createStore({ db, log = () => {} } = {}) {
    * start() re-mints the actual tickets to this number.
    */
   async function setTicketCount({ roomId, playerId, count } = {}) {
-    const safe = Math.max(1, Math.min(12, Number(count) || 1));
-    await db.query(
-      "UPDATE room_members SET ticket_count = $3 WHERE room_code = $1 AND player_id = $2",
+    const safe = Number(count);
+    if (!Number.isInteger(safe) || safe < 1 || safe > 10000) {
+      return { ok: false, code: "BAD_PAYLOAD", error: "ticket count is outside the supported range" };
+    }
+    const result = await db.query(
+      `UPDATE room_members SET ticket_count=$3 WHERE room_code=$1 AND player_id=$2
+        AND (booking_reservation_id IS NULL OR ticket_count=$3) RETURNING player_id`,
       [roomId, playerId, safe]
     );
-    return { ok: true };
+    return result.rowCount ? { ok: true } : { ok: false, code: "BOOKING_TICKET_COUNT_LOCKED", error: "ticket count is fixed by the confirmed reservation" };
   }
 
   /**
@@ -224,16 +411,71 @@ export function createStore({ db, log = () => {} } = {}) {
         [roomId, gameNumber, json(drawSequence)]
       );
       for (const entry of ticketCounts) {
+        const count = Number(entry.count);
+        if (!Number.isInteger(count) || count < 1 || count > 10000) {
+          throw new IntegrityError("refusing to persist an unsupported ticket count", { roomId, playerId: entry.playerId });
+        }
         await client.query(
           "UPDATE room_members SET ticket_count = $3 WHERE room_code = $1 AND player_id = $2",
-          [roomId, entry.playerId, Math.max(1, Math.min(12, Number(entry.count) || 1))]
+          [roomId, entry.playerId, count]
         );
+      }
+      const bookingSeats = await client.query(
+        `SELECT m.player_id,m.ticket_count,r.reservation_id,r.session_id,s.inventory_mode
+           FROM room_members m
+           LEFT JOIN ticket_reservations r ON r.reservation_id=m.booking_reservation_id
+           LEFT JOIN game_sessions s ON s.session_id=r.session_id
+          WHERE m.room_code=$1`,
+        [roomId]
+      );
+      const seatsByPlayer = new Map(bookingSeats.rows.map((seat) => [seat.player_id, seat]));
+      const inventoryTicketsByPlayer = new Map();
+      for (const ticket of tickets) {
+        const seat = seatsByPlayer.get(ticket.playerId);
+        if (!seat) throw new IntegrityError("game ticket has no durable room seat", { roomId, playerId: ticket.playerId });
+        if (seat.inventory_mode === "numbered") {
+          if (!ticket.inventoryTicketId || ticket.inventorySessionId !== seat.session_id || ticket.inventoryReservationId !== seat.reservation_id) {
+            throw new IntegrityError("numbered booking ticket is missing its exact inventory identity", { roomId, playerId: ticket.playerId });
+          }
+          const ids = inventoryTicketsByPlayer.get(ticket.playerId) || [];
+          ids.push(ticket.inventoryTicketId);
+          inventoryTicketsByPlayer.set(ticket.playerId, ids);
+        } else if (ticket.inventoryTicketId || ticket.inventorySessionId || ticket.inventoryReservationId) {
+          throw new IntegrityError("legacy room ticket unexpectedly carries numbered inventory identity", { roomId, playerId: ticket.playerId });
+        }
+      }
+      for (const seat of bookingSeats.rows) {
+        if (seat.inventory_mode !== "numbered") continue;
+        const assigned = await client.query(
+          `SELECT st.ticket_id,st.serial_ordinal,st.grid,a.released_at
+             FROM ticket_reservation_items a JOIN session_tickets st
+               ON st.session_id=a.session_id AND st.ticket_id=a.ticket_id
+            WHERE a.session_id=$1 AND a.reservation_id=$2 ORDER BY st.serial_ordinal FOR UPDATE OF a,st`,
+          [seat.session_id, seat.reservation_id]
+        );
+        const issuedIds = inventoryTicketsByPlayer.get(seat.player_id) || [];
+        const expectedIds = assigned.rows.map((row) => row.ticket_id);
+        if (assigned.rows.length !== Number(seat.ticket_count) || assigned.rows.some((row) => row.released_at) ||
+            issuedIds.length !== expectedIds.length || expectedIds.some((id) => !issuedIds.includes(id)) ||
+            new Set(issuedIds).size !== issuedIds.length) {
+          throw new IntegrityError("game start ticket set does not match the confirmed durable inventory", { roomId, playerId: seat.player_id });
+        }
       }
       for (const ticket of tickets) {
         await client.query(
-          "INSERT INTO tickets (room_code, game_number, player_id, ticket_no, grid) VALUES ($1, $2, $3, $4, $5)",
-          [roomId, gameNumber, ticket.playerId, ticket.ticketNo || 1, json(ticket.grid)]
+          `INSERT INTO tickets
+             (room_code,game_number,player_id,ticket_no,grid,inventory_session_id,inventory_reservation_id,inventory_ticket_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+          [roomId, gameNumber, ticket.playerId, ticket.ticketNo || 1, json(ticket.grid),
+            ticket.inventorySessionId, ticket.inventoryReservationId, ticket.inventoryTicketId]
         );
+        if (ticket.inventoryTicketId) {
+          await client.query(
+            `INSERT INTO session_ticket_events(session_id,ticket_id,reservation_id,action,actor_type,actor_label,metadata)
+             VALUES($1,$2,$3,'issued','system','game-engine',$4)`,
+            [ticket.inventorySessionId,ticket.inventoryTicketId,ticket.inventoryReservationId,json({roomCode:roomId,gameNumber,ticketNo:ticket.ticketNo||1})]
+          );
+        }
       }
       await audit(client, { roomId, gameNumber, type: "start", detail: { players: ticketCounts.length, tickets: tickets.length } });
       return { ok: true, gameNumber };
@@ -439,11 +681,25 @@ export function createStore({ db, log = () => {} } = {}) {
     return db.withTransaction(async (client) => {
       const room = await client.query("SELECT * FROM rooms WHERE room_code = $1", [roomId]);
       const members = await client.query(
-        `SELECT m.player_id, m.role, m.connected, m.joined_at, m.left_at, m.ticket_count, p.display_name
+        `SELECT m.player_id, m.role, m.connected, m.joined_at, m.left_at, m.ticket_count, m.booking_reservation_id, p.display_name
            FROM room_members m
            JOIN players p ON p.player_id = m.player_id
           WHERE m.room_code = $1
           ORDER BY m.joined_at`,
+        [roomId]
+      );
+      // Booking assignments are part of the seat's durable identity. A room
+      // recovery must reject split-brain links (reservation points to a player
+      // but no member references it, or the member's locked quantity changed).
+      const bookingAssignments = await client.query(
+        `SELECT r.reservation_id,r.session_id,r.player_id,r.room_code,r.ticket_count,r.status,s.inventory_mode,s.inventory_state,
+                m.player_id AS member_player_id,m.room_code AS member_room_code,
+                m.ticket_count AS member_ticket_count,
+                (SELECT count(*) FROM ticket_reservation_items a WHERE a.session_id=r.session_id AND a.reservation_id=r.reservation_id AND a.released_at IS NULL) AS active_inventory_count
+           FROM ticket_reservations r JOIN game_sessions s ON s.session_id=r.session_id
+           LEFT JOIN room_members m ON m.booking_reservation_id=r.reservation_id
+          WHERE r.room_code=$1 OR (m.room_code=$1 AND m.booking_reservation_id IS NOT NULL)
+          ORDER BY r.reservation_id`,
         [roomId]
       );
       const game = await client.query(
@@ -454,8 +710,20 @@ export function createStore({ db, log = () => {} } = {}) {
       );
       const gameNumber = game.rows.length ? game.rows[0].game_number : null;
       const tickets = await client.query(
-        "SELECT player_id, ticket_no, grid, assigned_at FROM tickets WHERE room_code = $1 AND game_number = $2 ORDER BY player_id, ticket_no",
+        `SELECT t.player_id,t.ticket_no,t.grid,t.assigned_at,t.inventory_session_id,t.inventory_reservation_id,t.inventory_ticket_id,st.serial AS inventory_serial
+           FROM tickets t LEFT JOIN session_tickets st
+             ON st.session_id=t.inventory_session_id AND st.ticket_id=t.inventory_ticket_id
+          WHERE room_code=$1 AND game_number=$2 ORDER BY player_id,ticket_no`,
         [roomId, gameNumber]
+      );
+      const waitingInventoryTickets = await client.query(
+        `SELECT m.player_id,r.reservation_id,r.session_id,st.ticket_id,st.serial,st.serial_ordinal,st.grid
+           FROM room_members m
+           JOIN ticket_reservations r ON r.reservation_id=m.booking_reservation_id AND r.player_id=m.player_id AND r.room_code=m.room_code AND r.status='confirmed'
+           JOIN game_sessions s ON s.session_id=r.session_id AND s.inventory_mode='numbered' AND s.inventory_state='ready'
+           JOIN ticket_reservation_items a ON a.session_id=r.session_id AND a.reservation_id=r.reservation_id AND a.released_at IS NULL
+           JOIN session_tickets st ON st.session_id=a.session_id AND st.ticket_id=a.ticket_id
+          WHERE m.room_code=$1 ORDER BY m.player_id,st.serial_ordinal`, [roomId]
       );
       const calls = await client.query(
         "SELECT call_index, number, source, called_at FROM draw_calls WHERE room_code = $1 AND game_number = $2 ORDER BY call_index",
@@ -469,15 +737,25 @@ export function createStore({ db, log = () => {} } = {}) {
           ORDER BY a.awarded_at, a.winner_ordinal`,
         [roomId, gameNumber]
       );
+      const claims = await client.query(
+        `SELECT player_id, pattern, status, reason, call_index, decided_at
+           FROM claims
+          WHERE room_code = $1 AND game_number = $2
+          ORDER BY claim_id`,
+        [roomId, gameNumber]
+      );
       const schedule = await client.query("SELECT * FROM room_schedule WHERE room_code = $1", [roomId]);
       return {
         room: room.rows[0] || null,
         game: game.rows[0] || null,
         gameNumber,
         members: members.rows,
+        bookingAssignments: bookingAssignments.rows,
         tickets: tickets.rows,
+        waitingInventoryTickets: waitingInventoryTickets.rows,
         calls: calls.rows,
         awards: awards.rows,
+        claims: claims.rows,
         schedule: schedule.rows[0] || null,
       };
     });
@@ -599,7 +877,17 @@ export function createStore({ db, log = () => {} } = {}) {
 
   return {
     createRoom,
+    instanceStatusForRoom,
+    instanceSlugForRoom,
+    instanceStatus,
+    instanceRoomDefaults,
+    publicInstanceIdBySlug,
+    themeVersionForInstance,
     addParticipant,
+    bookingSessionForRoom,
+    reservationForRoomJoin,
+    addParticipantFromBooking,
+    bookedTicketCount,
     markSeat,
     markSeatLeft,
     setHost,

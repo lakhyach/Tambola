@@ -23,6 +23,8 @@
  *       (rooms:players). Measures joins, reconnects, call fan-out, ack
  *       latency, timers, RSS and event-loop delay; checks for duplicate calls
  *       and cross-room leakage.
+ *       Optional --soak-ms N keeps the connected clients idle after the burst
+ *       to exercise Socket.IO heartbeat stability and detect disconnects.
  *
  * Examples
  *   node scripts/loadtest.mjs sequential --rooms 500
@@ -129,11 +131,24 @@ async function createDbProfiler(instance) {
   await client.connect();
 
   const durations = [];
+  const failedTransactions = [];
   const original = handle.withTransaction.bind(handle);
   handle.withTransaction = async (fn) => {
     const t0 = performance.now();
     try {
       return await original(fn);
+    } catch (error) {
+      // pg_stat_database tells the soak that a transaction rolled back, but
+      // not which operation caused it. Keep only the error code and first
+      // application call frame; omit SQL, values and connection details.
+      const frames = String(new Error().stack || "").split("\n").slice(1);
+      const site = frames.find((frame) => !frame.includes("createDbProfiler") && !frame.includes("scripts/loadtest.mjs"));
+      failedTransactions.push({
+        code: String(error && error.code || "UNKNOWN").slice(0, 32),
+        committed: Boolean(error && error.committed),
+        site: site ? site.trim().slice(0, 180) : "unknown application call site",
+      });
+      throw error;
     } finally {
       durations.push(performance.now() - t0);
     }
@@ -198,6 +213,7 @@ async function createDbProfiler(instance) {
         txMax: Math.round((durations.length ? Math.max(...durations) : 0) * 10) / 10,
         commits: delta("xact_commit"),
         rollbacks: delta("xact_rollback"),
+        failedTransactions: failedTransactions.slice(),
         deadlocks: delta("deadlocks"),
         walBytes: Number(after.wal.wal_bytes || 0) - Number(before.wal.wal_bytes || 0),
         walRecords: Number(after.wal.wal_records || 0) - Number(before.wal.wal_records || 0),
@@ -222,6 +238,8 @@ function formatDbProfile(profile) {
     "[db profile] " + profile.seconds + "s, " + profile.transactions + " transactions (" + profile.txPerSecond + "/s) | " +
     "tx p50 " + profile.txP50 + "ms p95 " + profile.txP95 + "ms p99 " + profile.txP99 + "ms max " + profile.txMax + "ms | " +
     "commits " + profile.commits + " rollbacks " + profile.rollbacks + " deadlocks " + profile.deadlocks + " | " +
+    "application transaction failures " + profile.failedTransactions.length +
+      (profile.failedTransactions.length ? " (" + profile.failedTransactions.slice(0, 5).map((failure) => failure.code + " at " + failure.site).join("; ") + ")" : "") + " | " +
     "WAL " + mb(profile.walBytes) + "MB in " + profile.walRecords + " records (buffers full " + profile.walBuffersFull + ") | " +
     "cache hit " + (profile.cacheHitRatio === null ? "n/a" : profile.cacheHitRatio + "%") + " | " +
     "peak active " + profile.peaks.active + ", lock waits " + profile.peaks.waiting + ", idle-in-tx " + profile.peaks.idleInTransaction +
@@ -360,11 +378,18 @@ const { io: connectClient } = await import("socket.io-client").catch(() => ({ io
 
 async function staged() {
   if (!connectClient) throw new Error("socket.io-client is required for staged mode");
-  const stages = arg("stages", "10:50,50:250")
-    .split(",")
-    .map((pair) => pair.split(":").map((n) => Number(n)))
-    .filter((pair) => pair.length === 2 && pair.every((n) => Number.isFinite(n) && n > 0));
-  const callsPerRoom = intArg("calls", 15);
+  const stages = arg("stages", "10:50,50:250").split(",").map((pair) => pair.split(":").map(Number));
+  if (stages.length === 0 || stages.some((pair) => pair.length !== 2 || !pair.every((n) => Number.isSafeInteger(n) && n > 0))) {
+    throw new Error("--stages must be comma-separated positive integer pairs in rooms:players form");
+  }
+  const rawCalls = arg("calls");
+  const callsPerRoom = rawCalls === null ? 15 : Number(rawCalls);
+  if (!Number.isSafeInteger(callsPerRoom) || callsPerRoom <= 0) throw new Error("--calls must be a positive integer");
+  const rawSoak = arg("soak-ms", "0");
+  const soakMs = Number(rawSoak);
+  if (!Number.isSafeInteger(soakMs) || soakMs < 0 || soakMs > 14_400_000) {
+    throw new Error("--soak-ms must be an integer from 0 through 14400000 (four hours)");
+  }
   const url = guardTestDatabaseUrl();
   const schema = "tambola_load_" + Math.random().toString(16).slice(2, 8);
 
@@ -382,6 +407,7 @@ async function staged() {
 
   const delayHistogram = monitorEventLoopDelay({ resolution: 20 });
   delayHistogram.enable();
+  const stageFailures = [];
 
   const openSockets = [];
   async function oneClient() {
@@ -432,7 +458,7 @@ async function staged() {
         const created = await host.call("room:create", { name: "LoadHost" + r });
         if (!created.ok) throw new Error("create refused: " + JSON.stringify(created));
         stats.joins += 1;
-        rooms.push({ host, roomId: created.roomId, index: rooms.length, departures: new Map() });
+        rooms.push({ host, roomId: created.roomId, index: rooms.length, departures: new Map(), expectedCalls: [], players: [] });
       } catch (error) {
         stats.errors += 1;
         console.error("host create failed:", error.message);
@@ -461,7 +487,7 @@ async function staged() {
                 const seen = client.calls.get(payload.number) || 0;
                 if (seen > 0) stats.dupCalls += 1;
                 client.calls.set(payload.number, seen + 1);
-                client.arrivals.push({ index: payload.index, at: performance.now() });
+                client.arrivals.push({ index: payload.index, number: payload.number, at: performance.now() });
               });
               client.socket.on("ticket:assigned", (payload) => client.tickets.push(payload));
             } catch (error) {
@@ -495,6 +521,7 @@ async function staged() {
         if (!called.ok) throw new Error("call refused " + JSON.stringify(called));
         stats.callsAcked += 1;
         stats.ackMs.push(performance.now() - t);
+        room.expectedCalls.push({ index: called.index, number: called.number });
         // when the intent left the host; the seats' arrivals are compared to this
         room.departures.set(called.index ?? c + 1, t);
         samplePool();
@@ -522,6 +549,29 @@ async function staged() {
       }
     }
 
+    // Check every player before intentionally disconnecting the reconnect
+    // sample. Checking only connected sockets here used to omit one player per
+    // room, making a partially broken fan-out look healthy.
+    let syncChecked = 0;
+    let syncOk = 0;
+    for (const room of rooms) {
+      for (const seat of room.players || []) {
+        syncChecked += 1;
+        const received = seat.client.arrivals.map(({ index, number }) => ({ index, number }));
+        const exactRoomStream = received.length === room.expectedCalls.length && received.every((call, index) =>
+          call.index === room.expectedCalls[index]?.index && call.number === room.expectedCalls[index]?.number
+        );
+        if (exactRoomStream) syncOk += 1;
+        else {
+          const sharedLength = Math.min(received.length, room.expectedCalls.length);
+          const differingCalls = received.slice(0, sharedLength).filter((call, index) =>
+            call.index !== room.expectedCalls[index]?.index || call.number !== room.expectedCalls[index]?.number
+          ).length;
+          stats.leaks += Math.max(1, Math.abs(received.length - room.expectedCalls.length) + differingCalls);
+        }
+      }
+    }
+
     // reconnect sample: one player per room, first where available
     for (const room of rooms) {
       const seat = (room.players || [])[0];
@@ -537,16 +587,40 @@ async function staged() {
       }
     }
 
-    // fan-out check: every still-connected player saw the room's calls
-    let syncChecked = 0;
-    let syncOk = 0;
-    for (const room of rooms) {
-      for (const seat of room.players || []) {
-        if (!seat.client.socket.connected) continue;
-        syncChecked += 1;
-        if (seat.client.calls.size === callsPerRoom) syncOk += 1;
-      }
+    let soakDisconnects = 0;
+    let soakClients = [];
+    const soakFailures = [];
+    const soakDisconnectReasons = new Map();
+    if (soakMs > 0) {
+      soakClients = openSockets.filter((client) => client.connected);
+      for (const client of soakClients) client.on("disconnect", (reason) => {
+        soakDisconnects += 1;
+        soakDisconnectReasons.set(reason, (soakDisconnectReasons.get(reason) || 0) + 1);
+      });
+      await new Promise((resolve) => setTimeout(resolve, soakMs));
+      const connectedAtEnd = soakClients.filter((client) => client.connected).length;
+      const serverClients = instance.io.engine.clientsCount;
+      if (soakDisconnects !== 0) soakFailures.push(`${soakDisconnects} unexpected disconnects during soak`);
+      if (connectedAtEnd !== soakClients.length) soakFailures.push(`${connectedAtEnd}/${soakClients.length} soak clients remained connected`);
+      if (serverClients !== connectedAtEnd) soakFailures.push(`server held ${serverClients} clients but ${connectedAtEnd} harness clients remained connected`);
+      if (instance.registry.size() !== rooms.length) soakFailures.push(`room count changed during soak`);
     }
+
+    const expectedSeats = rooms.length * perRoom;
+    const expectedPlayerSeats = rooms.reduce((sum, room) => sum + (room.players || []).length, 0);
+    const expectedCalls = rooms.length * callsPerRoom;
+    const failures = soakFailures.slice();
+    if (rooms.length !== roomCount) failures.push(`created ${rooms.length}/${roomCount} rooms`);
+    if (stats.joins !== expectedSeats) failures.push(`joined ${stats.joins}/${expectedSeats} expected seats`);
+    if (stats.joinFail !== 0) failures.push(`${stats.joinFail} player joins failed`);
+    if (stats.errors !== 0) failures.push(`${stats.errors} room/game operations failed`);
+    if (stats.starts !== rooms.length) failures.push(`started ${stats.starts}/${rooms.length} rooms`);
+    if (stats.callsAcked !== expectedCalls) failures.push(`acknowledged ${stats.callsAcked}/${expectedCalls} calls`);
+    if (stats.dupCalls !== 0) failures.push(`${stats.dupCalls} duplicate calls were observed`);
+    if (stats.leaks !== 0) failures.push(`${stats.leaks} player call stream(s) differed from its room's authoritative stream`);
+    if (stats.claimAwards !== 0 || stats.claimRejects !== rooms.length) failures.push(`premature claim outcomes ${stats.claimRejects} refused, ${stats.claimAwards} awarded; expected ${rooms.length} refusals`);
+    if (syncChecked !== expectedPlayerSeats || syncOk !== syncChecked) failures.push(`call fan-out sync ${syncOk}/${syncChecked}, expected ${expectedPlayerSeats} player seats`);
+    if (stats.reconnects !== rooms.length || stats.reconnectFail !== 0) failures.push(`reconnects ${stats.reconnects}/${rooms.length}, ${stats.reconnectFail} failed`);
 
     const seconds = (performance.now() - t0) / 1000;
     const cpuPercent = (((cpuMs() - cpuStart) / (seconds * 1000)) * 100);
@@ -560,14 +634,19 @@ async function staged() {
       "join ack latency: p50 " + percentile(stats.joinMs, 50).toFixed(1) + "ms p95 " + percentile(stats.joinMs, 95).toFixed(1) + "ms p99 " + percentile(stats.joinMs, 99).toFixed(1) + "ms (n=" + stats.joinMs.length + ")",
       "call-to-screen fan-out: p50 " + percentile(stats.fanoutMs, 50).toFixed(1) + "ms p95 " + percentile(stats.fanoutMs, 95).toFixed(1) + "ms p99 " + percentile(stats.fanoutMs, 99).toFixed(1) + "ms max " + (stats.fanoutMs.length ? Math.max(...stats.fanoutMs).toFixed(1) : "0") + "ms (n=" + stats.fanoutMs.length + ")",
       "duplicate calls seen by any client: " + stats.dupCalls,
+      "cross-room/missing/unexpected call stream mismatches: " + stats.leaks,
       "claim verdicts: " + stats.claimRejects + " correctly refused, " + stats.claimAwards + " awarded (expect 0)",
       "call fan-out sync: " + syncOk + "/" + syncChecked + " players saw exactly all their room's calls",
       "reconnects ok: " + stats.reconnects + " | failed: " + stats.reconnectFail,
+      ...(soakMs > 0 ? ["heartbeat soak: " + soakMs + "ms | connected clients " + soakClients.filter((client) => client.connected).length + "/" + soakClients.length + " | unexpected disconnects " + soakDisconnects] : []),
+      ...(soakDisconnectReasons.size ? ["disconnect reasons: " + [...soakDisconnectReasons].map(([reason, count]) => `${reason}=${count}`).join(", ")] : []),
       "open sockets (harness side): " + openSockets.length + " | server live rooms: " + instance.registry.size(),
       "RSS: " + now.rssMb + "MB | heap: " + now.heapMb + "MB | timers: " + now.timers,
       "CPU: " + cpuPercent.toFixed(0) + "% of one core over " + seconds.toFixed(1) + "s | peak RSS " + memory.peakRssMb + "MB | peak heap " + memory.peakHeapMb + "MB",
       "event-loop delay p99: " + (delayHistogram.percentile(99) / 1e6).toFixed(1) + "ms",
+      "stage result: " + (failures.length === 0 ? "PASS" : "FAIL — " + failures.join("; ")),
     ]);
+    if (failures.length) stageFailures.push(`stage ${roomCount}:${playerCount}: ${failures.join("; ")}`);
     if (url) {
       console.log(
         "   [durable] pool peak total " + poolPeak.total + "/" + configuredPoolMax(instance) +
@@ -578,8 +657,14 @@ async function staged() {
     // tear this stage down completely before the next one
     for (const client of openSockets.splice(0)) client.disconnect();
     for (const room of [...instance.registry.all()]) {
-      await instance.controller.closeRoom({ roomId: room.roomId, reason: "stage teardown" }).catch(() => {});
+      try {
+        const closed = await instance.controller.closeRoom({ roomId: room.roomId, reason: "stage teardown" });
+        if (closed?.ok === false) stageFailures.push(`stage ${roomCount}:${playerCount}: room ${room.roomId} teardown refused`);
+      } catch (error) {
+        stageFailures.push(`stage ${roomCount}:${playerCount}: room teardown failed (${error.message})`);
+      }
     }
+    if (instance.registry.size() !== 0) stageFailures.push(`stage ${roomCount}:${playerCount}: ${instance.registry.size()} rooms remain after teardown`);
   }
 
   delayHistogram.disable();
@@ -590,6 +675,12 @@ async function staged() {
   }
   if (url) await instance.db.query("DROP SCHEMA IF EXISTS " + schema + " CASCADE").catch(() => {});
   await instance.closeServer();
+  process.exitCode = stageFailures.length === 0 ? 0 : 1;
+  if (stageFailures.length) {
+    console.error("RESULT: FAIL\n" + stageFailures.map((failure) => " - " + failure).join("\n"));
+  } else {
+    console.log("RESULT: PASS (all staged correctness and teardown checks passed)");
+  }
 }
 
 // ------------------------------------------------------------------------ main
@@ -598,6 +689,6 @@ const mode = process.argv[2];
 if (mode === "sequential") await sequential();
 else if (mode === "staged") await staged();
 else {
-  console.error("usage: node scripts/loadtest.mjs <sequential|staged> [--rooms N] [--stages R:P,R:P] [--calls M]");
+  console.error("usage: node scripts/loadtest.mjs <sequential|staged> [--rooms N] [--stages R:P,R:P] [--calls M] [--soak-ms N]");
   process.exitCode = 2;
 }

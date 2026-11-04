@@ -120,7 +120,7 @@ which is why this phase did not create the account.
 
 `deploy/render.yaml`, `deploy/fly.toml` and `deploy/railway.json` are ready. The
 only provider-specific settings that matter are the ones that preserve the
-contract: **one replica**, **no autoscaling**, **no scale-to-zero**, a health check
+contract: **one replica per database/schema pair**, **no autoscaling**, **no scale-to-zero**, a health check
 on `/readyz`, and a stop grace of at least 20 s so SIGTERM can drain.
 
 ## 4. Secrets: where each one lives, and the rule that never changes
@@ -147,10 +147,11 @@ Rules that this repository enforces mechanically rather than by discipline:
 
 ## 5. Migrations
 
-Migrations `001_init` … `004_*` apply automatically at boot, are checksummed, and
-are ledgered in `schema_migrations`; a checksum mismatch fails the boot instead of
-silently diverging. `AUTO_MIGRATE=0` plus `npm run migrate` is the manual path, and
-`/readyz` reports `migrations.current === false` when one is pending.
+All checked-in migrations apply automatically at boot, are checksummed, and are
+ledgered in the configured schema's `schema_migrations`; the current chain ends
+at `021_preserve_booking_audit_assignment.sql`. A checksum mismatch fails the
+boot instead of silently diverging. `AUTO_MIGRATE=0` plus `npm run migrate` is the
+manual path, and `/readyz` reports `migrations.current === false` when one is pending.
 
 Two rules that prevent the only unrecoverable mistake available here:
 

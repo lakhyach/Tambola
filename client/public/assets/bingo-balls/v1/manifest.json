@@ -1,0 +1,1732 @@
+{
+  "schema": "ninety-club-ball-delivery-v1",
+  "number_range": [
+    1,
+    90
+  ],
+  "individualAssets": [
+    {
+      "number": 1,
+      "root": "Ball_01",
+      "bingo_number": 1,
+      "filename": "ball-01.glb",
+      "url": "/assets/bingo-balls/v1/ball-01.glb",
+      "bytes": 64680,
+      "atlas_tile": 0,
+      "atlas_column": 0,
+      "atlas_row": 0,
+      "uv_offset": [
+        0.0,
+        0.0
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 2,
+      "root": "Ball_02",
+      "bingo_number": 2,
+      "filename": "ball-02.glb",
+      "url": "/assets/bingo-balls/v1/ball-02.glb",
+      "bytes": 68848,
+      "atlas_tile": 1,
+      "atlas_column": 1,
+      "atlas_row": 0,
+      "uv_offset": [
+        0.1,
+        0.0
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 3,
+      "root": "Ball_03",
+      "bingo_number": 3,
+      "filename": "ball-03.glb",
+      "url": "/assets/bingo-balls/v1/ball-03.glb",
+      "bytes": 68728,
+      "atlas_tile": 2,
+      "atlas_column": 2,
+      "atlas_row": 0,
+      "uv_offset": [
+        0.2,
+        0.0
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 4,
+      "root": "Ball_04",
+      "bingo_number": 4,
+      "filename": "ball-04.glb",
+      "url": "/assets/bingo-balls/v1/ball-04.glb",
+      "bytes": 67344,
+      "atlas_tile": 3,
+      "atlas_column": 3,
+      "atlas_row": 0,
+      "uv_offset": [
+        0.3,
+        0.0
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 5,
+      "root": "Ball_05",
+      "bingo_number": 5,
+      "filename": "ball-05.glb",
+      "url": "/assets/bingo-balls/v1/ball-05.glb",
+      "bytes": 68564,
+      "atlas_tile": 4,
+      "atlas_column": 4,
+      "atlas_row": 0,
+      "uv_offset": [
+        0.4,
+        0.0
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 6,
+      "root": "Ball_06",
+      "bingo_number": 6,
+      "filename": "ball-06.glb",
+      "url": "/assets/bingo-balls/v1/ball-06.glb",
+      "bytes": 70288,
+      "atlas_tile": 5,
+      "atlas_column": 5,
+      "atlas_row": 0,
+      "uv_offset": [
+        0.5,
+        0.0
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 7,
+      "root": "Ball_07",
+      "bingo_number": 7,
+      "filename": "ball-07.glb",
+      "url": "/assets/bingo-balls/v1/ball-07.glb",
+      "bytes": 65412,
+      "atlas_tile": 6,
+      "atlas_column": 6,
+      "atlas_row": 0,
+      "uv_offset": [
+        0.6,
+        0.0
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 8,
+      "root": "Ball_08",
+      "bingo_number": 8,
+      "filename": "ball-08.glb",
+      "url": "/assets/bingo-balls/v1/ball-08.glb",
+      "bytes": 70308,
+      "atlas_tile": 7,
+      "atlas_column": 7,
+      "atlas_row": 0,
+      "uv_offset": [
+        0.7,
+        0.0
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 9,
+      "root": "Ball_09",
+      "bingo_number": 9,
+      "filename": "ball-09.glb",
+      "url": "/assets/bingo-balls/v1/ball-09.glb",
+      "bytes": 70248,
+      "atlas_tile": 8,
+      "atlas_column": 8,
+      "atlas_row": 0,
+      "uv_offset": [
+        0.8,
+        0.0
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 10,
+      "root": "Ball_10",
+      "bingo_number": 10,
+      "filename": "ball-10.glb",
+      "url": "/assets/bingo-balls/v1/ball-10.glb",
+      "bytes": 68744,
+      "atlas_tile": 9,
+      "atlas_column": 9,
+      "atlas_row": 0,
+      "uv_offset": [
+        0.9,
+        0.0
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 11,
+      "root": "Ball_11",
+      "bingo_number": 11,
+      "filename": "ball-11.glb",
+      "url": "/assets/bingo-balls/v1/ball-11.glb",
+      "bytes": 65280,
+      "atlas_tile": 10,
+      "atlas_column": 0,
+      "atlas_row": 1,
+      "uv_offset": [
+        0.0,
+        0.1111111111111111
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 12,
+      "root": "Ball_12",
+      "bingo_number": 12,
+      "filename": "ball-12.glb",
+      "url": "/assets/bingo-balls/v1/ball-12.glb",
+      "bytes": 67292,
+      "atlas_tile": 11,
+      "atlas_column": 1,
+      "atlas_row": 1,
+      "uv_offset": [
+        0.1,
+        0.1111111111111111
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 13,
+      "root": "Ball_13",
+      "bingo_number": 13,
+      "filename": "ball-13.glb",
+      "url": "/assets/bingo-balls/v1/ball-13.glb",
+      "bytes": 68156,
+      "atlas_tile": 12,
+      "atlas_column": 2,
+      "atlas_row": 1,
+      "uv_offset": [
+        0.2,
+        0.1111111111111111
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 14,
+      "root": "Ball_14",
+      "bingo_number": 14,
+      "filename": "ball-14.glb",
+      "url": "/assets/bingo-balls/v1/ball-14.glb",
+      "bytes": 66904,
+      "atlas_tile": 13,
+      "atlas_column": 3,
+      "atlas_row": 1,
+      "uv_offset": [
+        0.3,
+        0.1111111111111111
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 15,
+      "root": "Ball_15",
+      "bingo_number": 15,
+      "filename": "ball-15.glb",
+      "url": "/assets/bingo-balls/v1/ball-15.glb",
+      "bytes": 67632,
+      "atlas_tile": 14,
+      "atlas_column": 4,
+      "atlas_row": 1,
+      "uv_offset": [
+        0.4,
+        0.1111111111111111
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 16,
+      "root": "Ball_16",
+      "bingo_number": 16,
+      "filename": "ball-16.glb",
+      "url": "/assets/bingo-balls/v1/ball-16.glb",
+      "bytes": 69028,
+      "atlas_tile": 15,
+      "atlas_column": 5,
+      "atlas_row": 1,
+      "uv_offset": [
+        0.5,
+        0.1111111111111111
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 17,
+      "root": "Ball_17",
+      "bingo_number": 17,
+      "filename": "ball-17.glb",
+      "url": "/assets/bingo-balls/v1/ball-17.glb",
+      "bytes": 67016,
+      "atlas_tile": 16,
+      "atlas_column": 6,
+      "atlas_row": 1,
+      "uv_offset": [
+        0.6,
+        0.1111111111111111
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 18,
+      "root": "Ball_18",
+      "bingo_number": 18,
+      "filename": "ball-18.glb",
+      "url": "/assets/bingo-balls/v1/ball-18.glb",
+      "bytes": 69212,
+      "atlas_tile": 17,
+      "atlas_column": 7,
+      "atlas_row": 1,
+      "uv_offset": [
+        0.7,
+        0.1111111111111111
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 19,
+      "root": "Ball_19",
+      "bingo_number": 19,
+      "filename": "ball-19.glb",
+      "url": "/assets/bingo-balls/v1/ball-19.glb",
+      "bytes": 68976,
+      "atlas_tile": 18,
+      "atlas_column": 8,
+      "atlas_row": 1,
+      "uv_offset": [
+        0.8,
+        0.1111111111111111
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 20,
+      "root": "Ball_20",
+      "bingo_number": 20,
+      "filename": "ball-20.glb",
+      "url": "/assets/bingo-balls/v1/ball-20.glb",
+      "bytes": 70384,
+      "atlas_tile": 19,
+      "atlas_column": 9,
+      "atlas_row": 1,
+      "uv_offset": [
+        0.9,
+        0.1111111111111111
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 21,
+      "root": "Ball_21",
+      "bingo_number": 21,
+      "filename": "ball-21.glb",
+      "url": "/assets/bingo-balls/v1/ball-21.glb",
+      "bytes": 67336,
+      "atlas_tile": 20,
+      "atlas_column": 0,
+      "atlas_row": 2,
+      "uv_offset": [
+        0.0,
+        0.2222222222222222
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 22,
+      "root": "Ball_22",
+      "bingo_number": 22,
+      "filename": "ball-22.glb",
+      "url": "/assets/bingo-balls/v1/ball-22.glb",
+      "bytes": 69240,
+      "atlas_tile": 21,
+      "atlas_column": 1,
+      "atlas_row": 2,
+      "uv_offset": [
+        0.1,
+        0.2222222222222222
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 23,
+      "root": "Ball_23",
+      "bingo_number": 23,
+      "filename": "ball-23.glb",
+      "url": "/assets/bingo-balls/v1/ball-23.glb",
+      "bytes": 70100,
+      "atlas_tile": 22,
+      "atlas_column": 2,
+      "atlas_row": 2,
+      "uv_offset": [
+        0.2,
+        0.2222222222222222
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 24,
+      "root": "Ball_24",
+      "bingo_number": 24,
+      "filename": "ball-24.glb",
+      "url": "/assets/bingo-balls/v1/ball-24.glb",
+      "bytes": 68848,
+      "atlas_tile": 23,
+      "atlas_column": 3,
+      "atlas_row": 2,
+      "uv_offset": [
+        0.3,
+        0.2222222222222222
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 25,
+      "root": "Ball_25",
+      "bingo_number": 25,
+      "filename": "ball-25.glb",
+      "url": "/assets/bingo-balls/v1/ball-25.glb",
+      "bytes": 69856,
+      "atlas_tile": 24,
+      "atlas_column": 4,
+      "atlas_row": 2,
+      "uv_offset": [
+        0.4,
+        0.2222222222222222
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 26,
+      "root": "Ball_26",
+      "bingo_number": 26,
+      "filename": "ball-26.glb",
+      "url": "/assets/bingo-balls/v1/ball-26.glb",
+      "bytes": 70920,
+      "atlas_tile": 25,
+      "atlas_column": 5,
+      "atlas_row": 2,
+      "uv_offset": [
+        0.5,
+        0.2222222222222222
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 27,
+      "root": "Ball_27",
+      "bingo_number": 27,
+      "filename": "ball-27.glb",
+      "url": "/assets/bingo-balls/v1/ball-27.glb",
+      "bytes": 68096,
+      "atlas_tile": 26,
+      "atlas_column": 6,
+      "atlas_row": 2,
+      "uv_offset": [
+        0.6,
+        0.2222222222222222
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 28,
+      "root": "Ball_28",
+      "bingo_number": 28,
+      "filename": "ball-28.glb",
+      "url": "/assets/bingo-balls/v1/ball-28.glb",
+      "bytes": 70980,
+      "atlas_tile": 27,
+      "atlas_column": 7,
+      "atlas_row": 2,
+      "uv_offset": [
+        0.7,
+        0.2222222222222222
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 29,
+      "root": "Ball_29",
+      "bingo_number": 29,
+      "filename": "ball-29.glb",
+      "url": "/assets/bingo-balls/v1/ball-29.glb",
+      "bytes": 71932,
+      "atlas_tile": 28,
+      "atlas_column": 8,
+      "atlas_row": 2,
+      "uv_offset": [
+        0.8,
+        0.2222222222222222
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 30,
+      "root": "Ball_30",
+      "bingo_number": 30,
+      "filename": "ball-30.glb",
+      "url": "/assets/bingo-balls/v1/ball-30.glb",
+      "bytes": 70900,
+      "atlas_tile": 29,
+      "atlas_column": 9,
+      "atlas_row": 2,
+      "uv_offset": [
+        0.9,
+        0.2222222222222222
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 31,
+      "root": "Ball_31",
+      "bingo_number": 31,
+      "filename": "ball-31.glb",
+      "url": "/assets/bingo-balls/v1/ball-31.glb",
+      "bytes": 68164,
+      "atlas_tile": 30,
+      "atlas_column": 0,
+      "atlas_row": 3,
+      "uv_offset": [
+        0.0,
+        0.3333333333333333
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 32,
+      "root": "Ball_32",
+      "bingo_number": 32,
+      "filename": "ball-32.glb",
+      "url": "/assets/bingo-balls/v1/ball-32.glb",
+      "bytes": 70024,
+      "atlas_tile": 31,
+      "atlas_column": 1,
+      "atlas_row": 3,
+      "uv_offset": [
+        0.1,
+        0.3333333333333333
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 33,
+      "root": "Ball_33",
+      "bingo_number": 33,
+      "filename": "ball-33.glb",
+      "url": "/assets/bingo-balls/v1/ball-33.glb",
+      "bytes": 70424,
+      "atlas_tile": 32,
+      "atlas_column": 2,
+      "atlas_row": 3,
+      "uv_offset": [
+        0.2,
+        0.3333333333333333
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 34,
+      "root": "Ball_34",
+      "bingo_number": 34,
+      "filename": "ball-34.glb",
+      "url": "/assets/bingo-balls/v1/ball-34.glb",
+      "bytes": 69680,
+      "atlas_tile": 33,
+      "atlas_column": 3,
+      "atlas_row": 3,
+      "uv_offset": [
+        0.3,
+        0.3333333333333333
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 35,
+      "root": "Ball_35",
+      "bingo_number": 35,
+      "filename": "ball-35.glb",
+      "url": "/assets/bingo-balls/v1/ball-35.glb",
+      "bytes": 70420,
+      "atlas_tile": 34,
+      "atlas_column": 4,
+      "atlas_row": 3,
+      "uv_offset": [
+        0.4,
+        0.3333333333333333
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 36,
+      "root": "Ball_36",
+      "bingo_number": 36,
+      "filename": "ball-36.glb",
+      "url": "/assets/bingo-balls/v1/ball-36.glb",
+      "bytes": 71476,
+      "atlas_tile": 35,
+      "atlas_column": 5,
+      "atlas_row": 3,
+      "uv_offset": [
+        0.5,
+        0.3333333333333333
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 37,
+      "root": "Ball_37",
+      "bingo_number": 37,
+      "filename": "ball-37.glb",
+      "url": "/assets/bingo-balls/v1/ball-37.glb",
+      "bytes": 68840,
+      "atlas_tile": 36,
+      "atlas_column": 6,
+      "atlas_row": 3,
+      "uv_offset": [
+        0.6,
+        0.3333333333333333
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 38,
+      "root": "Ball_38",
+      "bingo_number": 38,
+      "filename": "ball-38.glb",
+      "url": "/assets/bingo-balls/v1/ball-38.glb",
+      "bytes": 71536,
+      "atlas_tile": 37,
+      "atlas_column": 7,
+      "atlas_row": 3,
+      "uv_offset": [
+        0.7,
+        0.3333333333333333
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 39,
+      "root": "Ball_39",
+      "bingo_number": 39,
+      "filename": "ball-39.glb",
+      "url": "/assets/bingo-balls/v1/ball-39.glb",
+      "bytes": 71384,
+      "atlas_tile": 38,
+      "atlas_column": 8,
+      "atlas_row": 3,
+      "uv_offset": [
+        0.8,
+        0.3333333333333333
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 40,
+      "root": "Ball_40",
+      "bingo_number": 40,
+      "filename": "ball-40.glb",
+      "url": "/assets/bingo-balls/v1/ball-40.glb",
+      "bytes": 70244,
+      "atlas_tile": 39,
+      "atlas_column": 9,
+      "atlas_row": 3,
+      "uv_offset": [
+        0.9,
+        0.3333333333333333
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 41,
+      "root": "Ball_41",
+      "bingo_number": 41,
+      "filename": "ball-41.glb",
+      "url": "/assets/bingo-balls/v1/ball-41.glb",
+      "bytes": 67004,
+      "atlas_tile": 40,
+      "atlas_column": 0,
+      "atlas_row": 4,
+      "uv_offset": [
+        0.0,
+        0.4444444444444444
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 42,
+      "root": "Ball_42",
+      "bingo_number": 42,
+      "filename": "ball-42.glb",
+      "url": "/assets/bingo-balls/v1/ball-42.glb",
+      "bytes": 68876,
+      "atlas_tile": 41,
+      "atlas_column": 1,
+      "atlas_row": 4,
+      "uv_offset": [
+        0.1,
+        0.4444444444444444
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 43,
+      "root": "Ball_43",
+      "bingo_number": 43,
+      "filename": "ball-43.glb",
+      "url": "/assets/bingo-balls/v1/ball-43.glb",
+      "bytes": 69496,
+      "atlas_tile": 42,
+      "atlas_column": 2,
+      "atlas_row": 4,
+      "uv_offset": [
+        0.2,
+        0.4444444444444444
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 44,
+      "root": "Ball_44",
+      "bingo_number": 44,
+      "filename": "ball-44.glb",
+      "url": "/assets/bingo-balls/v1/ball-44.glb",
+      "bytes": 69380,
+      "atlas_tile": 43,
+      "atlas_column": 3,
+      "atlas_row": 4,
+      "uv_offset": [
+        0.3,
+        0.4444444444444444
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 45,
+      "root": "Ball_45",
+      "bingo_number": 45,
+      "filename": "ball-45.glb",
+      "url": "/assets/bingo-balls/v1/ball-45.glb",
+      "bytes": 69444,
+      "atlas_tile": 44,
+      "atlas_column": 4,
+      "atlas_row": 4,
+      "uv_offset": [
+        0.4,
+        0.4444444444444444
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 46,
+      "root": "Ball_46",
+      "bingo_number": 46,
+      "filename": "ball-46.glb",
+      "url": "/assets/bingo-balls/v1/ball-46.glb",
+      "bytes": 70584,
+      "atlas_tile": 45,
+      "atlas_column": 5,
+      "atlas_row": 4,
+      "uv_offset": [
+        0.5,
+        0.4444444444444444
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 47,
+      "root": "Ball_47",
+      "bingo_number": 47,
+      "filename": "ball-47.glb",
+      "url": "/assets/bingo-balls/v1/ball-47.glb",
+      "bytes": 67720,
+      "atlas_tile": 46,
+      "atlas_column": 6,
+      "atlas_row": 4,
+      "uv_offset": [
+        0.6,
+        0.4444444444444444
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 48,
+      "root": "Ball_48",
+      "bingo_number": 48,
+      "filename": "ball-48.glb",
+      "url": "/assets/bingo-balls/v1/ball-48.glb",
+      "bytes": 70720,
+      "atlas_tile": 47,
+      "atlas_column": 7,
+      "atlas_row": 4,
+      "uv_offset": [
+        0.7,
+        0.4444444444444444
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 49,
+      "root": "Ball_49",
+      "bingo_number": 49,
+      "filename": "ball-49.glb",
+      "url": "/assets/bingo-balls/v1/ball-49.glb",
+      "bytes": 70516,
+      "atlas_tile": 48,
+      "atlas_column": 8,
+      "atlas_row": 4,
+      "uv_offset": [
+        0.8,
+        0.4444444444444444
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 50,
+      "root": "Ball_50",
+      "bingo_number": 50,
+      "filename": "ball-50.glb",
+      "url": "/assets/bingo-balls/v1/ball-50.glb",
+      "bytes": 70924,
+      "atlas_tile": 49,
+      "atlas_column": 9,
+      "atlas_row": 4,
+      "uv_offset": [
+        0.9,
+        0.4444444444444444
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 51,
+      "root": "Ball_51",
+      "bingo_number": 51,
+      "filename": "ball-51.glb",
+      "url": "/assets/bingo-balls/v1/ball-51.glb",
+      "bytes": 67940,
+      "atlas_tile": 50,
+      "atlas_column": 0,
+      "atlas_row": 5,
+      "uv_offset": [
+        0.0,
+        0.5555555555555556
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 52,
+      "root": "Ball_52",
+      "bingo_number": 52,
+      "filename": "ball-52.glb",
+      "url": "/assets/bingo-balls/v1/ball-52.glb",
+      "bytes": 69724,
+      "atlas_tile": 51,
+      "atlas_column": 1,
+      "atlas_row": 5,
+      "uv_offset": [
+        0.1,
+        0.5555555555555556
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 53,
+      "root": "Ball_53",
+      "bingo_number": 53,
+      "filename": "ball-53.glb",
+      "url": "/assets/bingo-balls/v1/ball-53.glb",
+      "bytes": 70380,
+      "atlas_tile": 52,
+      "atlas_column": 2,
+      "atlas_row": 5,
+      "uv_offset": [
+        0.2,
+        0.5555555555555556
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 54,
+      "root": "Ball_54",
+      "bingo_number": 54,
+      "filename": "ball-54.glb",
+      "url": "/assets/bingo-balls/v1/ball-54.glb",
+      "bytes": 69472,
+      "atlas_tile": 53,
+      "atlas_column": 3,
+      "atlas_row": 5,
+      "uv_offset": [
+        0.3,
+        0.5555555555555556
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 55,
+      "root": "Ball_55",
+      "bingo_number": 55,
+      "filename": "ball-55.glb",
+      "url": "/assets/bingo-balls/v1/ball-55.glb",
+      "bytes": 70132,
+      "atlas_tile": 54,
+      "atlas_column": 4,
+      "atlas_row": 5,
+      "uv_offset": [
+        0.4,
+        0.5555555555555556
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 56,
+      "root": "Ball_56",
+      "bingo_number": 56,
+      "filename": "ball-56.glb",
+      "url": "/assets/bingo-balls/v1/ball-56.glb",
+      "bytes": 71272,
+      "atlas_tile": 55,
+      "atlas_column": 5,
+      "atlas_row": 5,
+      "uv_offset": [
+        0.5,
+        0.5555555555555556
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 57,
+      "root": "Ball_57",
+      "bingo_number": 57,
+      "filename": "ball-57.glb",
+      "url": "/assets/bingo-balls/v1/ball-57.glb",
+      "bytes": 68324,
+      "atlas_tile": 56,
+      "atlas_column": 6,
+      "atlas_row": 5,
+      "uv_offset": [
+        0.6,
+        0.5555555555555556
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 58,
+      "root": "Ball_58",
+      "bingo_number": 58,
+      "filename": "ball-58.glb",
+      "url": "/assets/bingo-balls/v1/ball-58.glb",
+      "bytes": 71056,
+      "atlas_tile": 57,
+      "atlas_column": 7,
+      "atlas_row": 5,
+      "uv_offset": [
+        0.7,
+        0.5555555555555556
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 59,
+      "root": "Ball_59",
+      "bingo_number": 59,
+      "filename": "ball-59.glb",
+      "url": "/assets/bingo-balls/v1/ball-59.glb",
+      "bytes": 71292,
+      "atlas_tile": 58,
+      "atlas_column": 8,
+      "atlas_row": 5,
+      "uv_offset": [
+        0.8,
+        0.5555555555555556
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 60,
+      "root": "Ball_60",
+      "bingo_number": 60,
+      "filename": "ball-60.glb",
+      "url": "/assets/bingo-balls/v1/ball-60.glb",
+      "bytes": 71864,
+      "atlas_tile": 59,
+      "atlas_column": 9,
+      "atlas_row": 5,
+      "uv_offset": [
+        0.9,
+        0.5555555555555556
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 61,
+      "root": "Ball_61",
+      "bingo_number": 61,
+      "filename": "ball-61.glb",
+      "url": "/assets/bingo-balls/v1/ball-61.glb",
+      "bytes": 69040,
+      "atlas_tile": 60,
+      "atlas_column": 0,
+      "atlas_row": 6,
+      "uv_offset": [
+        0.0,
+        0.6666666666666666
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 62,
+      "root": "Ball_62",
+      "bingo_number": 62,
+      "filename": "ball-62.glb",
+      "url": "/assets/bingo-balls/v1/ball-62.glb",
+      "bytes": 70368,
+      "atlas_tile": 61,
+      "atlas_column": 1,
+      "atlas_row": 6,
+      "uv_offset": [
+        0.1,
+        0.6666666666666666
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 63,
+      "root": "Ball_63",
+      "bingo_number": 63,
+      "filename": "ball-63.glb",
+      "url": "/assets/bingo-balls/v1/ball-63.glb",
+      "bytes": 71280,
+      "atlas_tile": 62,
+      "atlas_column": 2,
+      "atlas_row": 6,
+      "uv_offset": [
+        0.2,
+        0.6666666666666666
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 64,
+      "root": "Ball_64",
+      "bingo_number": 64,
+      "filename": "ball-64.glb",
+      "url": "/assets/bingo-balls/v1/ball-64.glb",
+      "bytes": 71476,
+      "atlas_tile": 63,
+      "atlas_column": 3,
+      "atlas_row": 6,
+      "uv_offset": [
+        0.3,
+        0.6666666666666666
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 65,
+      "root": "Ball_65",
+      "bingo_number": 65,
+      "filename": "ball-65.glb",
+      "url": "/assets/bingo-balls/v1/ball-65.glb",
+      "bytes": 71324,
+      "atlas_tile": 64,
+      "atlas_column": 4,
+      "atlas_row": 6,
+      "uv_offset": [
+        0.4,
+        0.6666666666666666
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 66,
+      "root": "Ball_66",
+      "bingo_number": 66,
+      "filename": "ball-66.glb",
+      "url": "/assets/bingo-balls/v1/ball-66.glb",
+      "bytes": 72072,
+      "atlas_tile": 65,
+      "atlas_column": 5,
+      "atlas_row": 6,
+      "uv_offset": [
+        0.5,
+        0.6666666666666666
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 67,
+      "root": "Ball_67",
+      "bingo_number": 67,
+      "filename": "ball-67.glb",
+      "url": "/assets/bingo-balls/v1/ball-67.glb",
+      "bytes": 69576,
+      "atlas_tile": 66,
+      "atlas_column": 6,
+      "atlas_row": 6,
+      "uv_offset": [
+        0.6,
+        0.6666666666666666
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 68,
+      "root": "Ball_68",
+      "bingo_number": 68,
+      "filename": "ball-68.glb",
+      "url": "/assets/bingo-balls/v1/ball-68.glb",
+      "bytes": 72408,
+      "atlas_tile": 67,
+      "atlas_column": 7,
+      "atlas_row": 6,
+      "uv_offset": [
+        0.7,
+        0.6666666666666666
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 69,
+      "root": "Ball_69",
+      "bingo_number": 69,
+      "filename": "ball-69.glb",
+      "url": "/assets/bingo-balls/v1/ball-69.glb",
+      "bytes": 72308,
+      "atlas_tile": 68,
+      "atlas_column": 8,
+      "atlas_row": 6,
+      "uv_offset": [
+        0.8,
+        0.6666666666666666
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 70,
+      "root": "Ball_70",
+      "bingo_number": 70,
+      "filename": "ball-70.glb",
+      "url": "/assets/bingo-balls/v1/ball-70.glb",
+      "bytes": 68860,
+      "atlas_tile": 69,
+      "atlas_column": 9,
+      "atlas_row": 6,
+      "uv_offset": [
+        0.9,
+        0.6666666666666666
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 71,
+      "root": "Ball_71",
+      "bingo_number": 71,
+      "filename": "ball-71.glb",
+      "url": "/assets/bingo-balls/v1/ball-71.glb",
+      "bytes": 66116,
+      "atlas_tile": 70,
+      "atlas_column": 0,
+      "atlas_row": 7,
+      "uv_offset": [
+        0.0,
+        0.7777777777777778
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 72,
+      "root": "Ball_72",
+      "bingo_number": 72,
+      "filename": "ball-72.glb",
+      "url": "/assets/bingo-balls/v1/ball-72.glb",
+      "bytes": 68148,
+      "atlas_tile": 71,
+      "atlas_column": 1,
+      "atlas_row": 7,
+      "uv_offset": [
+        0.1,
+        0.7777777777777778
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 73,
+      "root": "Ball_73",
+      "bingo_number": 73,
+      "filename": "ball-73.glb",
+      "url": "/assets/bingo-balls/v1/ball-73.glb",
+      "bytes": 68600,
+      "atlas_tile": 72,
+      "atlas_column": 2,
+      "atlas_row": 7,
+      "uv_offset": [
+        0.2,
+        0.7777777777777778
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 74,
+      "root": "Ball_74",
+      "bingo_number": 74,
+      "filename": "ball-74.glb",
+      "url": "/assets/bingo-balls/v1/ball-74.glb",
+      "bytes": 67744,
+      "atlas_tile": 73,
+      "atlas_column": 3,
+      "atlas_row": 7,
+      "uv_offset": [
+        0.3,
+        0.7777777777777778
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 75,
+      "root": "Ball_75",
+      "bingo_number": 75,
+      "filename": "ball-75.glb",
+      "url": "/assets/bingo-balls/v1/ball-75.glb",
+      "bytes": 68372,
+      "atlas_tile": 74,
+      "atlas_column": 4,
+      "atlas_row": 7,
+      "uv_offset": [
+        0.4,
+        0.7777777777777778
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 76,
+      "root": "Ball_76",
+      "bingo_number": 76,
+      "filename": "ball-76.glb",
+      "url": "/assets/bingo-balls/v1/ball-76.glb",
+      "bytes": 69748,
+      "atlas_tile": 75,
+      "atlas_column": 5,
+      "atlas_row": 7,
+      "uv_offset": [
+        0.5,
+        0.7777777777777778
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 77,
+      "root": "Ball_77",
+      "bingo_number": 77,
+      "filename": "ball-77.glb",
+      "url": "/assets/bingo-balls/v1/ball-77.glb",
+      "bytes": 66688,
+      "atlas_tile": 76,
+      "atlas_column": 6,
+      "atlas_row": 7,
+      "uv_offset": [
+        0.6,
+        0.7777777777777778
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 78,
+      "root": "Ball_78",
+      "bingo_number": 78,
+      "filename": "ball-78.glb",
+      "url": "/assets/bingo-balls/v1/ball-78.glb",
+      "bytes": 69872,
+      "atlas_tile": 77,
+      "atlas_column": 7,
+      "atlas_row": 7,
+      "uv_offset": [
+        0.7,
+        0.7777777777777778
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 79,
+      "root": "Ball_79",
+      "bingo_number": 79,
+      "filename": "ball-79.glb",
+      "url": "/assets/bingo-balls/v1/ball-79.glb",
+      "bytes": 69708,
+      "atlas_tile": 78,
+      "atlas_column": 8,
+      "atlas_row": 7,
+      "uv_offset": [
+        0.8,
+        0.7777777777777778
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 80,
+      "root": "Ball_80",
+      "bingo_number": 80,
+      "filename": "ball-80.glb",
+      "url": "/assets/bingo-balls/v1/ball-80.glb",
+      "bytes": 72064,
+      "atlas_tile": 79,
+      "atlas_column": 9,
+      "atlas_row": 7,
+      "uv_offset": [
+        0.9,
+        0.7777777777777778
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 81,
+      "root": "Ball_81",
+      "bingo_number": 81,
+      "filename": "ball-81.glb",
+      "url": "/assets/bingo-balls/v1/ball-81.glb",
+      "bytes": 69344,
+      "atlas_tile": 80,
+      "atlas_column": 0,
+      "atlas_row": 8,
+      "uv_offset": [
+        0.0,
+        0.8888888888888888
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 82,
+      "root": "Ball_82",
+      "bingo_number": 82,
+      "filename": "ball-82.glb",
+      "url": "/assets/bingo-balls/v1/ball-82.glb",
+      "bytes": 70996,
+      "atlas_tile": 81,
+      "atlas_column": 1,
+      "atlas_row": 8,
+      "uv_offset": [
+        0.1,
+        0.8888888888888888
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 83,
+      "root": "Ball_83",
+      "bingo_number": 83,
+      "filename": "ball-83.glb",
+      "url": "/assets/bingo-balls/v1/ball-83.glb",
+      "bytes": 71504,
+      "atlas_tile": 82,
+      "atlas_column": 2,
+      "atlas_row": 8,
+      "uv_offset": [
+        0.2,
+        0.8888888888888888
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 84,
+      "root": "Ball_84",
+      "bingo_number": 84,
+      "filename": "ball-84.glb",
+      "url": "/assets/bingo-balls/v1/ball-84.glb",
+      "bytes": 70804,
+      "atlas_tile": 83,
+      "atlas_column": 3,
+      "atlas_row": 8,
+      "uv_offset": [
+        0.3,
+        0.8888888888888888
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 85,
+      "root": "Ball_85",
+      "bingo_number": 85,
+      "filename": "ball-85.glb",
+      "url": "/assets/bingo-balls/v1/ball-85.glb",
+      "bytes": 70876,
+      "atlas_tile": 84,
+      "atlas_column": 4,
+      "atlas_row": 8,
+      "uv_offset": [
+        0.4,
+        0.8888888888888888
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 86,
+      "root": "Ball_86",
+      "bingo_number": 86,
+      "filename": "ball-86.glb",
+      "url": "/assets/bingo-balls/v1/ball-86.glb",
+      "bytes": 72416,
+      "atlas_tile": 85,
+      "atlas_column": 5,
+      "atlas_row": 8,
+      "uv_offset": [
+        0.5,
+        0.8888888888888888
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 87,
+      "root": "Ball_87",
+      "bingo_number": 87,
+      "filename": "ball-87.glb",
+      "url": "/assets/bingo-balls/v1/ball-87.glb",
+      "bytes": 69824,
+      "atlas_tile": 86,
+      "atlas_column": 6,
+      "atlas_row": 8,
+      "uv_offset": [
+        0.6,
+        0.8888888888888888
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 88,
+      "root": "Ball_88",
+      "bingo_number": 88,
+      "filename": "ball-88.glb",
+      "url": "/assets/bingo-balls/v1/ball-88.glb",
+      "bytes": 72232,
+      "atlas_tile": 87,
+      "atlas_column": 7,
+      "atlas_row": 8,
+      "uv_offset": [
+        0.7,
+        0.8888888888888888
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 89,
+      "root": "Ball_89",
+      "bingo_number": 89,
+      "filename": "ball-89.glb",
+      "url": "/assets/bingo-balls/v1/ball-89.glb",
+      "bytes": 72388,
+      "atlas_tile": 88,
+      "atlas_column": 8,
+      "atlas_row": 8,
+      "uv_offset": [
+        0.8,
+        0.8888888888888888
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    },
+    {
+      "number": 90,
+      "root": "Ball_90",
+      "bingo_number": 90,
+      "filename": "ball-90.glb",
+      "url": "/assets/bingo-balls/v1/ball-90.glb",
+      "bytes": 71936,
+      "atlas_tile": 89,
+      "atlas_column": 9,
+      "atlas_row": 8,
+      "uv_offset": [
+        0.9,
+        0.8888888888888888
+      ],
+      "uv_repeat": [
+        0.1,
+        0.1111111111111111
+      ]
+    }
+  ],
+  "hybrid": {
+    "geometry": "./hybrid/shared-ball-geometry.glb",
+    "atlas": "./hybrid/number-atlas.png",
+    "atlasSize": [
+      2560,
+      2304
+    ],
+    "columns": 10,
+    "rows": 9,
+    "textureFlipY": false,
+    "textureColorSpace": "sRGB",
+    "note": "Use one shared atlas texture; number n uses zero-based tile n-1, col=(n-1)%10, row=floor((n-1)/10)."
+  }
+}

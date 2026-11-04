@@ -30,6 +30,13 @@ import { resolvePublicOrigin, createInvitation } from "./invites.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import { decryptSecret, describeMfa, encryptSecret, generateSecret, provisioningUri, verifyCode } from "./mfa.js";
 import { CHALLENGE_CODES } from "./mfa-challenges.js";
+import { createModeratorAdminRouter } from "./moderators.js";
+import { createAdminThemeRouter } from "../themes/routes.js";
+import { createAdminPosterRouter } from "../posters/routes.js";
+import { publicInstanceBranding, validateInstanceBranding } from "../instances/branding.js";
+import { readBackupStatus } from "./backup-status.js";
+import { createPlatformBrandingService } from "../branding/platform.js";
+import { validateRoomDefaults } from "../instances/room-defaults.js";
 
 const ROOM_ID_RE = /^[A-HJ-NP-Z2-9]{4,12}$/;
 const MIN_PASSWORD = 8;
@@ -110,6 +117,7 @@ function dbUnavailable(error) {
 }
 
 export function createAdminRouter({
+  db = null,
   ownerStore,
   ownerSessions,
   audit,
@@ -120,12 +128,70 @@ export function createAdminRouter({
   publicOrigin = null,
   throttle,
   challenges,
-  mfa = { configured: false, key: null, issuer: "Tambola" },
+  mfa = { configured: false, key: null, issuer: "Ninety Club" },
   production = false,
+  themeService = null,
+  posterService = null,
+  platformBrandingService = createPlatformBrandingService(),
+  healthProbe = null,
   log = () => {},
 } = {}) {
   const durable = Boolean(queries);
   const router = express.Router();
+
+  /** Keep operational details owner-only and strip everything but bounded counters. */
+  function ownerHealthSummary(report, fallback = null) {
+    const mode = report?.mode || (durable ? "durable" : "memory");
+    const database = mode === "memory"
+      ? "not-configured"
+      : report
+        ? report.database ? "ok" : "down"
+        : fallback?.ok ? "ok" : "down";
+    const count = (value) => Number.isSafeInteger(value) && value >= 0 ? value : null;
+    const scheduler = report?.scheduler && typeof report.scheduler === "object"
+      ? {
+          armed: count(report.scheduler.armed),
+          nextDueInMs: Number.isFinite(report.scheduler.nextDueInMs) ? Math.max(0, report.scheduler.nextDueInMs) : null,
+          overdue: Boolean(report.scheduler.overdue),
+          ticking: Boolean(report.scheduler.ticking),
+        }
+      : null;
+    const pool = report?.pool && typeof report.pool === "object"
+      ? {
+          total: count(report.pool.total),
+          idle: count(report.pool.idle),
+          waiting: count(report.pool.waiting),
+          max: count(report.pool.max),
+          errors: count(report.pool.errors),
+        }
+      : null;
+    return {
+      mode,
+      readiness: report ? (report.ready ? (report.degraded ? "degraded" : "ready") : "not-ready") : "unknown",
+      degraded: Boolean(report?.degraded),
+      database,
+      application: report?.live === false ? "down" : "ok",
+      migrations: report?.migrations && typeof report.migrations === "object"
+        ? {
+            current: Boolean(report.migrations.current),
+            latest: typeof report.migrations.latest === "string" ? report.migrations.latest : null,
+            pending: Array.isArray(report.migrations.pending) ? report.migrations.pending.filter((name) => typeof name === "string").slice(0, 50) : [],
+          }
+        : null,
+      lease: report?.lease && typeof report.lease === "object"
+        ? { held: Boolean(report.lease.held), lost: Boolean(report.lease.lost) }
+        : null,
+      draining: Boolean(report?.draining),
+      rooms: report?.rooms && typeof report.rooms === "object"
+        ? { live: count(report.rooms.live), frozen: count(report.rooms.frozen) }
+        : null,
+      scheduler,
+      pool,
+      reasons: Array.isArray(report?.reasons) ? report.reasons.filter((reason) => typeof reason === "string").slice(0, 10) : [],
+      uptimeSeconds: count(report?.uptimeSeconds),
+      checkedAt: Number.isFinite(report?.at) ? new Date(report.at).toISOString() : null,
+    };
+  }
 
   /**
    * A client that declares a body and then stops sending would keep `express.json`
@@ -305,6 +371,29 @@ export function createAdminRouter({
     }
     return true;
   }
+
+  router.get("/branding", requireOwner, wrap(async (_req, res) => {
+    const result = await platformBrandingService.get();
+    res.json({ ok: true, ...result });
+  }));
+
+  router.put("/branding", requireOwner, wrap(async (req, res) => {
+    if (!(await spendMutationBudget(req, res))) return;
+    const result = await platformBrandingService.save(req.body?.branding, req.owner.username);
+    if (result.error) return res.status(400).json({ ok: false, code: result.error, error: "platform branding is invalid" });
+    await audit.record({
+      actor: req.owner.username,
+      action: "PLATFORM_BRANDING_UPDATE",
+      targetType: "platform_branding",
+      targetId: "branding",
+      metadata: { fields: Object.keys(result.branding).sort() },
+    });
+    res.json({ ok: true, ...result });
+  }));
+
+  if (db) router.use("/moderators", requireOwner, createModeratorAdminRouter({ db, audit, spendMutationBudget }));
+  if (db && themeService) router.use("/themes", requireOwner, createAdminThemeRouter({ service: themeService, spendMutationBudget }));
+  if (db && posterService) router.use("/posters", requireOwner, createAdminPosterRouter({ service: posterService, spendMutationBudget }));
 
   // ------------------------------------------------------ second factor
 
@@ -637,6 +726,121 @@ export function createAdminRouter({
 
   // ----------------------------------------------------------------- overview
 
+  // Platform domain. These endpoints use the existing owner session + CSRF
+  // boundary; instance IDs are resolved from the database, never from UI state.
+  router.get("/instances", requireOwner, wrap(async (_req, res) => {
+    if (!db) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "game instances require PostgreSQL" });
+    const result = await db.query(`SELECT i.instance_id, i.slug, i.display_name, i.description, i.status,
+      i.public_visible, i.config, i.branding, i.created_at, i.updated_at,
+      count(r.room_code)::int AS total_rooms,
+      count(r.room_code) FILTER (WHERE r.closed_at IS NULL)::int AS open_rooms,
+      count(r.room_code) FILTER (WHERE r.status = 'RUNNING' AND r.closed_at IS NULL)::int AS running_rooms
+      FROM game_instances i LEFT JOIN rooms r ON r.game_instance_id=i.instance_id
+      GROUP BY i.instance_id ORDER BY i.created_at, i.display_name`);
+    res.json({ ok: true, instances: result.rows });
+  }));
+
+  router.get("/instances/:instanceId/overview", requireOwner, wrap(async (req, res) => {
+    if (!durable) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "instance overview requires PostgreSQL" });
+    const overview = await queries.instanceOverview(req.params.instanceId);
+    if (!overview) return res.status(404).json({ ok: false, code: "INSTANCE_NOT_FOUND", error: "no such instance" });
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ ok: true, source: "durable", ...overview });
+  }));
+
+  router.post("/instances", requireOwner, wrap(async (req, res) => {
+    if (!db) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "game instances require PostgreSQL" });
+    if (!(await spendMutationBudget(req, res))) return;
+    const body = req.body || {};
+    const slug = typeof body.slug === "string" ? body.slug.trim().toLowerCase() : "";
+    const name = safeName(body.displayName);
+    const description = typeof body.description === "string" ? body.description.trim() : "";
+    if (!name || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 48 || description.length > 500) {
+      return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "displayName, a lowercase URL slug, and a description of at most 500 characters are required" });
+    }
+    const instanceId = `gi_${createHash("sha256").update(`${req.owner.sessionId}:${Date.now()}:${slug}`).digest("hex").slice(0, 24)}`;
+    try {
+      const result = await db.query(`INSERT INTO game_instances(instance_id,slug,display_name,description,created_by,updated_by)
+        VALUES($1,$2,$3,$4,$5,$5) RETURNING instance_id,slug,display_name,description,status,public_visible,config,branding,created_at,updated_at`,
+      [instanceId, slug, name, description, req.owner.username]);
+      await record(req, "INSTANCE_CREATE", { targetType: "instance", targetId: instanceId, metadata: { slug, displayName: name } });
+      return res.status(201).json({ ok: true, instance: result.rows[0] });
+    } catch (error) {
+      if (error.code === "23505") return res.status(409).json({ ok: false, code: "SLUG_EXISTS", error: "that instance slug is already reserved" });
+      throw error;
+    }
+  }));
+
+  router.patch("/instances/:instanceId", requireOwner, wrap(async (req, res) => {
+    if (!db) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "game instances require PostgreSQL" });
+    if (!(await spendMutationBudget(req, res))) return;
+    const { instanceId } = req.params;
+    const body = req.body || {};
+    const allowedStatus = new Set(["active", "paused", "archived"]);
+    const name = body.displayName === undefined ? undefined : safeName(body.displayName);
+    const description = body.description === undefined ? undefined : (typeof body.description === "string" && body.description.trim().length <= 500 ? body.description.trim() : null);
+    const status = body.status === undefined ? undefined : body.status;
+    const visible = body.publicVisible === undefined ? undefined : body.publicVisible;
+    const brandingResult = body.branding === undefined ? null : validateInstanceBranding(body.branding);
+    const roomDefaultsResult = body.roomDefaults === undefined ? null : validateRoomDefaults(body.roomDefaults);
+    if ((body.displayName !== undefined && !name) || description === null || (status !== undefined && !allowedStatus.has(status)) || (visible !== undefined && typeof visible !== "boolean") || brandingResult?.error || roomDefaultsResult?.error) {
+      return res.status(400).json({ ok: false, code: brandingResult?.error || roomDefaultsResult?.error || "INVALID_INPUT", error: "invalid instance fields, room defaults, or branding values" });
+    }
+    const before = await db.query("SELECT status FROM game_instances WHERE instance_id=$1", [instanceId]);
+    if (!before.rowCount) return res.status(404).json({ ok: false, code: "INSTANCE_NOT_FOUND", error: "no such instance" });
+    if (before.rows[0].status === "archived" && status === "paused") return res.status(409).json({ ok: false, code: "INVALID_TRANSITION", error: "restore an archived instance by activating it" });
+    const result = await db.query(`UPDATE game_instances SET
+      display_name=COALESCE($2,display_name), description=COALESCE($3,description),
+      status=COALESCE($4,status), public_visible=COALESCE($5,public_visible),
+      branding=branding || $7::jsonb,
+      config=CASE WHEN $8::jsonb IS NULL THEN config ELSE config || jsonb_build_object('roomDefaults',$8::jsonb) END,
+      updated_by=$6
+      WHERE instance_id=$1 RETURNING instance_id,slug,display_name,description,status,public_visible,config,branding,created_at,updated_at`,
+    [instanceId, name ?? null, description ?? null, status ?? null, visible ?? null, req.owner.username, JSON.stringify(brandingResult?.branding || {}), roomDefaultsResult ? JSON.stringify(roomDefaultsResult.roomDefaults) : null]);
+    await record(req, "INSTANCE_UPDATE", {
+      targetType: "instance",
+      targetId: instanceId,
+      metadata: {
+        changed: Object.keys(body),
+        ...(roomDefaultsResult ? { roomDefaults: roomDefaultsResult.roomDefaults } : {}),
+      },
+    });
+    res.json({ ok: true, instance: result.rows[0] });
+  }));
+
+  router.get("/reports/instances", requireOwner, wrap(async (req, res) => {
+    if (!durable) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "instance reports require PostgreSQL" });
+    const date = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultFrom = new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+    const from = req.query.from === undefined ? defaultFrom : req.query.from;
+    const to = req.query.to === undefined ? today : req.query.to;
+    const instanceId = req.query.instanceId === undefined || req.query.instanceId === "" ? null : req.query.instanceId;
+    if ((instanceId !== null && (typeof instanceId !== "string" || instanceId.length > 80)) || !date(from) || !date(to) || from > to || Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`) > 365 * 86400000) {
+      return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "choose valid dates no more than 366 days apart" });
+    }
+    const report = await queries.instanceReport({ instanceId, from, to });
+    if (instanceId && !report.instances.length) return res.status(404).json({ ok: false, code: "INSTANCE_NOT_FOUND", error: "no such instance" });
+    res.json({ ok: true, source: "durable", from, to, ...report });
+  }));
+
+  router.get("/public/instances", wrap(async (_req, res) => {
+    if (!db) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "instance directory unavailable" });
+    const result = await db.query(`SELECT slug,display_name,description,branding FROM game_instances
+      WHERE status='active' AND public_visible=true ORDER BY display_name`);
+    res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+    res.json({ ok: true, instances: result.rows.map((row) => ({ ...row, branding: publicInstanceBranding(row.branding) })) });
+  }));
+
+  router.get("/public/instances/:slug", wrap(async (req, res) => {
+    if (!db) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "instance directory unavailable" });
+    const result = await db.query(`SELECT slug,display_name,description,branding FROM game_instances
+      WHERE slug=$1 AND status='active' AND public_visible=true`, [req.params.slug]);
+    if (!result.rowCount) return res.status(404).json({ ok: false, code: "INSTANCE_NOT_FOUND", error: "no active public instance" });
+    res.setHeader("Cache-Control", "public, max-age=30, stale-while-revalidate=60");
+    res.json({ ok: true, instance: { ...result.rows[0], branding: publicInstanceBranding(result.rows[0].branding) } });
+  }));
+
   router.get(
     "/overview",
     requireOwner,
@@ -661,6 +865,7 @@ export function createAdminRouter({
           for (const a of room.awardList()) recentWinners.push({ roomId: room.roomId, gameNumber: room.gameNumber || 0, pattern: a.pattern, points: a.points, playerId: a.playerId, displayName: a.name, awardedAt: null });
           for (const c of room.claimLog || []) recentClaims.push({ roomId: room.roomId, gameNumber: room.gameNumber || 0, pattern: c.pattern, status: c.accepted ? "AWARDED" : "REJECTED", reason: c.reason, playerId: c.playerId, displayName: c.name, decidedAt: c.at ? new Date(c.at).toISOString() : null });
         }
+        const healthReport = healthProbe ? await healthProbe.report().catch(() => null) : null;
         return res.json({
           ok: true,
           source: "live",
@@ -683,20 +888,25 @@ export function createAdminRouter({
           recentCompleted: [],
           recentWinners: recentWinners.slice(0, 8),
           recentClaims: recentClaims.slice(0, 8),
-          health: { database: "not-configured", app: "ok" },
+          recentPlatformActivity: await audit.recent({ limit: 8 }),
+          backupStatus: await readBackupStatus(),
+          health: ownerHealthSummary(healthReport),
           live,
           note: "Live, in-process data only. Start the server with a database to record durable history.",
         });
       }
 
-      const [totals, byStatus, open, completed, winners, claims, health] = await Promise.all([
+      const [totals, platform, byStatus, open, completed, winners, claims, healthReport, activity, backupStatus] = await Promise.all([
         queries.totals(),
+        queries.platformCounts(),
         queries.roomsByStatus(),
         queries.openRooms({ limit: 30 }),
         queries.recentlyCompleted({ limit: 8 }),
         queries.recentWinners({ limit: 8 }),
         queries.recentClaims({ limit: 8 }),
-        queries.health().catch(() => ({ ok: false })),
+        healthProbe ? healthProbe.report().catch(() => null) : queries.health().catch(() => ({ ok: false })),
+        queries.recentPlatformActivity({ limit: 8 }),
+        readBackupStatus(),
       ]);
       res.json({
         ok: true,
@@ -710,11 +920,14 @@ export function createAdminRouter({
           paused: byStatus.PAUSED,
           openTotal: byStatus.WAITING + byStatus.RUNNING + byStatus.PAUSED,
         },
+        platform,
         rooms: open.map((room) => ({ ...room, liveInProcess: liveById.has(room.roomId) })),
         recentCompleted: completed,
         recentWinners: winners,
         recentClaims: claims,
-        health: { database: health && health.ok ? "ok" : "down", app: "ok" },
+        recentPlatformActivity: activity,
+        backupStatus,
+        health: ownerHealthSummary(healthProbe ? healthReport : null, healthProbe ? null : healthReport),
         live,
       });
     })
@@ -776,7 +989,15 @@ export function createAdminRouter({
       }
       if (chosen.patterns) overrides.patterns = chosen.patterns;
 
-      const created = await controller.createManagedRoom({ hostName: "Operator", overrides });
+      const instanceId = typeof body.instanceId === "string" ? body.instanceId : "regular";
+      if (durable) {
+        const instance = await db.query("SELECT status FROM game_instances WHERE instance_id=$1", [instanceId]);
+        if (!instance.rowCount || instance.rows[0].status !== "active") {
+          return res.status(409).json({ ok: false, code: "INSTANCE_UNAVAILABLE", error: "rooms can only be created in an active instance" });
+        }
+      }
+
+      const created = await controller.createManagedRoom({ hostName: "Operator", overrides, instanceId });
       if (!created.ok) {
         return res.status(statusForCode(created.code)).json({ ok: false, code: created.code || "CREATE_FAILED", error: created.error || "the room could not be created" });
       }
@@ -787,6 +1008,7 @@ export function createAdminRouter({
         roomCode: created.roomId,
         metadata: {
           name,
+          instanceId,
           callIntervalMs,
           claimWindowCalls: overrides.claimWindowCalls,
           enabledPatterns: chosen.enabled,
@@ -858,6 +1080,31 @@ export function createAdminRouter({
   );
 
   // ------------------------------------------------------- lifecycle mutations
+
+  router.post(
+    "/games/:roomId/recover",
+    requireOwner,
+    wrap(async (req, res) => {
+      const { roomId } = req.params;
+      if (!isRoomId(roomId)) return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "invalid room id" });
+      if (!(await spendMutationBudget(req, res))) return undefined;
+      if (!durable) return res.status(503).json({ ok: false, code: "ADMIN_UNAVAILABLE", error: "room recovery requires durable storage" });
+      const result = await controller.retryRecovery({ roomId });
+      await record(req, ADMIN_ACTIONS.ROOM_RECOVER, {
+        targetType: "room",
+        targetId: roomId,
+        roomCode: roomId,
+        metadata: result.ok
+          ? { outcome: "success", state: result.room.state, cursor: result.room.cursor, gameNumber: result.room.gameNumber, operatorRetry: true }
+          : { outcome: "refused", code: result.code || "RECOVERY_REQUIRED", operatorRetry: true },
+      });
+      if (!result.ok) {
+        const code = result.code || "RECOVERY_REQUIRED";
+        return res.status(statusForCode(code)).json({ ok: false, code, error: result.error || "recovery was refused" });
+      }
+      res.json({ ok: true, recovered: true, state: result.room.state, room: liveSummary(result.room) });
+    })
+  );
 
   function mutationResult(res, result, onSuccess) {
     if (!result || !result.ok) {
@@ -1303,10 +1550,15 @@ export function createAdminRouter({
     "/health",
     requireOwner,
     wrap(async (req, res) => {
-      const database = durable ? await queries.health().catch(() => ({ ok: false })) : { ok: true, mode: "memory" };
+      const [database, report] = await Promise.all([
+        durable && !healthProbe ? queries.health().catch(() => ({ ok: false })) : Promise.resolve(null),
+        healthProbe ? healthProbe.report().catch(() => null) : Promise.resolve(null),
+      ]);
+      const summary = ownerHealthSummary(report, database);
       res.json({
         ok: true,
-        database: durable ? (database.ok ? "ok" : "down") : "not-configured",
+        ...summary,
+        app: summary.application,
         persistence: durable ? "durable" : "memory",
         processRooms: registry.size(),
         throttle: throttle.backend,
@@ -1315,6 +1567,11 @@ export function createAdminRouter({
       });
     })
   );
+
+  router.get("/backups/status", requireOwner, wrap(async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ ok: true, ...await readBackupStatus() });
+  }));
 
   // --------------------------------------------------------- error boundary
 

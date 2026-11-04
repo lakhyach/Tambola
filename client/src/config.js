@@ -15,9 +15,11 @@
  *     env vars (documented in .env.example). They are baked into the client
  *     bundle, so they are NON-SECRET branding strings only — never paste keys,
  *     tokens or anything sensitive into a VITE_* variable.
- *   • This is a whole-product config, not multi-tenant SaaS. One deployment
- *     serves one brand.
+ *   • This is the deployment fallback brand. Future instance identity must
+ *     come from validated server configuration, not these Vite defaults.
  */
+
+import { DEFAULT_BRAND } from "./brand-defaults.js";
 
 const env = (typeof import.meta !== "undefined" && import.meta.env) || {};
 
@@ -33,25 +35,29 @@ const color = (key, fallback) => {
   return /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(v) ? v : fallback;
 };
 
-/** Boolean override: "true"/true enables, any other value keeps the default. */
-const flag = (key, fallback) => (env[key] === undefined ? fallback : env[key] === "true" || env[key] === true);
-
 export const config = {
   brand: {
-    name: str("VITE_APP_NAME", "Tambola"),
-    tagline: str("VITE_APP_TAGLINE", "The Obsidian Hall of Ninety Numbers"),
-    subtitle: str("VITE_APP_SUBTITLE", "A free, fast, real-time multiplayer game of Tambola / Housie."),
-    logoPath: str("VITE_APP_LOGO", "/icon/android-chrome-192x192.png"),
-    // the small house label beside the product name in the header and game bar
-    mark: str("VITE_BRAND_EYEBROW", "Obsidian Hall"),
+    name: (() => {
+      const name = str("VITE_APP_NAME", DEFAULT_BRAND.name);
+      return name.trim().toLowerCase() === "tambola house" ? DEFAULT_BRAND.name : name;
+    })(),
+    tagline: str("VITE_APP_TAGLINE", "A festive home for Tambola"),
+    subtitle: str("VITE_APP_SUBTITLE", DEFAULT_BRAND.subtitle),
+    logoPath: str("VITE_APP_LOGO", `/brand/${DEFAULT_BRAND.logo}`),
+    horizontalLogoPath: str("VITE_APP_HORIZONTAL_LOGO", `/brand/${DEFAULT_BRAND.horizontalLogo}`),
+    compactLogoPath: str("VITE_APP_COMPACT_LOGO", `/brand/${DEFAULT_BRAND.logo}`),
+    iconPath: str("VITE_APP_ICON", `/brand/${DEFAULT_BRAND.icon}`),
+    socialCardPath: str("VITE_APP_SOCIAL_CARD", `/brand/${DEFAULT_BRAND.socialCard}`),
+    // Provisional identity. Alternatives: Roundhouse 90, Rally Ninety.
+    mark: str("VITE_BRAND_EYEBROW", "FESTIVAL GAME NIGHT"),
   },
 
-  // Champagne-gold accent family. Overriding BRAND_COLOR re-tints the single
-  // accent that runs through the whole "Obsidian Hall" identity.
+  // Provisional festival / saffron / gulal identity; replaceable by env.
   theme: {
-    gold: color("VITE_BRAND_COLOR", "#cfab63"),
-    goldBright: color("VITE_BRAND_COLOR_BRIGHT", "#efd49a"),
-    goldDeep: color("VITE_BRAND_COLOR_DEEP", "#9a7a34"),
+    gold: color("VITE_BRAND_COLOR", DEFAULT_BRAND.accent),
+    goldBright: color("VITE_BRAND_COLOR_BRIGHT", "#ffdc8a"),
+    goldDeep: color("VITE_BRAND_COLOR_DEEP", "#c87918"),
+    coral: color("VITE_BRAND_CORAL", "#ff7187"),
   },
 
   // Legal / help links surfaced in the footer and waiting rooms. Left blank by
@@ -68,12 +74,11 @@ export const config = {
   },
 
   i18n: {
-    // Languages the quick-message catalogue and celebration strings ship with.
-    supported: ["en", "hi"],
-    default: str("VITE_DEFAULT_LANG", "en"),
-    // When true, the chat picker offers both languages side by side; when false
-    // it shows only the default language's messages.
-    bilingualPicker: flag("VITE_BILINGUAL_CHAT", true),
+    // Application interface language. Hindi remains available only as a voice
+    // option in the caller; UI text, quick messages, and navigation are English.
+    supported: ["en"],
+    default: "en",
+    bilingualPicker: false,
   },
 };
 
@@ -84,7 +89,8 @@ export function isSupportedLang(lang) {
 
 /** Normalise a raw value to a supported language, falling back to the default. */
 export function resolveLang(lang) {
-  return isSupportedLang(lang) ? lang : config.i18n.default;
+  void lang;
+  return "en";
 }
 
 /**
@@ -98,6 +104,7 @@ export function applyTheme(root = typeof document !== "undefined" ? document.doc
   root.style.setProperty("--oh-gold", gold);
   root.style.setProperty("--oh-gold-bright", goldBright);
   root.style.setProperty("--oh-gold-deep", goldDeep);
+  root.style.setProperty("--oh-brand-coral", config.theme.coral);
   // Derive the translucent gold hairline from the accent so it stays in sync.
   const alpha = gold.replace(/^#/, "").match(/.{2}/g);
   if (alpha && alpha.length >= 3) {

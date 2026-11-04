@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { socket } from "../net.js";
+import { bookingCopy, useBookingLanguage } from "../i18n/booking-locale.js";
 
 /**
  * Live Socket.IO status. Reads the transport the same way the rest of the app
@@ -7,6 +8,7 @@ import { socket } from "../net.js";
  */
 // eslint-disable-next-line react/prop-types
 const ConnectionIndicator = ({ className = "" }) => {
+  const language = useBookingLanguage();
   const [status, setStatus] = useState(socket.connected ? "online" : "connecting");
 
   useEffect(() => {
@@ -25,8 +27,7 @@ const ConnectionIndicator = ({ className = "" }) => {
 
   const tone =
     status === "online" ? "var(--oh-ok)" : status === "connecting" ? "var(--oh-warn)" : "var(--oh-danger)";
-  const word =
-    status === "online" ? "Connected" : status === "connecting" ? "Reconnecting…" : "Offline";
+  const word = bookingCopy(language, status === "online" ? "connectionConnected" : status === "connecting" ? "connectionReconnecting" : "connectionOffline");
 
   return (
     <span

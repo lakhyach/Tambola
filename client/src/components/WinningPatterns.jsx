@@ -2,6 +2,7 @@
 import Panel from "./Panel.jsx";
 import Button from "./Button.jsx";
 import PatternDiagram from "./PatternDiagram.jsx";
+import { bookingClaimReason, bookingCopy, bookingPatternHint, bookingPatternName, formatBookingNumber } from "../i18n/booking-locale.js";
 
 /**
  * The claim controls, driven entirely by the SERVER's view of this room's
@@ -18,7 +19,8 @@ import PatternDiagram from "./PatternDiagram.jsx";
 
 // A pattern's ordinal reads as a place (1st/2nd) when a prize has more than one
 // winner - the second Full House names a runner-up, not a tied field.
-function ordinalWord(n) {
+function ordinalWord(n, language = "en") {
+  if (language === "hi") return `${formatBookingNumber(n, language)}.`;
   if (n === 1) return "1st";
   if (n === 2) return "2nd";
   if (n === 3) return "3rd";
@@ -26,11 +28,12 @@ function ordinalWord(n) {
 }
 
 // Human ticket attribution: one ticket, or the several a seat-level prize names.
-function ticketLabel(award) {
+function ticketLabel(award, language = "en") {
+  const identifier = (value) => typeof value === "string" && !/^\d+$/.test(value) ? value : formatBookingNumber(value, language);
   if (Array.isArray(award.ticketNos) && award.ticketNos.length) {
-    return `Tickets ${award.ticketNos.join(", ")}`;
+    return bookingCopy(language, "ticketsLabel", { numbers: award.ticketNos.map(identifier).join(", ") });
   }
-  return Number.isInteger(award.ticketNo) ? `Ticket ${award.ticketNo}` : "";
+  return award.ticketNo != null ? bookingCopy(language, "ticketLabel", { number: identifier(award.ticketNo) }) : "";
 }
 
 const WinningPatterns = ({
@@ -40,11 +43,15 @@ const WinningPatterns = ({
   claimStates = [],
   note = null,
   canClaim = false,
+  pendingPattern = null,
+  claimFeedback = null,
   myPlayerId,
   onSubmit,
+  language = "en",
 }) => {
+  const t = (key, variables) => bookingCopy(language, key, variables);
   const stateByPattern = new Map(claimStates.map((s) => [s.pattern, s]));
-  const labelById = new Map(patterns.map((p) => [p.id, p.label]));
+  const labelById = new Map(patterns.map((p) => [p.id, bookingPatternName(language, p.id, p.label)]));
   const awardsByPattern = new Map();
   for (const a of awards) {
     if (!awardsByPattern.has(a.pattern)) awardsByPattern.set(a.pattern, []);
@@ -54,7 +61,7 @@ const WinningPatterns = ({
   return (
     <Panel className="p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="oh-eyebrow">Winning Patterns</h2>
+        <h2 className="oh-eyebrow">{t("winningPatterns")}</h2>
         {note ? (
           <span className="oh-eyebrow" style={{ color: "var(--oh-text-faint)" }}>
             {note}
@@ -63,8 +70,14 @@ const WinningPatterns = ({
       </div>
       {canClaim ? (
         <p style={{ margin: "-4px 0 12px", fontSize: 12, color: "var(--oh-text-faint)" }}>
-          A claim is checked against every ticket you hold, and the award names the
-          ticket it came from.
+          {t("claimCheckExplanation")}
+        </p>
+      ) : null}
+
+      {claimFeedback ? (
+        <p className={`oh-claim-feedback-note oh-claim-feedback-note--${claimFeedback.state}`} role="status" aria-live="polite" aria-atomic="true">
+          <span className="oh-claim-feedback-note__label">{t(`claimState${claimFeedback.state[0].toUpperCase()}${claimFeedback.state.slice(1)}`)}</span>
+          <span>{claimFeedback.message}</span>
         </p>
       ) : null}
 
@@ -85,10 +98,10 @@ const WinningPatterns = ({
             >
               <div className="oh-pattern-main">
                 <div className="oh-pattern-head">
-                  <span className="oh-pattern-name">{view.label}</span>
-                  <span className="oh-num oh-pattern-points">+{view.points}</span>
+                  <span className="oh-pattern-name">{bookingPatternName(language, view.id, view.label)}</span>
+                <span className="oh-num oh-pattern-points">+{formatBookingNumber(view.points, language)}</span>
                 </div>
-                <p className="oh-pattern-hint">{view.hint}</p>
+                <p className="oh-pattern-hint">{bookingPatternHint(language, view.id, view.hint)}</p>
 
                 {view.cells ? (
                   <PatternDiagram
@@ -96,14 +109,15 @@ const WinningPatterns = ({
                     example={example}
                     note={view.diagramNote}
                     label={view.label}
+                    language={language}
                   />
                 ) : view.kind === "count" ? (
-                  <div className="oh-pattern-count">Any {view.need} of the ticket&rsquo;s 15 numbers</div>
+                  <div className="oh-pattern-count">{t("anyTicketNumbers", { need: formatBookingNumber(view.need, language) })}</div>
                 ) : null}
 
                 {view.requires ? (
                   <div className="oh-pattern-requires">
-                    awarded only after the {labelById.get(view.requires.pattern) || view.requires.pattern} is settled
+                  {t("awardedAfter", { pattern: labelById.get(view.requires.pattern) || view.requires.pattern })}
                   </div>
                 ) : null}
 
@@ -111,27 +125,28 @@ const WinningPatterns = ({
                 {!awarded ? (
                   eligible ? (
                     <div className="oh-pattern-elig oh-pattern-elig--ready">
-                      You&rsquo;ve completed this — claim it
+                      {t("completedClaim")}
                     </div>
                   ) : state && state.reason ? (
-                    <div className="oh-pattern-elig">{state.reason}</div>
+                    <div className="oh-pattern-elig">{bookingClaimReason(language, state.reason)}</div>
                   ) : null
                 ) : null}
               </div>
 
               <div className="oh-pattern-side">
+                {pendingPattern === view.id ? <span className="oh-claim-pending" role="status" aria-live="polite">{t("claimPending")}</span> : null}
                 {awarded ? (
                   <ul className="oh-pattern-awards" style={{ listStyle: "none", margin: 0, padding: 0 }}>
                     {winners.map((w, i) => (
                       <li key={`${w.pattern}-${i}`} className="oh-pattern-award">
                         <span className="oh-pattern-award__who">
-                          {w.playerId === myPlayerId ? "You won" : w.name}
+                          {w.playerId === myPlayerId ? t("youWon") : w.name}
                         </span>
                         <span className="oh-pattern-award__meta">
                           {Number.isInteger(w.winnerOrdinal) && winners.length > 1
-                            ? `${ordinalWord(w.winnerOrdinal)} · `
+                            ? `${ordinalWord(w.winnerOrdinal, language)} · `
                             : ""}
-                          {ticketLabel(w)}
+                          {ticketLabel(w, language)}
                         </span>
                       </li>
                     ))}
@@ -141,11 +156,12 @@ const WinningPatterns = ({
                     variant={claimLive ? "gold" : "ghost"}
                     size="sm"
                     className="oh-claim"
-                    disabled={!claimLive}
+                    disabled={!claimLive || Boolean(pendingPattern)}
                     onClick={() => onSubmit(view.id)}
-                    aria-label={`Claim ${view.label}`}
+                    aria-busy={pendingPattern === view.id}
+                    aria-label={t("claimPattern", { pattern: bookingPatternName(language, view.id, view.label) })}
                   >
-                    Claim
+                    {t("claim")}
                   </Button>
                 )}
               </div>

@@ -13,6 +13,7 @@ import {
   celebrateSound,
   getAnnounceSettings,
   onAnnouncePending,
+  onSpeechVoicesChanged,
   repeatAnnouncement,
   resetAnnouncements,
   seedAnnouncements,
@@ -23,25 +24,29 @@ import GameShell from "./components/GameShell.jsx";
 import CelebrationOverlay from "./components/CelebrationOverlay.jsx";
 import { patternEvent, finalEvent } from "./lib/celebration.js";
 import { ticketSheets } from "./lib/playerview.js";
-import { refusalText } from "./lib/refusals.js";
 import { config, resolveLang } from "./config.js";
+import { bookingCopy, bookingPatternName, bookingRefusalText, formatBookingNumber, useBookingLanguage } from "./i18n/booking-locale.js";
 
-const CELEBRATE_LANG = resolveLang(config.i18n.default);
+const DEFAULT_CELEBRATE_LANG = resolveLang(config.i18n.default);
 
 // `role` is a literal from HostGame.jsx ("host") or PlayerGame.jsx ("player").
 // eslint-disable-next-line react/prop-types
 const GameScreen = ({ role }) => {
   const navigate = useNavigate();
   const isHost = role === "host";
+  const language = useBookingLanguage();
 
   const [snap, setSnap] = useState(null);
   const [serverRole, setServerRole] = useState(null);
+  const [sessionResumeCount, setSessionResumeCount] = useState(0);
   // When THIS snapshot arrived. The caller console's elapsed clock ticks locally
   // from this anchor between snapshots (lib/caller.js:elapsedAt) instead of
   // polling the server once a second.
   const [snapAt, setSnapAt] = useState(0);
   const [connected, setConnected] = useState(() => socket.connected);
   const [busy, setBusy] = useState(false);
+  const [claimPending, setClaimPending] = useState(null);
+  const [claimFeedback, setClaimFeedback] = useState(null);
   const [message, setMessage] = useState("");
   const [sound, setSound] = useState(getAnnounceSettings());
   const [celebrations, setCelebrations] = useState([]);
@@ -51,7 +56,10 @@ const GameScreen = ({ role }) => {
   // behaviour we want — after a refresh the past events are not re-sent, so
   // nothing replays.
   const celebrated = useRef(new Set());
+  const claimPendingRef = useRef(false);
   const roomIdRef = useRef("");
+  const languageRef = useRef(language);
+  useEffect(() => { languageRef.current = language; }, [language]);
 
   const refresh = useCallback(async () => {
     const result = await fetchState();
@@ -104,7 +112,7 @@ const GameScreen = ({ role }) => {
         if (!resumed.ok) {
           if (isSeatGone(resumed.code)) {
             clearSession();
-            flash(resumed.error || "this room is gone", 2000);
+            flash(languageRef.current === "hi" ? bookingCopy("hi", "roomGone") : resumed.error || bookingCopy("en", "roomGone"), 2000);
             setTimeout(() => navigate("/"), 1800);
           } else if (resumed.code === "NOT_PLAYER") {
             // No saved seat on this device at all. Do not render a ghost board
@@ -112,7 +120,7 @@ const GameScreen = ({ role }) => {
             // the entry screen for their role.
             navigate(isHost ? "/host" : "/player", { replace: true });
           } else if (resumed.code !== "DISCONNECTED") {
-            flash("Reconnecting to the room…", 2500);
+            flash(bookingCopy(languageRef.current, "reconnectingRoom"), 2500);
           }
           return;
         }
@@ -131,6 +139,9 @@ const GameScreen = ({ role }) => {
         // (ticket:assigned) that may arrive before the first full one.
         if (resumed.role) setServerRole(resumed.role);
         await refresh();
+        // Child panels can mount before this async seat re-attachment finishes.
+        // Let them reload room-scoped data after the server has attached us.
+        setSessionResumeCount((count) => count + 1);
       } finally {
         resuming = false;
       }
@@ -162,7 +173,7 @@ const GameScreen = ({ role }) => {
         // A brand-new round forgets the previous round's call-index guard so the
         // same indices announce again; a finished/ended round drops any
         // announcement still queued behind the last call.
-        if (data && data.state === "WAITING") resetAnnouncements();
+        if (data && data.state === "WAITING") { resetAnnouncements(); setClaimFeedback(null); }
         if (data && (data.state === "COMPLETED" || data.state === "PAUSED")) stopAnnouncements();
         refresh();
       }),
@@ -170,8 +181,8 @@ const GameScreen = ({ role }) => {
       on("host:changed", () => alive && refresh()),
       on("game:completed", (data) => {
         if (!alive) return;
-        flash("Game over — " + (data.leaderboard?.[0]?.player || "nobody") + " leads", 5000);
-        enqueueCelebration(finalEvent(data, roomIdRef.current, CELEBRATE_LANG));
+        flash(bookingCopy(languageRef.current, "gameOverLeader", { leader: data.leaderboard?.[0]?.player || bookingCopy(languageRef.current, "noOneLeads") }), 5000);
+        enqueueCelebration(finalEvent(data, roomIdRef.current, languageRef.current || DEFAULT_CELEBRATE_LANG));
         refresh();
       }),
       on("claim:result", (data) => {
@@ -180,9 +191,17 @@ const GameScreen = ({ role }) => {
           // The winning ticket is part of the server's verdict (commitClaim
           // records it), so the toast can say WHICH ticket took the prize
           // instead of leaving a multi-ticket player to guess.
-          const onTicket = Number.isInteger(data.ticketNo) ? " on ticket " + data.ticketNo : "";
-          flash(data.name + " won " + data.label + onTicket, 3500);
-          enqueueCelebration(patternEvent(data, roomIdRef.current, CELEBRATE_LANG));
+          const lang = languageRef.current;
+          const onTicket = Number.isInteger(data.ticketNo)
+            ? bookingCopy(lang, "wonOnTicket", { number: formatBookingNumber(data.ticketNo, lang) })
+            : "";
+          flash(bookingCopy(lang, "playerWonPattern", {
+            name: data.name,
+            pattern: bookingPatternName(lang, data.pattern, data.label),
+            ticket: onTicket,
+            points: formatBookingNumber(data.points, lang),
+          }), 3500);
+          enqueueCelebration(patternEvent(data, roomIdRef.current, lang || DEFAULT_CELEBRATE_LANG));
         }
         refresh();
       }),
@@ -204,10 +223,10 @@ const GameScreen = ({ role }) => {
         if (!alive) return;
         stopAnnouncements();
         clearSession();
-        flash("Room " + (data.roomId || "") + " is closed", 2000);
+        flash(bookingCopy(languageRef.current, "roomIsClosed", { room: data.roomId || "" }), 2000);
         setTimeout(() => navigate("/"), 1800);
       }),
-      on("app:error", (data) => alive && flash(data.error || "the server refused that", 2500)),
+      on("app:error", (data) => alive && flash(bookingRefusalText(languageRef.current, data), 2500)),
     ];
 
     // Track how many announcements are waiting behind the current one, so the
@@ -217,13 +236,19 @@ const GameScreen = ({ role }) => {
     const offPending = onAnnouncePending((pending) => {
       if (!alive) return;
       const next = getAnnounceSettings();
-      setSound((s) => (s.pending === pending && s.dead === next.dead ? s : { ...s, pending, dead: next.dead }));
+      setSound((s) => (s.pending === pending && s.dead === next.dead && s.voiceSupport?.supported === next.voiceSupport?.supported
+        ? s
+        : { ...s, pending, dead: next.dead, voiceSupport: next.voiceSupport }));
+    });
+    const offVoices = onSpeechVoicesChanged(() => {
+      if (alive) setSound(getAnnounceSettings());
     });
 
     return () => {
       alive = false;
       off.forEach((stop) => stop());
       offPending();
+      offVoices();
       stopAnnouncements();
       if (messageTimer.current) clearTimeout(messageTimer.current);
     };
@@ -253,8 +278,8 @@ const GameScreen = ({ role }) => {
     async (count) => {
       const result = await call("tickets:select", { count });
       if (!result.ok) {
-        if (result.code === "TICKET_LIMIT") flash("This room allows at most " + result.max + " tickets", 2500);
-        else flash(refusalText(result), 2500);
+        if (result.code === "TICKET_LIMIT") flash(bookingCopy(language, "ticketLimit", { count: formatBookingNumber(result.max, language) }), 2500);
+        else flash(bookingRefusalText(language, result), 2500);
         await refresh();
         return result;
       }
@@ -267,23 +292,41 @@ const GameScreen = ({ role }) => {
       }));
       return result;
     },
-    [flash, refresh]
+    [flash, refresh, language]
   );
 
   const submitClaim = useCallback(
     async (pattern) => {
-      const result = await call("claim:submit", { pattern });
-      if (!result.ok) {
-        flash(refusalText(result), 2500);
-        return;
+      if (claimPendingRef.current) return;
+      claimPendingRef.current = true;
+      setClaimFeedback(null);
+      setClaimPending(pattern);
+      try {
+        const result = await call("claim:submit", { pattern });
+        if (!result.ok) {
+          const duplicate = result.code === "ALREADY_AWARDED" || result.code === "ALREADY_CLAIMED_BY_YOU";
+          setClaimFeedback({ state: duplicate ? "duplicate" : "rejected", message: bookingRefusalText(language, result) });
+          return;
+        }
+        if (result.won) {
+          const onTicket = Number.isInteger(result.ticketNo)
+            ? `${bookingCopy(language, "ticketLabel", { number: formatBookingNumber(result.ticketNo, language) })} · `
+            : "";
+          setClaimFeedback({ state: "approved", message: bookingCopy(language, "claimCompletedToast", {
+            ticket: onTicket,
+            pattern: bookingPatternName(language, result.pattern, result.label),
+            points: formatBookingNumber(result.points, language),
+          }) });
+        } else {
+          setClaimFeedback({ state: "rejected", message: bookingRefusalText(language, result) });
+        }
+        await refresh();
+      } finally {
+        claimPendingRef.current = false;
+        setClaimPending(null);
       }
-      if (result.won) {
-        const onTicket = Number.isInteger(result.ticketNo) ? "Ticket " + result.ticketNo + " · " : "";
-        flash(onTicket + "you completed " + result.label + " · +" + result.points, 3500);
-      }
-      await refresh();
     },
-    [flash, refresh]
+    [refresh, language]
   );
 
   const hostAction = useCallback(
@@ -291,12 +334,19 @@ const GameScreen = ({ role }) => {
       if (busy) return;
       setBusy(true);
       const result = await call(event, payload);
-      if (!result.ok) flash(refusalText(result), 2200);
+      if (!result.ok) flash(bookingRefusalText(language, result), 2200);
       await refresh();
       setBusy(false);
+      return result;
     },
-    [busy, flash, refresh]
+    [busy, flash, refresh, language]
   );
+
+  const removePlayer = useCallback(async (playerId) => {
+    const player = snap?.players?.find((candidate) => candidate.id === playerId);
+    const result = await hostAction("room:remove-player", { playerId });
+    if (result?.ok) flash(bookingCopy(language, "participantRemoved", { name: player?.name || "Player" }), 2500);
+  }, [hostAction, snap, flash, language]);
 
   // Master switch: turns the whole announcement layer on/off. Speech only
   // actually engages when the browser reports an engine (autoplay gesture too).
@@ -306,9 +356,9 @@ const GameScreen = ({ role }) => {
     setAnnounceSetting("speech", next && sound.available.speech);
     setSound(getAnnounceSettings());
     if (next && !sound.available.speech) {
-      flash("Sound on. Spoken numbers need a browser voice engine; the chime plays.", 3500);
+      flash(`${bookingCopy(language, "announcementsOn")} · ${bookingCopy(language, "speechEngineUnavailable")}`, 3500);
     }
-  }, [sound, flash]);
+  }, [sound, flash, language]);
 
   // Mute the SPOKEN numbers alone — the chime and everything visual continue.
   // While the engine is dead the same tap is a RETRY instead: the switch is
@@ -316,16 +366,16 @@ const GameScreen = ({ role }) => {
   // announce-queue.js setEnabled). Muting stays reachable from the master switch.
   const toggleSpeech = useCallback(() => {
     if (!sound.available.speech) {
-      flash("This browser has no speech engine, so there is nothing to mute.", 3000);
+      flash(bookingCopy(language, "speechCannotMute"), 3000);
       return;
     }
     if (sound.dead) {
       setSound(setAnnounceSetting("speech", true));
-      flash("Trying the spoken numbers again…", 2000);
+      flash(bookingCopy(language, "retrySpeech"), 2000);
       return;
     }
     setSound(setAnnounceSetting("speech", !sound.speech));
-  }, [sound, flash]);
+  }, [sound, flash, language]);
 
   // Say it out loud exactly once when the engine stops: a muted-looking chip
   // with a live board is the one contradiction this screen must never ship.
@@ -333,16 +383,16 @@ const GameScreen = ({ role }) => {
   useEffect(() => {
     if (sound.dead && !announcedDeath.current) {
       announcedDeath.current = true;
-      flash("Spoken numbers stopped in this browser. The board keeps calling — tap RETRY to hear them again.", 6000);
+      flash(bookingCopy(language, "speechStoppedNotice"), 6000);
     } else if (!sound.dead) {
       announcedDeath.current = false;
     }
-  }, [sound.dead, flash]);
+  }, [sound.dead, flash, language]);
 
-  // Switch the announcement language (English <-> Hindi). Display text is
-  // unaffected; only the voice and the spoken number form change.
+  // Cycle the caller output language. UI copy remains controlled by the app's
+  // separate interface-language preference.
   const toggleSpeechLang = useCallback(() => {
-    const next = sound.speechLang === "hi" ? "en" : "hi";
+    const next = sound.speechLang === "en" ? "hi" : sound.speechLang === "hi" ? "hinglish" : "en";
     setSound(setAnnounceSetting("speechLang", next));
   }, [sound]);
 
@@ -369,9 +419,9 @@ const GameScreen = ({ role }) => {
     const last = snap?.lastCall;
     if (!Number.isInteger(last)) return;
     if (!repeatAnnouncement(last)) {
-      flash("The voice is off or still reading — nothing was repeated.", 2200);
+    flash(bookingCopy(language, "voiceNotRepeated"), 2200);
     }
-  }, [snap?.lastCall, flash]);
+  }, [snap?.lastCall, flash, language]);
 
   // One settings funnel for the console's voice panel (language, rate, volume,
   // chosen voice, speech on/off); the announce layer clamps and persists.
@@ -426,13 +476,16 @@ const GameScreen = ({ role }) => {
     onRepeatNumber: repeatNumber,
     onSetInterval: setCallInterval,
     onClaim: submitClaim,
+    claimPending,
+    claimFeedback,
     onHostAction: hostAction,
+    onRemovePlayer: isHost ? removePlayer : undefined,
     onSelectTicketCount: selectTicketCount,
   };
 
   return (
     <>
-      <GameShell role={isHost ? "host" : "player"} view={view} />
+      <GameShell role={isHost ? "host" : "player"} view={view} sessionResumeCount={sessionResumeCount} />
       <CelebrationOverlay
         event={celebrations[0] || null}
         onDismiss={dismissCelebration}

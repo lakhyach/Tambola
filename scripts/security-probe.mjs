@@ -170,7 +170,7 @@ async function main() {
     // A probe fires far more events than a player: the budget is proved
     // separately, on the second instance, with the shipped numbers.
     limits: { burst: 5000, perSecond: 2000 },
-    config: { autoCall: false, chatIntervalMs: 0, callIntervalMs: 60000, maxTicketsPerPlayer: 4 },
+    config: { autoCall: false, chatIntervalMs: 0, callIntervalMs: 60000 },
     log: () => {},
   });
   const mainUrl = "http://127.0.0.1:" + (await main.listen(0));
@@ -226,7 +226,7 @@ async function main() {
     await check("no inline script and no eval is allowed", async () => {
       const csp = shell.headers["content-security-policy"] || "";
       assert.ok(/script-src 'self'/.test(csp), "script-src is not pinned to 'self'");
-      assert.ok(!/script-src[^;]*unsafe-eval/.test(csp), "script-src allows unsafe-eval");
+      assert.ok(!/script-src[^;]*'unsafe-eval'/.test(csp), "script-src allows JavaScript unsafe-eval");
       assert.ok(!/script-src[^;]*unsafe-inline/.test(csp), "script-src allows unsafe-inline");
       return "script-src 'self'";
     });
@@ -466,18 +466,20 @@ async function main() {
     });
 
     await check("a ticket count over the room ceiling is refused by the room", async () => {
-      const ack = await call(player, "tickets:select", { count: 5 });
-      refused(ack, "asking for 5 when the ceiling is 4", "TICKET_LIMIT");
-      assert.equal(ack.max, 4, "the refusal does not name the ceiling: " + JSON.stringify(ack));
-      return "TICKET_LIMIT (max 4)";
+      const selection = accepted(await call(player, "tickets:select", { count: 5 }), "five tickets within shared capacity");
+      assert.equal(selection.ticketCount, 5);
+      const ack = await call(player, "tickets:select", { count: selection.maxTickets + 1 });
+      refused(ack, "asking for more than the remaining shared capacity", "TICKET_LIMIT");
+      assert.equal(ack.max, selection.maxTickets, "the refusal names the current ceiling");
+      return "TICKET_LIMIT (shared room capacity)";
     });
 
     await check("a ticket count outside the hard range is refused as a payload", async () => {
-      refused(await call(player, "tickets:select", { count: 999 }), "999 tickets", "BAD_PAYLOAD");
+      refused(await call(player, "tickets:select", { count: Number.MAX_SAFE_INTEGER + 1 }), "unsafe integer count", "BAD_PAYLOAD");
       refused(await call(player, "tickets:select", { count: 0 }), "0 tickets", "BAD_PAYLOAD");
       refused(await call(player, "tickets:select", { count: 2.5 }), "2.5 tickets", "BAD_PAYLOAD");
       refused(await call(player, "tickets:select", { count: "3" }), "a stringified count", "BAD_PAYLOAD");
-      return "999 / 0 / 2.5 / \"3\"";
+      return "unsafe integer / 0 / 2.5 / \"3\"";
     });
 
     const picked = accepted(await call(player, "tickets:select", { count: 2 }), "choosing 2 tickets");

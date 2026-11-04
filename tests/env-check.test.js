@@ -31,6 +31,14 @@ test("a complete production environment passes with no errors", () => {
   assert.equal(result.errors, 0);
 });
 
+test("the Ninety Club MFA issuer default is accepted while the legacy brand is flagged", () => {
+  const defaultIssuer = validateEnv({ ...GOOD, MFA_ISSUER: "" });
+  assert.equal(ids(defaultIssuer, "warn").includes("MFA_ISSUER"), false);
+
+  const legacyIssuer = validateEnv({ ...GOOD, MFA_ISSUER: "Tambola" });
+  assert.equal(ids(legacyIssuer, "warn").includes("MFA_ISSUER"), true);
+});
+
 test("production without a database is refused, not degraded", () => {
   const result = validateEnv({ ...GOOD, DATABASE_URL: "" });
   assert.equal(result.ok, false);

@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 import Panel from "./Panel.jsx";
+import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
 
 /**
  * The last few official calls, newest first, each tagged with its position in
  * the sequence so a player can scan momentum at a glance.
  */
 // eslint-disable-next-line react/prop-types
-const CallHistory = ({ calledNumbers = [] }) => {
+const CallHistory = ({ calledNumbers = [], language = "en" }) => {
   const recent = useMemo(() => {
     const total = calledNumbers.length;
     return calledNumbers
@@ -16,29 +17,24 @@ const CallHistory = ({ calledNumbers = [] }) => {
   }, [calledNumbers]);
 
   return (
-    <Panel className="p-4">
-      <h2 className="oh-eyebrow mb-3">Recent Calls</h2>
+    <Panel className="p-4 festival-call-history">
+      <h2 className="oh-eyebrow mb-3">{bookingCopy(language, "recentCalls")}</h2>
       {recent.length === 0 ? (
-        <p style={{ color: "var(--oh-text-faint)", fontSize: 13 }}>Nothing called yet.</p>
+        <p style={{ color: "var(--oh-text-faint)", fontSize: 13 }}>{bookingCopy(language, "nothingCalled")}</p>
       ) : (
-        <div className="flex flex-wrap gap-2">
+        <ol className="oh-call-history" aria-label={bookingCopy(language, "recentCalls")}>
           {recent.map(({ n, ordinal }) => (
-            <div
+            <li
               key={`${ordinal}-${n}`}
-              className="oh-num flex flex-col items-center"
-              style={{
-                minWidth: 44,
-                padding: "6px 8px",
-                borderRadius: 12,
-                background: "var(--oh-inset)",
-                border: "1px solid var(--oh-line)",
-              }}
+              className="oh-call-ball"
+              data-latest={String(ordinal === calledNumbers.length)}
+              aria-label={`${bookingCopy(language, "callOrdinal", { count: formatBookingNumber(ordinal, language), total: formatBookingNumber(calledNumbers.length, language) })}: ${formatBookingNumber(n, language)}`}
             >
-              <span style={{ fontSize: 18, fontWeight: 700, color: "var(--oh-gold-bright)" }}>{n}</span>
-              <span className="oh-eyebrow" style={{ fontSize: 9 }}>{ordinal}</span>
-            </div>
+              <span className="oh-call-ball__number">{formatBookingNumber(n, language)}</span>
+              <span className="oh-call-ball__ordinal">{formatBookingNumber(ordinal, language)}</span>
+            </li>
           ))}
-        </div>
+        </ol>
       )}
     </Panel>
   );

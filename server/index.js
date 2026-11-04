@@ -47,12 +47,19 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createRoomRegistry } from "./net/registry.js";
 import { registerGameHandlers } from "./net/socket.js";
+import { createSarvamTtsService } from "./voice/sarvam-tts.js";
 import { DEFAULT_CONFIG, GameState } from "./game/engine.js";
 import { createGameController } from "./persist/controller.js";
 import { createCallScheduler } from "./persist/scheduler.js";
 import { recoverRooms } from "./persist/recovery.js";
 import { createMemorySessions } from "./persist/memory-sessions.js";
 import { createAdmin } from "./admin/index.js";
+import { mfaKeyFromEnv } from "./admin/mfa.js";
+import { createModeratorRouter } from "./moderator/routes.js";
+import { createAdminBookingRouter, createPublicBookingRouter } from "./bookings/routes.js";
+import { createPublicThemeRouter } from "./themes/routes.js";
+import { createPublicPosterRouter } from "./posters/routes.js";
+import { publicPlatformManifest } from "./branding/platform.js";
 import { createLogger, requestLogger } from "./observability/log.js";
 import { createHealth } from "./observability/health.js";
 
@@ -160,6 +167,10 @@ export async function createApp(options = {}) {
   const logger = options.logger || createLogger({ level: options.logLevel || process.env.LOG_LEVEL || "info", service: "tambola" });
   const log = options.log || logger.shim;
   const app = express();
+  const sarvamTts = options.sarvamTts || createSarvamTtsService({
+    apiKey: options.sarvamApiKey ?? process.env.SARVAM_API_KEY ?? "",
+    fetchImpl: options.sarvamFetch || globalThis.fetch,
+  });
   // Express adds `X-Powered-By: Express` to every response by default. It
   // advertises the stack to anyone scanning the port and buys nothing.
   app.disable("x-powered-by");
@@ -191,6 +202,7 @@ export async function createApp(options = {}) {
     lease: { holder: persistence.lease ? persistence.lease.holder : null, held: Boolean(persistence.lease), lost: false, lastHeartbeatAt: persistence.lease ? Date.now() : null },
   };
   let leaseTimer = null;
+  let themeReleaseTimer = null;
   let closing = null;
 
   /**
@@ -244,10 +256,15 @@ export async function createApp(options = {}) {
           "object-src 'none'",
           "frame-ancestors 'none'",
           "form-action 'self'",
-          "img-src 'self' data:",
+          // Local GLB loading needs Blob URLs for embedded textures and the
+          // Draco decoder worker. Keep blob execution limited to workers; page
+          // scripts remain first-party and blob fetches are only used for the
+          // parsed, local asset bytes.
+          "img-src 'self' data: blob:",
           "style-src 'self' 'unsafe-inline'",
-          "script-src 'self'",
-          "connect-src 'self' ws: wss:",
+          "script-src 'self' 'wasm-unsafe-eval'",
+          "worker-src 'self' blob:",
+          "connect-src 'self' blob: ws: wss:",
           "font-src 'self' data:",
         ].join("; ")
       );
@@ -361,7 +378,6 @@ export async function createApp(options = {}) {
     leaseTimer = null;
   }
 
-  registerGameHandlers(io, { rooms: registry, controller, log, limits: options.limits });
 
   /**
    * Rebuild open rooms before anybody can connect: the database is the source
@@ -463,6 +479,7 @@ export async function createApp(options = {}) {
    * mutations go through `controller`, the same one-writer durable path a
    * connected host uses.
    */
+  const ownerMfaConfig = options.mfaKey === undefined ? mfaKeyFromEnv() : options.mfaKey;
   const admin = createAdmin({
     db: persistence.db || null,
     durable,
@@ -479,10 +496,114 @@ export async function createApp(options = {}) {
     rateLimiter: options.loginRateLimiter || null,
     throttle: options.throttle || null,
     challenges: options.mfaChallenges || null,
-    mfaKey: options.mfaKey,
+    mfaKey: ownerMfaConfig,
     mfaIssuer: options.mfaIssuer || process.env.MFA_ISSUER || "Tambola",
+    healthProbe: options.healthProbe || health,
   });
+  app.get("/api/public/branding", async (_req, res, next) => {
+    try {
+      const { branding } = await admin.platformBrandingService.get();
+      res.setHeader("Cache-Control", "no-store");
+      res.json({ ok: true, branding });
+    } catch (error) { next(error); }
+  });
+  app.get("/api/public/manifest.webmanifest", async (_req, res, next) => {
+    try {
+      const { branding } = await admin.platformBrandingService.get();
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+      res.send(JSON.stringify(publicPlatformManifest(branding, {
+        name: typeof _req.query.fallbackName === "string" ? _req.query.fallbackName : undefined,
+        subtitle: typeof _req.query.fallbackSubtitle === "string" ? _req.query.fallbackSubtitle : undefined,
+        icon: typeof _req.query.fallbackIcon === "string" ? _req.query.fallbackIcon : undefined,
+        accent: typeof _req.query.fallbackAccent === "string" ? _req.query.fallbackAccent : undefined,
+      })));
+    } catch (error) { next(error); }
+  });
+  if (durable && persistence.db) {
+    app.use("/api/public", createPublicBookingRouter({ db: persistence.db }));
+    app.use("/api/public", createPublicThemeRouter({ service: admin.themeService }));
+    app.use("/api/public", createPublicPosterRouter({ service: admin.posterService }));
+    app.use("/api/admin", createAdminBookingRouter({
+      db: persistence.db,
+      ownerSessions: admin.ownerSessions,
+      ownerStore: admin.ownerStore,
+      throttle: admin.throttle,
+    }));
+  } else {
+    app.use("/api/public", (_req, res) => res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "scheduled bookings require PostgreSQL" }));
+  }
   app.use("/api/admin", admin.router);
+
+  if (hasBuild && admin.posterService) app.get("/poster/:posterId", async (req, res, next) => {
+    try {
+      const poster = await admin.posterService.getPublicPoster(req.params.posterId);
+      if (!poster) return next();
+      const host = String(req.get("host") || "");
+      if (!/^[a-z0-9.-]+(?::[0-9]{1,5})?$/i.test(host)) return res.status(400).type("text/plain").send("Invalid host");
+      const origin = String(options.publicOrigin || process.env.PUBLIC_ORIGIN || `${req.protocol}://${host}`).replace(/\/$/, "");
+      const absoluteUrl = `${origin}/poster/${encodeURIComponent(poster.posterId)}`;
+      const absoluteImage = `${origin}/api/public/posters/${encodeURIComponent(poster.posterId)}/artwork`;
+      const facts = poster.data.eventFacts;
+      const patterns = Array.isArray(facts?.winningPatterns) ? facts.winningPatterns.map((item) => `${item.label}: ${item.points} game points`).join(" · ") : "";
+      const description = [poster.data.details, poster.data.schedule, patterns, facts?.publicJoinUrl ? `Join: ${origin}${facts.publicJoinUrl}` : "Free to play"].filter(Boolean).join(" · ").slice(0, 500);
+      const escape = (value) => String(value).replaceAll("&", "&amp;").replaceAll("\"", "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+      let html = fs.readFileSync(path.join(clientDist, "index.html"), "utf8");
+      html = html.replace(/<title>.*?<\/title>/i, `<title>${escape(poster.data.title)}</title>`)
+        .replace(/(<meta\s+name="description"\s+content=")[^"]*("\s*\/>)/i, (_match, before, after) => `${before}${escape(description)}${after}`)
+        .replace(/(<meta\s+property="og:title"\s+content=")[^"]*("\s*\/>)/i, (_match, before, after) => `${before}${escape(poster.data.title)}${after}`)
+        .replace(/(<meta\s+property="og:description"\s+content=")[^"]*("\s*\/>)/i, (_match, before, after) => `${before}${escape(description)}${after}`)
+        .replace("<meta property=\"og:type\" content=\"website\" />", `<meta property="og:type" content="website" /><meta property="og:url" content="${escape(absoluteUrl)}" /><meta property="og:image" content="${escape(absoluteImage)}" /><meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="${escape(poster.data.title)}" /><meta name="twitter:description" content="${escape(description)}" /><meta name="twitter:image" content="${escape(absoluteImage)}" />`);
+      res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
+      return res.type("html").send(html);
+    } catch (error) { return next(error); }
+  });
+
+  // Only the process holding the durable game lease runs the publication
+  // clock. A database row lock and a unique local date also make retries safe.
+  if (persistence.lease && (admin.themeService || admin.posterService)) {
+    const runDailyPublications = async () => {
+      if (runtime.draining || runtime.lease.lost) return;
+      if (admin.themeService) try {
+        const result = await admin.themeService.runScheduledRelease();
+        if (result?.error) log("theme release rejected", result.error);
+        else if (result?.source === "daily") log("daily theme released", result.themeVersionId, result.publishedAt);
+      } catch (error) {
+        log("daily theme release failed", error && error.message);
+      }
+      if (admin.posterService) try {
+        const result = await admin.posterService.runScheduledRelease();
+        if (result?.error) log("poster template release rejected", result.error);
+        else if (result?.source === "daily") log("daily poster template released", result.templateVersionId, result.publishedAt);
+      } catch (error) {
+        log("daily poster template release failed", error && error.message);
+      }
+    };
+    themeReleaseTimer = setInterval(runDailyPublications, 60_000);
+    if (typeof themeReleaseTimer.unref === "function") themeReleaseTimer.unref();
+    runDailyPublications().catch(() => {});
+  }
+
+  let moderatorService = null;
+  if (durable && persistence.db) {
+    moderatorService = createModeratorRouter({
+      db: persistence.db,
+      controller,
+      registry,
+      queries: admin.queries,
+      throttle: admin.throttle,
+      mfaKey: ownerMfaConfig && ownerMfaConfig.configured ? ownerMfaConfig.key : null,
+      log,
+    });
+    app.use("/api/moderator", moderatorService.router);
+  } else {
+    app.use("/api/moderator", (_req, res) => res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "moderator access requires PostgreSQL" }));
+  }
+  app.get("/api/voice/status", (_req, res) => {
+    const status = sarvamTts.status();
+    res.set("Cache-Control", "no-store").json({ ok: true, configured: status.configured, languages: status.languages });
+  });
+  registerGameHandlers(io, { rooms: registry, controller, log, limits: options.limits, db: persistence.db, moderatorAuth: moderatorService?.auth || null, sarvamTts });
 
   // ---------------------------------------------------- web client + fallbacks
   // Registered AFTER the admin API so /api/admin/* is never swallowed by the
@@ -621,6 +742,8 @@ export async function createApp(options = {}) {
       runtime.draining = true;
       stopLeaseMonitor();
       stopMaintenance();
+      if (themeReleaseTimer) clearInterval(themeReleaseTimer);
+      themeReleaseTimer = null;
       if (scheduler) scheduler.stopAll();
       io.close(() => {
         server.close(async () => {
@@ -648,6 +771,7 @@ export async function createApp(options = {}) {
     server,
     io,
     registry,
+    sarvamTts,
     controller,
     scheduler,
     store: persistence.store,
@@ -689,7 +813,7 @@ if (isMainModule) {
     });
   } catch (error) {
     console.error("[tambola] could not start:", error.message);
-    if (error.code === "INSTANCE_LOCKED") console.error("[tambola] another server already owns this database");
+    if (error.code === "INSTANCE_LOCKED") console.error("[tambola] another server already owns this database schema");
     process.exit(1);
   }
 

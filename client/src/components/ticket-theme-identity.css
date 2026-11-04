@@ -1,0 +1,312 @@
+/* Identity follows the active reviewed catalogue entry; the game state remains
+   entirely in the called, current, pattern and hit data attributes. */
+.oh-panel[data-ticket-no][data-ticket-trim="garland"] .oh-ticket-grid,
+.oh-panel[data-ticket-no][data-ticket-trim="rain"] .oh-ticket-grid {
+  border-style: dashed;
+}
+
+.oh-panel[data-ticket-no][data-ticket-trim="keyline"] .oh-ticket-grid,
+.oh-panel[data-ticket-no][data-ticket-trim="crest"] .oh-ticket-grid {
+  border-style: double;
+  border-width: 3px;
+}
+
+.oh-panel[data-ticket-no][data-ticket-trim="fireworks"] .oh-ticket-grid {
+  border-style: double;
+  border-width: 4px;
+}
+
+.oh-panel[data-ticket-no][data-ticket-trim="frost"] .oh-ticket-grid {
+  border-radius: 5px;
+}
+
+.oh-panel[data-ticket-no][data-ticket-trim="electric"] .oh-ticket-grid {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--oh-gold) 30%, transparent), 0 5px 14px rgba(10, 6, 20, 0.18);
+}
+
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="pixel"] {
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--oh-ticket-ink) 28%, transparent);
+}
+
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="arch"] {
+  border-radius: 50% 50% 3px 3px;
+}
+
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="drop"] {
+  border-radius: 55% 55% 48% 5%;
+}
+
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="lantern"] {
+  border-radius: 5px 5px 9px 9px;
+}
+
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="snow"] {
+  border-radius: 50%;
+  outline: 1px dashed color-mix(in srgb, var(--oh-ticket-ink) 60%, transparent);
+  outline-offset: -3px;
+}
+
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="confetti"] {
+  border-radius: 50%;
+  outline: 1px dashed var(--oh-gold-bright);
+  outline-offset: -3px;
+}
+
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="crest"] {
+  border-radius: 9px 9px 3px 3px;
+}
+
+.oh-pattern-diagram[data-pattern-trim="keyline"] .oh-pattern-grid,
+.oh-pattern-diagram[data-pattern-trim="crest"] .oh-pattern-grid {
+  border-style: double;
+}
+
+.oh-pattern-cell[data-pattern="true"][data-call-marker="pixel"] {
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--oh-ticket-ink) 30%, transparent);
+}
+
+.oh-pattern-cell[data-pattern="true"][data-call-marker="arch"] { border-radius: 50% 50% 3px 3px; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="drop"] { border-radius: 55% 55% 48% 5%; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="lantern"] { border-radius: 5px 5px 9px 9px; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="snow"] {
+  border-radius: 50%;
+  outline: 1px dashed color-mix(in srgb, var(--oh-ticket-ink) 60%, transparent);
+  outline-offset: -3px;
+}
+.oh-pattern-cell[data-pattern="true"][data-call-marker="crest"] { border-radius: 9px 9px 3px 3px; }
+
+/* The ticket stock is a real theme package, not a one-style paper card. These
+   motifs are deliberately low contrast so the server-issued numbers remain the
+   strongest signal. The theme ID comes from the reviewed runtime catalogue. */
+.oh-panel[data-ticket-no][data-theme-art] .oh-ticket-grid { position: relative; overflow: hidden; }
+.oh-panel[data-ticket-no][data-theme-art] .oh-ticket-grid::before {
+  position: absolute; inset: 0; z-index: 0; content: ""; pointer-events: none; opacity: .11;
+  background: radial-gradient(circle at 50% 50%, var(--oh-gold) 0 1px, transparent 2px) 0 0 / 22px 22px;
+}
+.oh-panel[data-ticket-no][data-theme-art] .oh-ticket-row { position: relative; z-index: 1; }
+.oh-panel[data-ticket-no][data-theme-art="diwali-celebration"] .oh-ticket-grid { background-image: radial-gradient(circle at 50% 0, #f3b8473d, transparent 45%), linear-gradient(180deg,#fff5dd,#ffe6b9); }
+.oh-panel[data-ticket-no][data-theme-art="holi-colours"] .oh-ticket-grid { background-image: radial-gradient(circle at 14% 20%,#e856a522 0 20%,transparent 21%),radial-gradient(circle at 88% 78%,#23a78b22 0 19%,transparent 20%),linear-gradient(135deg,#fff8e8,#ffefd7); }
+.oh-panel[data-ticket-no][data-theme-art="durga-puja"] .oh-ticket-grid { background-image: repeating-linear-gradient(135deg,#b6303020 0 2px,transparent 2px 13px),linear-gradient(180deg,#fff2dd,#f8dec0); }
+.oh-panel[data-ticket-no][data-theme-art="navratri-garba"] .oh-ticket-grid { background-image: repeating-linear-gradient(45deg,#c2388f17 0 2px,transparent 2px 12px),repeating-linear-gradient(-45deg,#d99b2717 0 2px,transparent 2px 12px),linear-gradient(#fff5e7,#fce6d1); }
+.oh-panel[data-ticket-no][data-theme-art="ganesh-chaturthi"] .oh-ticket-grid { background-image: radial-gradient(circle,#cf713022 0 2px,transparent 3px) 0 0/18px 18px,linear-gradient(#fff4dc,#f3dfbd); }
+.oh-panel[data-ticket-no][data-theme-art="onam-pookalam"] .oh-ticket-grid { background-image: radial-gradient(circle at 50% 50%,#d9983526 0 2px,transparent 3px) 0 0/16px 16px,linear-gradient(135deg,#fff7d9,#e2f0cc); }
+.oh-panel[data-ticket-no][data-theme-art="pongal-harvest"] .oh-ticket-grid { background-image: repeating-linear-gradient(0deg,#a6682220 0 1px,transparent 1px 12px),linear-gradient(#fff7dc,#f4e1b8); }
+.oh-panel[data-ticket-no][data-theme-art="eid-moonlight"] .oh-ticket-grid { background-image: radial-gradient(circle at 90% 12%,#1a8c8b26 0 17%,transparent 18%),linear-gradient(135deg,#f2fbec,#dceee4); }
+.oh-panel[data-ticket-no][data-theme-art="christmas-winter"] .oh-ticket-grid { background-image: radial-gradient(circle,#b62e3522 0 2px,transparent 3px) 0 0/20px 20px,linear-gradient(#fff9e9,#e6f0d7); }
+.oh-panel[data-ticket-no][data-theme-art="halloween-night"] .oh-ticket-grid { background-image: radial-gradient(circle at 90% 8%,#e27a242c 0 17%,transparent 18%),linear-gradient(145deg,#fff0d6,#eeddf1); }
+.oh-panel[data-ticket-no][data-theme-art="new-year-celebration"] .oh-ticket-grid { background-image: radial-gradient(circle,#a842bb22 0 1.5px,transparent 3px) 0 0/17px 17px,linear-gradient(135deg,#fff4df,#e9ddf3); }
+.oh-panel[data-ticket-no][data-theme-art="wedding-celebration"] .oh-ticket-grid { background-image: radial-gradient(circle at 0 0,#bd587b24 0 20%,transparent 21%),linear-gradient(135deg,#fff4ec,#f4e0db); }
+.oh-panel[data-ticket-no][data-theme-art="indian-textile-heritage"] .oh-ticket-grid { background-image: repeating-linear-gradient(45deg,#39426d18 0 2px,transparent 2px 10px),repeating-linear-gradient(-45deg,#9a753018 0 2px,transparent 2px 10px),linear-gradient(#fff3dc,#eadfc9); }
+.oh-panel[data-ticket-no][data-theme-art="obsidian-hall"] .oh-ticket-grid { background-image: repeating-linear-gradient(90deg,#49314617 0 1px,transparent 1px 14px),linear-gradient(#fff1dc,#e8dccd); }
+.oh-panel[data-ticket-no][data-theme-art="midnight-indigo"] .oh-ticket-grid { background-image: radial-gradient(circle,#4564a522 0 1px,transparent 2px) 0 0/18px 18px,linear-gradient(#f1f1f5,#dfe3f1); }
+.oh-panel[data-ticket-no][data-theme-art="marigold-festival"] .oh-ticket-grid { background-image: radial-gradient(circle,#df9d2528 0 2px,transparent 3px) 0 0/16px 16px,linear-gradient(#fff5d9,#f5e4bd); }
+.oh-panel[data-ticket-no][data-theme-art="cobalt-arcade"] .oh-ticket-grid { background-image: repeating-linear-gradient(90deg,#4f66c320 0 2px,transparent 2px 12px),linear-gradient(#f1f4ff,#dce5f6); }
+.oh-panel[data-ticket-no][data-theme-art="terracotta-house"] .oh-ticket-grid { background-image: repeating-linear-gradient(0deg,#aa5f3c1a 0 2px,transparent 2px 11px),linear-gradient(#fff1df,#f0dfcf); }
+.oh-panel[data-ticket-no][data-theme-art="monsoon-garden"] .oh-ticket-grid { background-image: radial-gradient(ellipse at 10% 0,#3a958a23,transparent 40%),linear-gradient(#eef8ed,#d8eadc); }
+.oh-panel[data-ticket-no][data-theme-art="paper-lantern"] .oh-ticket-grid { background-image: repeating-linear-gradient(90deg,#c65e4620 0 1px,transparent 1px 22px),linear-gradient(#fff1e6,#f3dfd7); }
+.oh-panel[data-ticket-no][data-theme-art="snowlight-minimal"] .oh-ticket-grid { background-image: radial-gradient(circle,#5676a222 0 1px,transparent 2px) 0 0/24px 24px,linear-gradient(#fff,#e8eef5); }
+.oh-panel[data-ticket-no][data-theme-art="kesar-royale"] .oh-ticket-grid { background-image: repeating-linear-gradient(45deg,#b8792520 0 2px,transparent 2px 13px),linear-gradient(#fff4dc,#efdfbd); }
+
+.oh-panel[data-ticket-trim="diya"] .oh-ticket-grid { border-width: 3px; box-shadow: inset 0 0 0 2px #d998393b,0 5px 14px #1b0f261f; }
+.oh-panel[data-ticket-trim="gulal"] .oh-ticket-grid { border-radius: 17px 7px 17px 7px; }
+.oh-panel[data-ticket-trim="dhak"] .oh-ticket-grid,.oh-panel[data-ticket-trim="mirrorwork"] .oh-ticket-grid { border-width: 3px; border-style: double; }
+.oh-panel[data-ticket-trim="modak"] .oh-ticket-grid,.oh-panel[data-ticket-trim="pookalam"] .oh-ticket-grid { border-radius: 50px 12px; }
+.oh-panel[data-ticket-trim="kolam"] .oh-ticket-grid,.oh-panel[data-ticket-trim="crescent-arch"] .oh-ticket-grid { border-style: dashed; }
+.oh-panel[data-ticket-trim="holly"] .oh-ticket-grid,.oh-panel[data-ticket-trim="cobweb"] .oh-ticket-grid { border-radius: 7px; }
+.oh-panel[data-ticket-trim="jaali"] .oh-ticket-grid,.oh-panel[data-ticket-trim="woven-border"] .oh-ticket-grid { border-width: 4px; }
+.oh-panel[data-ticket-trim="crescent"] .oh-ticket-grid { border-radius: 42px 12px; }
+.oh-panel[data-ticket-trim="arch"] .oh-ticket-grid { border-radius: 32px 32px 8px 8px; }
+.oh-panel[data-ticket-trim="lantern"] .oh-ticket-grid { box-shadow: inset 0 0 0 3px color-mix(in srgb,var(--oh-brand-coral) 13%,transparent),inset 0 0 0 6px color-mix(in srgb,var(--oh-gold) 8%,transparent),0 5px 14px rgba(10,6,20,.18); }
+
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="flame"],
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="sunrise"] { border-radius: 50% 50% 5px 5px; }
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="splash"] { border-radius: 42% 58% 60% 40%; }
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="trident"],
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="diamond"],
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="woven-diamond"] { border-radius: 3px; transform: rotate(2deg); }
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="modak"],
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="petal-ring"] { border-radius: 50%; outline: 1px solid color-mix(in srgb,var(--oh-gold-deep) 60%,transparent); outline-offset: -3px; }
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="crescent-star"],
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="holly-berry"] { border-radius: 50% 50% 4px 50%; }
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="confetti"] { background: radial-gradient(circle at 25% 25%,#fff4bd,var(--oh-gold) 58%,#c78326); }
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="star"] { border-radius: 50%; outline: 1px dashed color-mix(in srgb,var(--oh-gold-deep) 75%,transparent); outline-offset: -3px; }
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="petal"],
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="petal-heart"] { border-radius: 60% 40% 60% 40%; }
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="seal"] { border-radius: 8px; box-shadow: inset 0 0 0 2px color-mix(in srgb,var(--oh-ticket-ink) 18%,transparent); }
+.oh-panel[data-ticket-no] .oh-ticket-cell[data-called="true"][data-call-marker="bat-wing"] { border-radius: 6px 14px 6px 14px; transform: rotate(-2deg); }
+
+/* The same active theme palette and marker language extends to the server's
+   winning-pattern diagram, so its highlighted cells match the issued ticket. */
+.oh-pattern-diagram[data-theme-art] .oh-pattern-grid {
+  padding: 5px;
+  border: 1px solid color-mix(in srgb,var(--oh-atmo-b) 46%,var(--oh-gold));
+  border-radius: 12px;
+  background: radial-gradient(ellipse at 4% 0,color-mix(in srgb,var(--oh-atmo-a) 18%,transparent),transparent 56%),linear-gradient(145deg,#fff7e7,#f0dfca);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb,var(--oh-atmo-b) 8%,transparent);
+}
+.oh-pattern-diagram[data-theme-art] .oh-pattern-cell[data-pattern="true"] {
+  background: radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--oh-atmo-b) 36%,var(--oh-gold-bright)),color-mix(in srgb,var(--oh-atmo-a) 22%,var(--oh-gold)) 65%,var(--oh-gold-deep));
+}
+.oh-pattern-diagram[data-theme-art] .oh-pattern-cell[data-hit="true"] { outline-color: color-mix(in srgb,var(--oh-atmo-c) 72%,#16453c); }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="flame"],.oh-pattern-cell[data-pattern="true"][data-call-marker="sunrise"] { border-radius: 50% 50% 5px 5px; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="splash"] { border-radius: 42% 58% 60% 40%; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="trident"],.oh-pattern-cell[data-pattern="true"][data-call-marker="diamond"],.oh-pattern-cell[data-pattern="true"][data-call-marker="woven-diamond"] { border-radius: 3px; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="modak"],.oh-pattern-cell[data-pattern="true"][data-call-marker="petal-ring"],.oh-pattern-cell[data-pattern="true"][data-call-marker="star"] { border-radius: 50%; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="crescent-star"],.oh-pattern-cell[data-pattern="true"][data-call-marker="holly-berry"] { border-radius: 50% 50% 4px 50%; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="petal"],.oh-pattern-cell[data-pattern="true"][data-call-marker="petal-heart"] { border-radius: 60% 40% 60% 40%; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="pixel"] { border-radius: 2px; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="arch"] { border-radius: 50% 50% 3px 3px; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="drop"] { border-radius: 55% 55% 48% 5%; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="lantern"] { border-radius: 5px 5px 9px 9px; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="snow"] { outline: 1px dashed color-mix(in srgb,var(--oh-ticket-ink) 60%,transparent); outline-offset: -3px; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="crest"] { border-radius: 9px 9px 3px 3px; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="seal"] { border-radius: 8px; }
+.oh-pattern-cell[data-pattern="true"][data-call-marker="bat-wing"] { border-radius: 6px 14px 6px 14px; }
+
+/* Player tickets are warm printed stock with a theme-specific engraved trim.
+   The 3×9 grid remains the dominant signal; decorative ink stays in the
+   margins, while numbers retain strong contrast in every active environment. */
+.oh-panel.oh-ticket-paper[data-ticket-no] {
+  --ticket-stock: #fff4dc;
+  --ticket-ink: #38243d;
+  --ticket-mark: color-mix(in srgb, var(--oh-atmo-a) 74%, #b43178);
+  position: relative;
+  padding: clamp(12px, 2.5vw, 20px) !important;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--oh-atmo-b) 68%, #fff0c0);
+  border-radius: 14px;
+  color: var(--ticket-ink);
+  background:
+    radial-gradient(ellipse at 4% 0, color-mix(in srgb, var(--oh-atmo-a) 12%, transparent), transparent 46%),
+    radial-gradient(ellipse at 100% 100%, color-mix(in srgb, var(--oh-atmo-c) 10%, transparent), transparent 43%),
+    linear-gradient(145deg, #fff9e9, #f4e4c5 72%, #eddbb6);
+  box-shadow: inset 0 0 0 3px rgba(255,255,255,.45), inset 0 0 0 5px color-mix(in srgb, var(--oh-atmo-b) 18%, transparent), 0 14px 35px rgba(9,3,17,.3);
+}
+.oh-panel.oh-ticket-paper[data-ticket-no]::before {
+  position: absolute;
+  inset: 7px;
+  border: 1px solid color-mix(in srgb, var(--oh-atmo-b) 34%, transparent);
+  border-radius: 9px;
+  content: "";
+  pointer-events: none;
+}
+.oh-ticket-paper[data-theme-art="holi-colours"] { --ticket-mark: #c52c8f; }
+.oh-ticket-paper[data-theme-art="durga-puja"], .oh-ticket-paper[data-theme-art="diwali-celebration"] { --ticket-mark: #ba3a32; }
+.oh-ticket-paper[data-theme-art="eid-moonlight"], .oh-ticket-paper[data-theme-art="onam-pookalam"] { --ticket-mark: #177b71; }
+.oh-ticket-paper[data-theme-art="christmas-winter"] { --ticket-mark: #287c52; }
+.oh-ticket-paper[data-theme-art="halloween-night"] { --ticket-mark: #6e43a3; }
+.oh-ticket-paper[data-theme-art="midnight-indigo"], .oh-ticket-paper[data-theme-art="cobalt-arcade"] { --ticket-mark: #345fbd; }
+.oh-ticket-paper[data-theme-art="snowlight-minimal"] { --ticket-stock: #f1f7ff; --ticket-mark: #3271aa; }
+.oh-ticket-paper[data-theme-art="monsoon-garden"] { --ticket-stock: #f0faf5; --ticket-mark: #167f83; }
+
+.oh-ticket-paper__header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  margin: 0 2px 12px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--oh-atmo-b) 34%, transparent);
+}
+.oh-ticket-paper__identity { min-width: 0; }
+.oh-ticket-paper__brand {
+  color: color-mix(in srgb, var(--ticket-mark) 62%, #6b3d32);
+  font: 700 clamp(12px, 2.6vw, 16px)/1.1 var(--oh-font-display);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.oh-ticket-paper__title {
+  margin-top: 4px;
+  overflow: hidden;
+  color: #68546a;
+  font: 700 10px/1.25 var(--oh-font-ui);
+  letter-spacing: .08em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.oh-ticket-paper__progress { flex: 0 0 auto; text-align: right; }
+.oh-ticket-paper__progress-value { color: var(--ticket-mark); font-size: 20px; font-weight: 800; line-height: 1; }
+.oh-ticket-paper__progress-value span { color: #816d78; font-size: 12px; font-weight: 700; }
+.oh-ticket-paper__progress-label { margin-top: 4px; color: #68546a; font: 700 9px/1.2 var(--oh-font-ui); letter-spacing: .035em; }
+.oh-ticket-paper__progress-label[data-complete="true"] { color: #147761; }
+.oh-ticket-paper .oh-ticket-rowstats { position: relative; z-index: 1; justify-content: space-between; gap: 5px; margin: 0 0 9px; }
+.oh-ticket-paper .oh-ticket-rowstat { justify-content: center; flex: 1 1 0; gap: 4px; min-width: 0; padding: 4px 5px; border: 1px solid rgba(115,81,56,.16); border-radius: 5px; color: #5f4b59; background: rgba(255,255,255,.42); }
+.oh-ticket-paper .oh-ticket-rowstat__label { color: #816d78; font-size: 8px; letter-spacing: .08em; }
+.oh-ticket-paper .oh-ticket-rowstat .oh-num { color: inherit; font-size: 10px; font-weight: 800; }
+.oh-ticket-paper .oh-ticket-rowstat[data-complete="true"] { border-color: rgba(30,126,96,.28); color: #145e4b; background: #d7eddd; }
+.oh-ticket-paper .oh-ticket-rowstat[data-complete="true"] .oh-ticket-rowstat__label { color: #35735f; }
+.oh-ticket-paper .oh-ticket-grid {
+  z-index: 1;
+  gap: clamp(3px, 1vw, 6px);
+  padding: clamp(7px, 1.7vw, 11px);
+  border: 1px solid color-mix(in srgb, var(--oh-atmo-b) 62%, #c89950);
+  border-radius: 9px;
+  background-color: var(--ticket-stock);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,.58), 0 4px 12px rgba(67,40,35,.12);
+}
+.oh-ticket-paper .oh-ticket-grid::before { opacity: .08; background-color: transparent; }
+.oh-ticket-paper .oh-ticket-row { gap: clamp(3px, 1vw, 6px); }
+.oh-ticket-paper .oh-ticket-cell {
+  min-width: 0;
+  border: 1px solid #c9b897;
+  border-radius: 4px;
+  color: #35263b;
+  background: linear-gradient(180deg, rgba(255,255,255,.88), rgba(255,250,237,.72));
+  font-size: clamp(12px, 3.4vw, 19px);
+  font-weight: 750;
+  text-shadow: 0 1px rgba(255,255,255,.72);
+}
+.oh-ticket-paper .oh-ticket-cell[data-empty="true"] {
+  border-color: rgba(141,115,87,.18);
+  background: repeating-linear-gradient(135deg, rgba(123,95,66,.045) 0 4px, transparent 4px 8px), rgba(226,210,181,.24);
+}
+.oh-ticket-paper .oh-ticket-cell[data-empty="true"]::after { width: 3px; height: 3px; background: rgba(105,78,59,.18); }
+.oh-ticket-paper .oh-ticket-cell[data-called="true"] {
+  border: 1px solid color-mix(in srgb, var(--ticket-mark) 78%, #793446);
+  color: #fffaf0;
+  background: radial-gradient(circle at 30% 20%, color-mix(in srgb, var(--oh-atmo-b) 56%, white), var(--ticket-mark) 68%, color-mix(in srgb, var(--ticket-mark) 70%, #321b36));
+  box-shadow: inset 0 1px rgba(255,255,255,.42), 0 2px 5px rgba(58,35,56,.2);
+  text-shadow: 0 1px 2px rgba(35,12,40,.4);
+}
+.oh-ticket-paper .oh-ticket-cell[data-current="true"] { z-index: 2; outline: 2px solid #b93d78; outline-offset: 1px; box-shadow: 0 0 0 3px #fff5d4, 0 0 0 5px rgba(185,61,120,.42); }
+
+@media (max-width: 520px) {
+  .oh-panel.oh-ticket-paper[data-ticket-no] { padding: 12px !important; }
+  .oh-ticket-paper__header { margin-bottom: 9px; padding-bottom: 8px; }
+  .oh-ticket-paper .oh-ticket-grid { padding: 7px; }
+  .oh-ticket-paper .oh-ticket-rowstats { gap: 3px; }
+  .oh-ticket-paper .oh-ticket-rowstat { padding: 3px 2px; }
+}
+.oh-pattern-cell[data-pattern="true"][data-call-marker="confetti"] { border-radius: 50%; outline: 1px dashed var(--oh-gold-deep); outline-offset: -3px; }
+
+.oh-claim-feedback[data-game-state="COMPLETED"] { border-color: color-mix(in srgb,var(--oh-gold-bright) 62%,var(--oh-line)); background: radial-gradient(ellipse at 50% 0,color-mix(in srgb,var(--oh-gold) 18%,transparent),transparent 55%),linear-gradient(145deg,var(--oh-panel-raised),var(--oh-panel)); }
+.oh-claim-feedback li { min-height: 42px; padding: 8px 11px; border: 1px solid color-mix(in srgb,var(--oh-gold) 18%,var(--oh-line)); border-radius: 12px; background: color-mix(in srgb,var(--oh-panel-raised) 82%,var(--oh-brand-coral) 6%); }
+.oh-claim-feedback .oh-rule { border-color: color-mix(in srgb,var(--oh-gold) 30%,var(--oh-line)); }
+.oh-claim-pending { display: inline-flex; align-items: center; min-height: 36px; padding: 6px 9px; border: 1px solid color-mix(in srgb,var(--oh-atmo-b) 42%,var(--oh-line)); border-radius: 999px; color: var(--oh-ivory); background: color-mix(in srgb,var(--oh-atmo-a) 22%,var(--oh-panel-raised)); font-size: 12px; }
+
+@media (max-width: 520px) {
+  .oh-panel[data-ticket-no]::before { inset: 5px; }
+  .oh-panel[data-ticket-no] .oh-ticket-grid { padding: 6px; }
+  .oh-panel[data-ticket-no] .oh-ticket-cell { min-width: 0; font-size: clamp(11px,3.6vw,15px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .oh-panel[data-ticket-no] .oh-ticket-cell,
+  .oh-pattern-cell {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.oh-claim-feedback-note { display: grid; gap: 3px; margin: 0 0 14px; padding: 11px 13px; border: 1px solid color-mix(in srgb,var(--oh-atmo-b) 48%,var(--oh-line)); border-radius: 12px; color: var(--oh-text); background: color-mix(in srgb,var(--oh-atmo-a) 16%,var(--oh-panel)); font-size: 13px; line-height: 1.5; }
+.oh-claim-feedback-note__label { color: var(--oh-gold-bright); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.oh-claim-feedback-note--approved { border-color: color-mix(in srgb,var(--oh-ok) 58%,var(--oh-line)); background: color-mix(in srgb,var(--oh-ok) 12%,var(--oh-panel)); }
+.oh-claim-feedback-note--rejected { border-color: color-mix(in srgb,var(--oh-brand-coral) 52%,var(--oh-line)); background: color-mix(in srgb,var(--oh-brand-coral) 12%,var(--oh-panel)); }
+.oh-claim-feedback-note--duplicate { border-color: color-mix(in srgb,var(--oh-atmo-b) 58%,var(--oh-line)); background: color-mix(in srgb,var(--oh-atmo-b) 11%,var(--oh-panel)); }

@@ -1,0 +1,3 @@
+# Install the helper as /usr/local/sbin/tambola-backup, then validate its
+# permissions and an off-site copy before enabling this schedule.
+17 2 * * * /usr/local/sbin/tambola-backup

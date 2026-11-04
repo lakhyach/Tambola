@@ -73,7 +73,7 @@ export const DEFAULT_ANNOUNCE_OPTIONS = Object.freeze({
  * @param {()=>string} [deps.language] current speech language, "en" | "hi"
  * @param {()=>number} [deps.rate] speech rate, 0.5–2; the watchdog scales with
  *   it so a slow voice is never killed mid-sentence for being slow
- * @param {(n:number, lang:string)=>string} deps.toWords spoken form of a number
+ * @param {(n:number, lang:string, seq?:number)=>string} deps.toWords spoken form of a number; `seq` is the server call index
  * @param {(n:number)=>void} [deps.onStart] fired when an utterance starts (chime)
  * @param {(name:string, payload:object)=>void} [deps.emitEvent] timestamped
  *   observation hook: enqueue / start / end / drop / stall / dead
@@ -168,10 +168,10 @@ export function createAnnounceQueue(deps = {}) {
     const item = queue.shift();
     if (!item) return;
     const lang = language();
-    const text = toWords(item.number, lang);
+    const text = toWords(item.number, lang, item.seq);
     let handle = null;
     try {
-      handle = speak(text, { number: item.number, lang });
+      handle = speak(text, { number: item.number, lang, seq: item.seq, replay: Boolean(item.replay) });
     } catch {
       handle = null;
     }
@@ -184,7 +184,7 @@ export function createAnnounceQueue(deps = {}) {
       if (failures >= opt.maxFailures) declareDead();
       return;
     }
-    current = { number: item.number, seq: item.seq };
+    current = { number: item.number, seq: item.seq, handle };
     fire("start", { number: item.number, seq: item.seq, text });
     notify();
     if (onStart) {
@@ -219,7 +219,7 @@ export function createAnnounceQueue(deps = {}) {
       current = null;
       fire("stall", { number: c.number, seq: c.seq });
       try {
-        handle.kill?.();
+        c.handle?.kill?.();
       } catch {
         /* engine already gone */
       }
@@ -343,6 +343,7 @@ export function createAnnounceQueue(deps = {}) {
         watchdog = null;
       }
       fire("end", { number: c.number, seq: c.seq, reason: "stopped" });
+      try { c.handle?.kill?.(); } catch { /* audio may already have ended */ }
       notify();
     }
   }

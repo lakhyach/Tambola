@@ -6,20 +6,41 @@ import Header from "./Header";
 import Panel from "./components/Panel.jsx";
 import Button from "./components/Button.jsx";
 import ConnectionIndicator from "./components/ConnectionIndicator.jsx";
+import BookingLanguageSelect from "./i18n/BookingLanguageSelect.jsx";
+import { bookingCopy, bookingRefusalText, setBookingLanguage, useBookingLanguage } from "./i18n/booking-locale.js";
 
 const Player = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const language = useBookingLanguage();
+  const t = (key, variables) => bookingCopy(language, key, variables);
   const searchTerm = searchParams.get("id");
+  const instanceSlug = searchParams.get("instance");
 
   const [name, setName] = useState("");
-  const [code, setCode] = useState("");
+  const [instanceName, setInstanceName] = useState("");
+  const [code, setCode] = useState(searchParams.get("room") || "");
+  const [bookingReference, setBookingReference] = useState("");
+  const [bookingToken, setBookingToken] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   // A seat this browser remembers while this tab holds none. Not taken silently:
   // see lib/joinSeat.js for why a new tab must ask before becoming that player.
   const [offer, setOffer] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!instanceSlug) {
+      setInstanceName("");
+      return () => { active = false; };
+    }
+    fetch(`/api/admin/public/instances/${encodeURIComponent(instanceSlug)}`, { headers: { Accept: "application/json" } })
+      .then((response) => response.ok ? response.json() : null)
+      .then((data) => { if (active && data?.instance?.display_name) setInstanceName(data.instance.display_name); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [instanceSlug]);
 
   useEffect(() => {
     const plan = planJoinEntry({
@@ -54,24 +75,34 @@ const Player = () => {
   const handleJoinClick = async (e) => {
     e?.preventDefault?.();
     setError("");
-    if (name.trim().length < 3) {
-      setError("Your name needs at least 3 characters.");
+    const hasBookingCredentials = Boolean(bookingReference.trim() && bookingToken.trim());
+    if (Boolean(bookingReference.trim()) !== Boolean(bookingToken.trim())) {
+      setError(t("enterBookingCredentials"));
+      return;
+    }
+    if (!hasBookingCredentials && name.trim().length < 3) {
+      setError(t("nameTooShort"));
       return;
     }
     if (!code.trim()) {
-      setError("Enter the room code your host shared.");
+      setError(t("enterRoomCode"));
       return;
     }
     if (!socket.connected) {
-      setError("Not connected yet — give it a second.");
+      setError(t("notConnected"));
       return;
     }
     setBusy(true);
     // one ack, one truth: the server hands back the identity this session uses
-    const joined = await call("room:join", { roomId: code.trim(), name: name.trim() });
+    const joined = await call("room:join", {
+      roomId: code.trim(),
+      name: name.trim(),
+      ...(instanceSlug ? { instanceSlug } : {}),
+      ...(hasBookingCredentials ? { reservationId: bookingReference.trim(), bookingToken: bookingToken.trim() } : {}),
+    });
     setBusy(false);
     if (!joined.ok) {
-      setError(joined.error || "could not join that room");
+      setError(bookingRefusalText(language, { ...joined, error: joined.error || t("joinFailed") }));
       return;
     }
     clearSession();
@@ -90,13 +121,17 @@ const Player = () => {
   return (
     <div className="flex flex-col" style={{ minHeight: "100vh" }}>
       <Header />
-      <main className="flex-1 flex items-center justify-center" style={{ padding: 20 }}>
-        <Panel className="p-6 sm:p-8" style={{ width: "100%", maxWidth: 420 }}>
-          <h1 className="oh-display" style={{ fontSize: 30, margin: "0 0 4px" }}>
-            Take Your Seat
-          </h1>
+      <main id="main-content" lang={language === "hi" ? "hi" : "en"} tabIndex="-1" className="player-entry-main flex-1 flex items-center justify-center" style={{ padding: 20 }}>
+        <Panel className="player-entry-panel p-6 sm:p-8" style={{ width: "100%", maxWidth: 460 }}>
+          <div className="player-entry-art" aria-hidden="true"><span className="player-entry-art__ball">90</span><span className="player-entry-art__label">YOUR NEXT GREAT GAME</span><span className="player-entry-art__spark player-entry-art__spark--one" /><span className="player-entry-art__spark player-entry-art__spark--two" /></div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
+            <h1 className="oh-display" style={{ fontSize: 30, margin: 0 }}>
+              {instanceSlug ? t("playerJoinInstance", { name: instanceName || instanceSlug.replaceAll("-", " ") }) : t("playerJoinTitle")}
+            </h1>
+            <BookingLanguageSelect language={language} onChange={setBookingLanguage} />
+          </div>
           <p style={{ color: "var(--oh-text-muted)", margin: "0 0 20px", fontSize: 14 }}>
-            Enter the code your host shared. You can choose how many tickets to play.
+            {t("playerJoinIntro")}
           </p>
           {offer ? (
             <div
@@ -110,24 +145,24 @@ const Player = () => {
               }}
             >
               <div className="oh-eyebrow" style={{ color: "var(--oh-gold)", marginBottom: 6 }}>
-                Seat this browser remembers
+                {t("rememberedSeat")}
               </div>
               <p style={{ margin: "0 0 10px", fontSize: 14 }}>
-                {offeredSeatLabel(offer)} — is that you, in this tab?
+                {offeredSeatLabel(offer)} {t("isThisYou")}
               </p>
               <div className="flex gap-2 flex-wrap">
                 <Button variant="gold" size="sm" onClick={reclaimSeat}>
-                  Take that seat
+                  {t("takeSeat")}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={declineSeat}>
-                  I’m a new player
+                  {t("newPlayer")}
                 </Button>
               </div>
             </div>
           ) : null}
           <form onSubmit={handleJoinClick}>
             <label className="oh-eyebrow" htmlFor="player-name" style={{ display: "block", marginBottom: 6 }}>
-              Your name
+              {t("yourName")}
             </label>
             <input
               id="player-name"
@@ -135,11 +170,11 @@ const Player = () => {
               value={name}
               maxLength={20}
               autoComplete="off"
-              placeholder="e.g. Arjun"
+              placeholder={t("exampleName")}
               onChange={(e) => setName(e.target.value)}
             />
             <label className="oh-eyebrow" htmlFor="player-code" style={{ display: "block", margin: "16px 0 6px" }}>
-              Room code
+              {t("roomCode")}
             </label>
             <input
               id="player-code"
@@ -153,8 +188,16 @@ const Player = () => {
               style={{ letterSpacing: ".2em", textTransform: "uppercase" }}
               onChange={(e) => setCode(e.target.value.toUpperCase())}
             />
+            <details style={{ marginTop: 18 }}>
+              <summary className="oh-eyebrow" style={{ cursor: "pointer", color: "var(--oh-gold-bright)" }}>{t("bookingJoin")}</summary>
+              <p style={{ color: "var(--oh-text-faint)", fontSize: 12, lineHeight: 1.5 }}>{t("bookingJoinHelp")}</p>
+              <label className="oh-eyebrow" htmlFor="booking-reference" style={{ display: "block", margin: "12px 0 6px" }}>{t("bookingReference")}</label>
+              <input id="booking-reference" className="oh-field" value={bookingReference} maxLength={80} autoComplete="off" onChange={(event) => setBookingReference(event.target.value)} />
+              <label className="oh-eyebrow" htmlFor="booking-token" style={{ display: "block", margin: "12px 0 6px" }}>{t("privateBookingCode")}</label>
+              <input id="booking-token" className="oh-field" type="password" value={bookingToken} maxLength={128} autoComplete="off" onChange={(event) => setBookingToken(event.target.value)} />
+            </details>
             <Button type="submit" variant="gold" block className="mt-4" disabled={busy}>
-              {busy ? "Joining…" : "Join Room"}
+              {busy ? t("joiningRoom") : t("joinRoom")}
             </Button>
           </form>
           {error ? (
@@ -162,9 +205,9 @@ const Player = () => {
               {error}
             </p>
           ) : null}
-          <div className="mt-5 flex justify-between items-center">
+          <div className="player-entry-footer mt-5">
             <ConnectionIndicator />
-            <span className="oh-eyebrow" style={{ color: "var(--oh-text-faint)" }}>Choose your tickets before the round</span>
+            <span className="oh-eyebrow player-entry-footer__note" style={{ color: "var(--oh-text-faint)" }}>{t("chooseTicketsBeforeRound")}</span>
           </div>
         </Panel>
       </main>

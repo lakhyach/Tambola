@@ -2,11 +2,11 @@
 # Apply in the Render dashboard: "New" -> "Blueprint", connect the GitHub repo.
 # The repo-root Dockerfile is used automatically.
 #
-# SECRET VALUES ARE INTENTIONALLY NOT HERE. After the first deploy, set
-# DATABASE_URL, OWNER_MFA_KEY and PUBLIC_ORIGIN in Render's encrypted
-# "Environment Values" and mark DATABASE_URL/OWNER_MFA_KEY as secrets. `sync: false`
-# means Render will not try to source them from anywhere but the dashboard, so they
-# are never committed.
+# SECRET VALUES ARE INTENTIONALLY NOT HERE. Provide DATABASE_URL, OWNER_MFA_KEY
+# and the assigned HTTPS PUBLIC_ORIGIN in Render's Environment Values. Mark
+# DATABASE_URL/OWNER_MFA_KEY as secrets. `sync: false` keeps deployment-specific
+# values out of this file; for a new Blueprint Render prompts for them, while an
+# existing service must be updated in the dashboard.
 #
 # DATABASE_URL (production) MUST be the Supabase SESSION pooler on port 5432
 # (NOT the 6543 transaction pooler) because the single-instance lease uses a
@@ -42,13 +42,13 @@ services:
       - key: DB_SCHEMA
         value: public           # matches the Supabase default schema the app pins to
       - key: MFA_ISSUER
-        value: Tambola          # label shown in authenticator apps (cosmetic)
+        value: Ninety Club      # label shown in authenticator apps (cosmetic)
       - key: TRUST_PROXY
         value: "1"             # Render is a real TLS-terminating reverse proxy
       - key: TAMBOLA_COOKIE_SECURE
         value: "1"
       - key: PUBLIC_ORIGIN
-        value: https://REPLACE-ME.onrender.com   # or your custom https domain
+        sync: false
       # --- secrets: create as Environment Values in the dashboard, never here ---
       - key: DATABASE_URL      # postgres://...?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem  (see README)
         sync: false

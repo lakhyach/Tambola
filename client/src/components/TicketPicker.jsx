@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
-import { useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Panel from "./Panel.jsx";
+import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
 
 /**
  * How many tickets this seat plays. The control only asks; the server decides.
@@ -12,29 +13,38 @@ import Panel from "./Panel.jsx";
  * Three details matter more than the look:
  *  - the count always reads as "3 of 4", never a bare "3", so the limit is
  *    visible before it is hit;
- *  - every count is a real radio, so a keyboard or screen-reader user picks a
- *    number directly instead of pressing + four times;
+ *  - a bounded numeric input handles large room ceilings without rendering one
+ *    DOM control for every possible count;
  *  - the live region says what changed, including "maximum reached", because a
  *    disabled + button on its own is not feedback.
  */
-const TicketPicker = ({ value = 1, max = 1, disabled = false, onPick }) => {
+const TicketPicker = ({ value = 1, max = 1, disabled = false, lockedLabel, language = "en", onPick }) => {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-  const radios = useRef([]);
+  const [draft, setDraft] = useState(String(value));
 
   const ceiling = Math.max(1, Math.floor(Number(max)) || 1);
   const current = Math.min(ceiling, Math.max(1, Math.floor(Number(value)) || 1));
   const atMax = current >= ceiling;
+  const t = (key, variables) => bookingCopy(language, key, variables);
+  const number = (n) => formatBookingNumber(n, language);
+
+  useEffect(() => setDraft(String(current)), [current]);
 
   const pick = async (next) => {
     if (disabled) {
-      setNote("The round has started, so your tickets are locked.");
+      setNote(lockedLabel || t("lockedRound"));
       return;
     }
     if (busy) return;
-    const wanted = Math.min(ceiling, Math.max(1, next));
+    const numeric = Number(next);
+    if (!Number.isSafeInteger(numeric) || numeric < 1 || numeric > ceiling) {
+      setNote(`Choose a whole number from 1 to ${number(ceiling)}.`);
+      return;
+    }
+    const wanted = numeric;
     if (wanted === current) {
-      setNote(wanted >= ceiling ? `That is the room maximum: ${ceiling} tickets.` : "");
+      setNote(wanted >= ceiling ? t("ticketCountMax", { count: number(ceiling) }) : "");
       return;
     }
     setBusy(true);
@@ -44,8 +54,8 @@ const TicketPicker = ({ value = 1, max = 1, disabled = false, onPick }) => {
       if (result && result.ok === false) {
         setNote(
           result.code === "TICKET_LIMIT"
-            ? `This room allows at most ${result.max ?? ceiling} tickets.`
-            : result.error || "The server did not accept that count."
+            ? t("ticketLimit", { count: number(result.max ?? ceiling) })
+            : (language === "hi" ? t("ticketPickFailed") : result.error || t("ticketPickFailed"))
         );
       } else {
         // The status line already recomputes from the new value ("2 of 4
@@ -54,52 +64,36 @@ const TicketPicker = ({ value = 1, max = 1, disabled = false, onPick }) => {
         setNote("");
       }
     } catch {
-      setNote("The server did not answer — try again.");
+      setNote(language === "hi" ? t("ticketPickFailed") : "The server did not answer — try again.");
     } finally {
       setBusy(false);
     }
   };
 
-  const onKeyDown = (event, index) => {
-    const keys = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
-    let target = null;
-    if (Object.prototype.hasOwnProperty.call(keys, event.key)) {
-      target = (index + keys[event.key] + ceiling) % ceiling;
-    } else if (event.key === "Home") {
-      target = 0;
-    } else if (event.key === "End") {
-      target = ceiling - 1;
-    }
-    if (target === null) return;
-    event.preventDefault();
-    radios.current[target]?.focus();
-    pick(target + 1);
-  };
-
   const status = disabled
-    ? "Locked — the round has started"
-    : `${current} of ${ceiling} selected${atMax ? " · room maximum" : ""}`;
+    ? lockedLabel || t("lockedRound")
+    : t(atMax ? "ticketsSelectedMax" : "ticketsSelected", { count: number(current), max: number(ceiling) });
 
   return (
     <Panel className="p-4" data-ticket-picker="true">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="leading-tight">
           <h2 className="oh-display" style={{ fontSize: 15, letterSpacing: ".1em", margin: 0 }}>
-            Your Tickets
+            {t("yourTickets")}
           </h2>
           {/* One line by design: a second line here pushes the actual tickets
               below the fold of a 390px phone before the round has even begun. */}
           <p className="oh-eyebrow" style={{ marginTop: 4, color: "var(--oh-text-faint)" }}>
-            {disabled ? "Locked for this round" : "15 numbers per ticket"}
+            {disabled ? t("lockedForRound") : t("numbersPerTicket")}
           </p>
         </div>
 
         <div className="flex items-center gap-2" aria-hidden="true">
           <span className="oh-num" style={{ fontSize: 26, fontWeight: 700, color: "var(--oh-gold-bright)" }}>
-            {current}
+            {number(current)}
           </span>
           <span className="oh-num" style={{ fontSize: 14, color: "var(--oh-text-muted)" }}>
-            / {ceiling}
+            / {number(ceiling)}
           </span>
         </div>
       </div>
@@ -109,7 +103,7 @@ const TicketPicker = ({ value = 1, max = 1, disabled = false, onPick }) => {
           <button
             type="button"
             className="oh-step"
-            aria-label="Fewer tickets"
+            aria-label={t("fewerTickets")}
             disabled={disabled || busy || current <= 1}
             onClick={() => pick(current - 1)}
           >
@@ -118,7 +112,7 @@ const TicketPicker = ({ value = 1, max = 1, disabled = false, onPick }) => {
           <button
             type="button"
             className="oh-step"
-            aria-label="More tickets"
+            aria-label={t("moreTickets")}
             disabled={disabled || busy || atMax}
             onClick={() => pick(current + 1)}
           >
@@ -126,37 +120,24 @@ const TicketPicker = ({ value = 1, max = 1, disabled = false, onPick }) => {
           </button>
         </div>
 
-        <div
-          className="oh-ticket-choice"
-          role="radiogroup"
-          aria-label="Tickets to play"
-          aria-describedby="ticket-picker-status"
-        >
-          {Array.from({ length: ceiling }, (_, i) => {
-            const count = i + 1;
-            const selected = count === current;
-            return (
-              <button
-                key={count}
-                ref={(el) => {
-                  radios.current[i] = el;
-                }}
-                type="button"
-                role="radio"
-                aria-checked={selected}
-                aria-label={`${count} ${count === 1 ? "ticket" : "tickets"}`}
-                tabIndex={selected ? 0 : -1}
-                disabled={disabled || busy}
-                onClick={() => pick(count)}
-                onKeyDown={(event) => onKeyDown(event, i)}
-                className="oh-ticket-choice__item oh-num"
-                data-selected={String(selected)}
-              >
-                {count}
-              </button>
-            );
-          })}
-        </div>
+        <label className="oh-ticket-count-input">
+          <span className="sr-only">{t("ticketsToPlay")}</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min="1"
+            max={ceiling}
+            step="1"
+            value={draft}
+            disabled={disabled || busy}
+            aria-describedby="ticket-picker-status"
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => { if (event.key === "Enter") pick(Number(draft)); }}
+          />
+          <button type="button" className="oh-btn oh-btn--gold" disabled={disabled || busy || !draft} onClick={() => pick(Number(draft))}>
+            {busy ? "Saving…" : "Apply"}
+          </button>
+        </label>
       </div>
 
       <p

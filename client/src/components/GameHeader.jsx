@@ -1,7 +1,12 @@
 /* eslint-disable react/prop-types */
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { NavLink } from "react-router-dom";
+import { FaHome, FaTicketAlt, FaCalendarAlt, FaPlay, FaVolumeUp, FaVolumeMute } from "react-icons/fa";
+import "./festival-system.css";
 import ConnectionIndicator from "./ConnectionIndicator.jsx";
-import { APP_MARK, APP_NAME } from "../brand.js";
+import { assetUrl, usePlatformBranding } from "../platform-branding.js";
+import BookingLanguageSelect from "../i18n/BookingLanguageSelect.jsx";
+import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
 
 /**
  * Compact game header: identity, the room code (selectable + copy), live
@@ -13,8 +18,21 @@ import { APP_MARK, APP_NAME } from "../brand.js";
  *   • a lag dot that appears only while the voice is behind the board, so the
  *     header never implies the current number has been read when it has not.
  */
-const GameHeader = ({ roomId, sound, onToggleSound, onToggleSpeech, onToggleSpeechLang }) => {
+const GameHeader = ({ roomId, sound, state = "WAITING", playerCount = 0, language = "en", onToggleSound, onToggleSpeech, onToggleSpeechLang }) => {
+  const t = (key) => bookingCopy(language, key);
+  const brand = usePlatformBranding();
   const [copied, setCopied] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
+  const [instanceBrand, setInstanceBrand] = useState(() => {
+    const data = typeof document === "undefined" ? {} : document.documentElement.dataset;
+    return { active: Boolean(data.instanceName), name: data.instanceName || "", logoUrl: data.instanceLogo || "" };
+  });
+
+  useEffect(() => {
+    const update = (event) => { setInstanceBrand(event.detail || { active: false, name: "", logoUrl: "" }); setLogoFailed(false); };
+    document.addEventListener("instance-branding-change", update);
+    return () => document.removeEventListener("instance-branding-change", update);
+  }, []);
 
   const copyCode = async () => {
     if (!roomId) return;
@@ -30,65 +48,49 @@ const GameHeader = ({ roomId, sound, onToggleSound, onToggleSpeech, onToggleSpee
   const soundOn = sound && (sound.speech || sound.chime);
   const speechAvailable = Boolean(sound && sound.available && sound.available.speech);
   const speechOn = Boolean(sound && sound.speech);
+  const languageVoiceAvailable = sound?.voiceSupport?.supported !== false;
   // The engine can die mid-round (autoplay policy, a crashed voice). The chip
   // must not keep claiming "VOICE" while nothing is spoken: it turns into a
   // RETRY that an explicit tap uses to start the queue again.
   const speechDead = Boolean(sound && sound.dead);
-  const lang = (sound && sound.speechLang) === "hi" ? "hi" : "en";
+  const lang = ["hi", "hinglish"].includes(sound?.speechLang) ? sound.speechLang : "en";
+  const voiceUnavailableText = lang === "hi" ? "Hindi voice unavailable" : lang === "hinglish" ? "Hinglish voice unavailable" : "English voice unavailable";
+  const logo = instanceBrand.active ? instanceBrand.logoUrl : assetUrl(brand.logo);
+  const stateText = t(`state${state}`);
 
   return (
     <header
-      className="flex flex-wrap items-center justify-between gap-3"
+      lang={language === "hi" ? "hi" : "en"}
+      className="oh-game-header"
       style={{ paddingBottom: 12, borderBottom: "1px solid var(--oh-line)" }}
     >
-      <div className="flex items-center gap-3">
-        <span
-          aria-hidden="true"
-          style={{
-            width: 10,
-            height: 10,
-            borderRadius: "50%",
-            background: "var(--oh-gold)",
-            boxShadow: "0 0 12px 2px rgba(207,171,99,.6)",
-          }}
-        />
-        <div className="leading-tight">
-          <div className="oh-display" style={{ fontSize: 18, letterSpacing: ".06em" }}>
-            {APP_NAME}
-          </div>
-          <div className="oh-eyebrow">{APP_MARK}</div>
-        </div>
+      <div className="oh-game-brand">
+        {!logoFailed && logo ? <img src={logo} alt="" aria-hidden="true" onError={() => setLogoFailed(true)} /> : null}
+        <span className="oh-display">{instanceBrand.active ? instanceBrand.name : brand.name}</span>
+      </div>
+
+      <nav className="festival-game-nav" aria-label={language === "hi" ? "मुख्य नेविगेशन" : "Main navigation"}>
+        <NavLink to="/"><FaHome aria-hidden="true" /><span>{language === "hi" ? "होम" : "Home"}</span></NavLink>
+        <a href="#main-content" aria-current="page"><FaPlay aria-hidden="true" /><span>{language === "hi" ? "खेल" : "Play"}</span></a>
+        <NavLink to="/games"><FaTicketAlt aria-hidden="true" /><span>{language === "hi" ? "बुकिंग" : "Bookings"}</span></NavLink>
+        <NavLink to="/games"><FaCalendarAlt aria-hidden="true" /><span>{language === "hi" ? "कार्यक्रम" : "Events"}</span></NavLink>
+      </nav>
+      <div className="oh-game-header__event" aria-label={`${stateText}, ${formatBookingNumber(playerCount, language)} ${t(state === "RUNNING" || state === "PAUSED" ? "playersPlaying" : state === "COMPLETED" ? "playersPlayed" : "playersSeated")}`}>
+        <span className="oh-game-header__live" data-state={state.toLowerCase()}><i aria-hidden="true" />{stateText}</span>
+        {roomId ? <span className="oh-game-header__room">{t("room")} <strong>{roomId}</strong></span> : null}
+        <span className="oh-game-header__players">{formatBookingNumber(playerCount, language)} {t(state === "RUNNING" || state === "PAUSED" ? "playersPlaying" : state === "COMPLETED" ? "playersPlayed" : "playersSeated")}</span>
       </div>
 
       {/* This group must be allowed to wrap on its own: at 390px the chips are
           wider than the viewport, and the header is only as wide as its
           padding. Without the wrap the connection pill was clipped at the edge. */}
       <div className="flex items-center gap-3" style={{ flexWrap: "wrap", justifyContent: "flex-end", rowGap: 8 }}>
-        {roomId ? (
-          <button
-            onClick={copyCode}
-            title="Copy room code"
-            className="oh-num inline-flex items-center gap-2"
-            style={{
-              background: "var(--oh-inset)",
-              border: "1px solid var(--oh-line)",
-              borderRadius: 999,
-              padding: "5px 12px",
-              color: "var(--oh-ivory)",
-              cursor: "pointer",
-              fontSize: 14,
-            }}
-          >
-            <span className="oh-eyebrow" style={{ letterSpacing: ".18em" }}>
-              {copied ? "Copied" : "Room"}
-            </span>
-            <span style={{ fontWeight: 700, letterSpacing: ".14em" }}>{roomId}</span>
-          </button>
-        ) : null}
+        <BookingLanguageSelect />
+        {roomId ? <button type="button" onClick={copyCode} title={t("copyRoomCode")} aria-label={`${copied ? t("copied") : t("copyRoomCode")} ${roomId}`} className="oh-game-header__copy">{copied ? t("copied") : t("copyRoomCode")}</button> : null}
 
         {speechAvailable ? (
           <div
-            className="flex items-center"
+            className="flex items-center game-header-speech"
             style={{
               border: "1px solid var(--oh-line)",
               borderRadius: 999,
@@ -100,11 +102,13 @@ const GameHeader = ({ roomId, sound, onToggleSound, onToggleSpeech, onToggleSpee
               onClick={onToggleSpeech}
               aria-pressed={speechOn}
               title={
-                speechDead
-                  ? "Spoken numbers stopped in this browser — tap to try again"
+                speechOn && !languageVoiceAvailable
+                  ? `${voiceUnavailableText}; no server or same-language local voice is available.`
+                  : speechDead
+                  ? t("spokenNumbersStopped")
                   : speechOn
-                    ? "Spoken numbers on"
-                    : "Spoken numbers muted"
+                    ? t("spokenNumbersOn")
+                    : t("spokenNumbersMuted")
               }
               className="oh-eyebrow"
               style={{
@@ -119,11 +123,11 @@ const GameHeader = ({ roomId, sound, onToggleSound, onToggleSpeech, onToggleSpee
                 letterSpacing: ".12em",
               }}
             >
-              {speechDead ? "RETRY" : speechOn ? "VOICE" : "MUTED"}
+              {speechDead ? t("retryVoice") : speechOn && !languageVoiceAvailable ? voiceUnavailableText : speechOn ? t("voice") : t("muted")}
             </button>
             <button
               onClick={onToggleSpeechLang}
-              title={lang === "hi" ? "Announcements in Hindi — switch to English" : "Announcements in English — switch to Hindi"}
+              title="Cycle caller voice language"
               className="oh-eyebrow"
               style={{
                 padding: "6px 9px",
@@ -134,7 +138,7 @@ const GameHeader = ({ roomId, sound, onToggleSound, onToggleSpeech, onToggleSpee
                 letterSpacing: ".1em",
               }}
             >
-              {lang === "hi" ? "हिं" : "EN"}
+              {lang === "en" ? "EN" : lang === "hi" ? "HI" : "HNG"}
             </button>
           </div>
         ) : null}
@@ -143,7 +147,7 @@ const GameHeader = ({ roomId, sound, onToggleSound, onToggleSpeech, onToggleSpee
           <button
             onClick={onToggleSound}
             aria-pressed={Boolean(soundOn)}
-            title={soundOn ? "Announcements on" : "Announcements off"}
+            title={t(soundOn ? "announcementsOn" : "announcementsOff")}
             className="inline-flex items-center justify-center"
             style={{
               width: 34,
@@ -165,15 +169,6 @@ const GameHeader = ({ roomId, sound, onToggleSound, onToggleSpeech, onToggleSpee
   );
 };
 
-const SoundMark = ({ on }) => (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-    <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
-    {on ? (
-      <path d="M16.5 8.5a5 5 0 010 7M19 6a8 8 0 010 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    ) : (
-      <path d="M17 9l5 6M22 9l-5 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    )}
-  </svg>
-);
+const SoundMark = ({ on }) => on ? <FaVolumeUp aria-hidden="true" size={18} /> : <FaVolumeMute aria-hidden="true" size={18} />;
 
 export default GameHeader;

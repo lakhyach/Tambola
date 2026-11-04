@@ -1,0 +1,130 @@
+/* Shared festival game surfaces. Runtime theme values remain authoritative. */
+.oh-app-shell,.festival-caller-console {
+  --festival-pink: #ee169b;
+  --festival-purple: #4b0753;
+  --festival-gold: var(--oh-gold, #ffc341);
+  --festival-cream: #fff0c5;
+  --festival-ink: #390c3f;
+  --festival-border: 1px solid color-mix(in srgb, var(--festival-gold) 84%, var(--festival-pink));
+  --festival-panel: linear-gradient(145deg, color-mix(in srgb, var(--oh-panel) 84%, #70055c), var(--oh-inset) 88%);
+  --festival-shadow: 0 0 0 1px #8c2658, 0 0 14px #f42d941f, inset 0 0 18px #ec358310;
+}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel {border:var(--festival-border); background:var(--festival-panel); box-shadow:var(--festival-shadow); border-radius:18px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-eyebrow {letter-spacing:.02em; text-transform:none; color:var(--oh-ivory); font-size:13px; font-weight:700;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header {display:flex; align-items:center; gap:18px; padding:12px 20px; background:linear-gradient(100deg,#30042d,#4e084d 50%,#240323); border-bottom:1px solid var(--festival-gold)!important; box-shadow:0 3px 18px #f4198b24; margin:0 0 16px; flex-wrap:wrap; border-radius:0;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-brand {display:flex; flex:0 0 auto; width:clamp(160px,18vw,265px); align-items:center; gap:10px; min-width:0;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-brand img {width:40px; height:40px; flex:none; object-fit:contain;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-brand span {overflow:hidden; color:var(--oh-ivory); font-size:clamp(17px,1.5vw,24px); line-height:1.1; text-overflow:ellipsis; white-space:nowrap;}
+.festival-game-nav {display:flex; align-items:center; justify-content:center; gap:clamp(12px,2vw,30px); flex:1;}
+.festival-game-nav a {display:flex; flex-direction:column; align-items:center; gap:4px; font-size:13px; text-decoration:none; color:var(--oh-ivory); padding:2px 4px; white-space:nowrap;}
+.festival-game-nav svg {font-size:20px; color:var(--oh-gold-bright);}
+.festival-game-nav a[aria-current="page"],.festival-game-nav a:hover {color:var(--oh-gold-bright); text-shadow:0 0 12px #ffa638a1;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header__event {order:3; width:100%; display:flex; justify-content:center; gap:16px; padding-top:7px; border-top:1px solid #ffffff12; font-size:12px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header__copy {font-size:11px;}
+:is(.oh-app-shell,.festival-caller-console) .festival-number-board {padding:16px;}
+:is(.oh-app-shell,.festival-caller-console) .festival-number-grid {gap:5px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-tile {border:1px solid color-mix(in srgb,var(--oh-gold) 60%,var(--oh-line)); border-radius:9px; background:linear-gradient(145deg,#68134f70,#1b0827); color:var(--oh-ivory); aspect-ratio:1.12; min-width:0; font-size:clamp(12px,1.3vw,22px)!important; font-weight:600; box-shadow:inset 0 1px 5px #ffc5dc18;}
+:is(.oh-app-shell,.festival-caller-console) .oh-tile[data-called="true"] {background:radial-gradient(circle at 35% 20%,#fff4a6,#ffbf37 55%,#f16d11); color:#400e35; border-color:#fff1a5; box-shadow:0 0 10px #ffa30055,inset 0 1px 5px #fff8e9;}
+:is(.oh-app-shell,.festival-caller-console) .oh-tile[data-current="true"] {outline:2px solid var(--oh-gold-bright); outline-offset:1px; box-shadow:0 0 15px #ffad00bb; font-weight:900;}
+:is(.oh-app-shell,.festival-caller-console) .oh-reveal {border-radius:50%; border:8px solid #ffc349; background:radial-gradient(circle at 34% 24%,#fffdf4 0 12%,#fff2d8 42%,#f6d992 68%,#bc771d 100%); box-shadow:0 0 0 3px #fff0a3,0 0 0 9px #a31e94,inset -9px -13px 20px #a36b3b40,0 0 35px 15px #f7a21577,0 16px 25px #19032699; overflow:hidden;}
+:is(.oh-app-shell,.festival-caller-console) .oh-reveal__num {color:var(--festival-ink); font-size:clamp(75px,8vw,145px); font-weight:900; text-shadow:0 2px 0 #fff; z-index:2;}
+:is(.oh-app-shell,.festival-caller-console) .oh-reveal .oh-eyebrow {color:var(--festival-ink); text-align:center; padding:20px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-reveal .theme-art {opacity:.18;}
+:is(.oh-app-shell,.festival-caller-console) .oh-call-history {flex-wrap:nowrap; overflow-x:auto; padding:7px 4px 12px; gap:12px; scrollbar-width:thin;}
+:is(.oh-app-shell,.festival-caller-console) .oh-call-ball {border:2px solid #ffe297; height:42px; width:42px; flex-basis:42px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-call-ball__number {font-size:22px; font-weight:800;}
+:is(.oh-app-shell,.festival-caller-console) .oh-call-ball__ordinal {font-size:8px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-call-ball[data-latest="true"] {box-shadow:0 0 0 2px #ef39a9,0 0 18px #ffc13a99;}
+.festival-ticket-gallery {display:none;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper {border:3px double var(--oh-gold-bright); padding:12px; background:linear-gradient(125deg,#b84b14,#fff1a4 8%,#a94516 13%,#710b4a 24%,#6d0944 76%,#e8a52c 92%,#fff0ab); box-shadow:0 0 0 2px #e7409c,0 0 16px #e98c2555; border-radius:18px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-paper__header {min-height:36px; padding:2px 4px 8px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-paper__brand {color:var(--oh-gold-bright); font-family:var(--oh-font-display); font-size:12px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-paper__title {font-size:15px; color:var(--oh-ivory);}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-grid {gap:0; padding:4px!important; background:var(--festival-cream)!important; border:2px solid #eab65e!important; border-radius:10px!important; overflow:hidden;}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-row {gap:0!important;}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-cell {aspect-ratio: .9; border-radius:0; border:1px solid #d9b586!important; background:#fff1cf; font-size:clamp(13px,1.4vw,22px); font-weight:800; color:var(--festival-ink);}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-cell[data-empty="true"] {background:#f5dfa9;}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-cell[data-called="true"] {background:radial-gradient(circle at 35% 20%,#fff8ad,#ffb72b 65%,#e8541e)!important; color:#5b053f; text-shadow:0 1px #fff8d4;}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-cell[data-current="true"] {border-radius:50%; outline:2px solid #f02d7f; outline-offset:-3px; box-shadow:0 0 12px #f78c15; z-index:1;}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-rowstats {margin-bottom:6px; gap:4px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-rowstat {font-size:10px; padding:1px 6px;}
+:is(.oh-app-shell,.festival-caller-console) button:focus-visible,:is(.oh-app-shell,.festival-caller-console) a:focus-visible {outline:3px solid var(--oh-gold-bright); outline-offset:4px;}
+@media(min-width:1100px) {
+.festival-ticket-gallery {display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px;}
+.festival-ticket-rail > .oh-ticket-tabs,.festival-ticket-rail > .oh-ticket-tabpanel {display:none;}
+}
+@media(max-width:1100px) { .festival-game-nav {order:4; flex-basis:100%;} }
+@media(max-width:600px) {
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header {padding:12px; gap:10px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-brand {width:165px; margin-right:auto;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header > .flex {gap:6px!important; justify-content:flex-start!important;}
+.festival-game-nav {justify-content:space-between; gap:8px;}
+.festival-game-nav a {font-size:11px;}
+.festival-game-nav svg {font-size:17px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-tile {font-size:15px!important;}
+:is(.oh-app-shell,.festival-caller-console) .oh-ticket-cell {font-size:18px; min-height:30px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header__event {gap:9px; flex-wrap:wrap; font-size:11px;}
+}
+@media(prefers-reduced-motion:reduce) { :is(.oh-app-shell,.festival-caller-console) *, :is(.oh-app-shell,.festival-caller-console) *::before, :is(.oh-app-shell,.festival-caller-console) *::after {animation:none!important; transition:none!important; scroll-behavior:auto!important;} }
+/* Keep the dark ornamental frame distinct from its printed number grid. */
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] {background:linear-gradient(130deg,#66104e,#3b073c 45%,#71124e); color:var(--oh-ivory); border:4px double var(--oh-gold-bright); border-radius:18px; padding:10px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-paper__title {color:var(--oh-ivory); font-size:14px; text-transform:none; letter-spacing:0;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-paper__brand {color:var(--oh-gold-bright); font-size:11px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-paper__progress-value {color:var(--oh-gold-bright);}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-rowstat {color:var(--oh-ivory); border-color:#eabd6d55; background:#3c103c;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-paper__progress-label {color:var(--oh-text-muted);}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-cell {background:#fff2d2; color:var(--festival-ink); border-radius:2px; min-width:0;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-cell[data-empty="true"] {background:#f2dfb0;}
+@media(min-width:1100px) {
+:is(.oh-app-shell,.festival-caller-console) .festival-ticket-rail > .flex:first-child {display:none;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-rowstats {position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%);}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-paper__header {min-height:34px; margin:0 0 6px; padding:0 4px; align-items:center;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-paper__brand {display:none;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-paper__progress-label {font-size:9px;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-paper__progress-value {font-size:18px; line-height:1;}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] .oh-ticket-cell {aspect-ratio:1;}
+}
+:is(.oh-app-shell,.festival-caller-console) .oh-panel.oh-ticket-paper[data-ticket-no] {padding:10px!important;}
+@media(min-width:1200px) {
+.player-festival.oh-app-shell .oh-game-header__event {display:none;}
+.player-festival.oh-app-shell .oh-game-header {flex-wrap:nowrap;}
+.player-festival.oh-app-shell .oh-game-brand {width:clamp(185px,17vw,260px);}
+.player-festival.oh-app-shell .festival-game-nav {gap:clamp(10px,1.5vw,25px);}
+.festival-caller-console .festival-game-nav {display:none;}
+.festival-caller-console .oh-game-header__event {order:0; width:auto; flex:1; border:0; padding:0;}
+.festival-caller-console .oh-game-header {flex-wrap:nowrap;}
+}
+@media(min-width:1200px) and (max-width:1599px) {
+.player-festival.oh-app-shell .oh-game-header > .flex {gap:7px;}
+.player-festival.oh-app-shell .player-game-hero.oh-panel {min-height:350px;}
+.player-festival.oh-app-shell .player-game-hero__layout {min-height:302px;}
+}
+@media(max-width:600px) {
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header .game-header-speech,
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header__copy {display:none;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header .booking-language > span {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header > .flex {flex:1 1 100%; justify-content:space-between!important;}
+:is(.oh-app-shell,.festival-caller-console) .oh-game-header__event {padding-top:5px;}
+.festival-caller-console .festival-game-nav {display:none;}
+}
+@media(min-width:1200px) {
+.festival-caller-console .caller-game-info dl > div {font-size:14px;}
+.festival-caller-console .caller-game-info h2,.festival-caller-console .caller-current-pattern h2,.festival-caller-console .caller-roster-heading,.festival-caller-console .caller-history-heading,.festival-caller-console .caller-claims h2 {font-size:20px;}
+.festival-caller-console .caller-claim-detail summary {font-size:16px;}
+.festival-caller-console .caller-current-pattern__copy p {font-size:13px;}
+.festival-caller-console .oh-seat__name {font-size:15px;}
+.festival-caller-console .caller-desk__board h2 {font-size:18px;}
+.festival-caller-console .oh-caller-transport .oh-btn {font-size:13px;}
+}
+@media(min-width:1200px) {
+.festival-caller-console .oh-console {gap:0;}
+.festival-caller-console .oh-game-header {margin-bottom:0;}
+.festival-caller-console .caller-desk__board .oh-tile {width:92%; justify-self:center;}
+.festival-caller-console .caller-claim-detail summary {min-height:34px;}
+.festival-caller-console .caller-claims-list {gap:4px;}
+}
+.festival-chat-message {display:flex;align-items:flex-start;gap:9px;padding:7px 0;}
+.festival-chat-avatar {width:32px;height:32px;flex:0 0 32px;display:grid;place-items:center;border:1px solid var(--oh-gold);border-radius:50%;background:var(--oh-panel-raised);color:var(--oh-gold-bright);font-size:11px;font-weight:800;}
+.festival-chat-message > div {min-width:0;}
+.festival-chat-name {display:block;color:var(--oh-gold-bright);font-weight:700;font-size:12px;}
+.festival-chat-text {display:block;color:var(--oh-text);overflow-wrap:anywhere;font-size:13px;line-height:1.45;}

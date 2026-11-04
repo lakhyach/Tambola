@@ -29,12 +29,17 @@ Docker. The repo ships a `Dockerfile` and a single-host `docker-compose.yml`.
 # Reproducible image (multi-stage: builds client/dist, installs prod deps only).
 docker build -t tambola .
 
-# One-off run against an existing managed Postgres:
-docker run -d -p 4000:4000 --env-file .env --name tambola tambola
+# One-off run behind a same-host TLS reverse proxy:
+docker run -d -p 127.0.0.1:4000:4000 --env-file .env --name tambola tambola
 
 # Or the whole stack on a single VM (app + Postgres + persistent volumes):
 docker compose up -d --build
 ```
+
+For the bundled Compose database, generate `POSTGRES_PASSWORD` with URL-safe
+characters because Compose embeds it directly in the app's `postgres://` URL.
+For example, `openssl rand -hex 32` produces a strong hexadecimal password.
+Use the generated value in the local `.env` file and keep that file private.
 
 The client is built into `client/dist` inside the image; the server serves it and
 resolves it at `../client/dist` relative to `server/index.js`.
@@ -78,8 +83,11 @@ Full list with safe defaults is in `.env.example`.
   `HEALTHCHECK` on `/readyz`.
 - SIGTERM drains (stops new calls, `503` on `/readyz`, closes sockets, releases
   the lease); rooms mid-game freeze with a reason and recover on the next boot.
-- Terminate TLS at the reverse proxy / load balancer, forward `X-Forwarded-Proto`
-  and `X-Forwarded-For`, and set `TRUST_PROXY=1`, `TAMBOLA_COOKIE_SECURE=1`, and
+- For a same-host deployment, terminate TLS at a reverse proxy and forward
+  `X-Forwarded-Proto` and `X-Forwarded-For`. Keep the app port bound to host
+  loopback so clients cannot bypass that proxy while `TRUST_PROXY=1` is enabled.
+  For a managed platform, use its container integration instead of publishing
+  a host port. Set `TRUST_PROXY=1`, `TAMBOLA_COOKIE_SECURE=1`, and
   `PUBLIC_ORIGIN=https://your-domain` so Socket.IO origin checks and invite links
   are correct.
 

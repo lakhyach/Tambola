@@ -126,7 +126,7 @@ test("the roster tells the host how many tickets each seat is playing, and never
   }
 });
 
-test("the selection is server-enforced: over the ceiling is refused with TICKET_LIMIT", () => {
+test("the selection is bounded by the shared room capacity, not a per-player setting", () => {
   const h = makeRoom({ config: { maxTicketsPerPlayer: 2 } });
   const host = h.host();
   const alice = h.player("Alice", "sock-a");
@@ -134,11 +134,21 @@ test("the selection is server-enforced: over the ceiling is refused with TICKET_
   const tooMany = h.room.selectTickets({
     playerId: alice.playerId,
     playerToken: alice.playerToken,
-    count: 5,
+    count: 10002,
   });
   assert.equal(tooMany.ok, false);
   assert.equal(tooMany.code, ErrorCodes.TICKET_LIMIT);
-  assert.equal(tooMany.max, 2, "the room's ceiling is echoed back for a clear message");
+  assert.equal(tooMany.max, 10001, "the other occupied seat's ticket is deducted from shared room capacity");
+});
+
+test("one seat can use a large share of room capacity while all seats share one budget", () => {
+  const h = makeRoom({ config: { maxTicketsPerPlayer: 2 } });
+  h.host();
+  const alice = h.player("Alice", "sock-a");
+  const picked = h.room.selectTickets({ playerId: alice.playerId, playerToken: alice.playerToken, count: 250 });
+  assert.equal(picked.ok, true, "more than four tickets is allowed despite a legacy per-player setting");
+  assert.equal(picked.tickets.length, 250);
+  assert.equal(h.room.playerSnapshot(alice.playerId).maxTickets, 10001);
 });
 
 test("a bad credential cannot move somebody else's selection", () => {
@@ -315,7 +325,7 @@ test("a player snapshot exposes all owned tickets but the roster only counts the
   const view = h.room.playerSnapshot(alice.playerId);
   assert.equal(view.tickets.length, 2);
   assert.equal(view.ticketCount, 2);
-  assert.equal(view.maxTickets, 4);
+  assert.equal(view.maxTickets, 10001);
   assert.deepEqual(view.ticket, view.tickets[0].grid, "the legacy single field mirrors ticket 1");
 
   const pub = h.room.publicSnapshot();

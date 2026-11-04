@@ -12,7 +12,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { ErrorCodes, GameState, TICKET_MAX } from "../server/game/engine.js";
+import { ErrorCodes, GameState, ROOM_TICKET_CAPACITY } from "../server/game/engine.js";
 import { validateTicket, ticketNumbers } from "../server/game/ticket.js";
 import { TICKET_A, TICKET_B, TOP_LINE, MIDDLE_LINE, makeRoom, callSpecific } from "./helpers.js";
 
@@ -67,25 +67,26 @@ for (const count of [1, 2, 3, 4]) {
   });
 }
 
-test("the room maximum is honoured at the hard ceiling too", () => {
-  const h = makeRoom({ config: { maxTicketsPerPlayer: TICKET_MAX } });
+test("one player can take the room's remaining shared ticket capacity", () => {
+  const h = makeRoom({ config: { maxTicketsPerPlayer: 1 } });
   h.host();
   const alice = h.player("Alice", "sock-a");
-  const picked = h.room.selectTickets({ playerId: alice.playerId, playerToken: alice.playerToken, count: TICKET_MAX });
+  const roomCapacity = h.room.ticketCeiling() - 1; // the host already occupies one seat ticket
+  const picked = h.room.selectTickets({ playerId: alice.playerId, playerToken: alice.playerToken, count: roomCapacity });
   assert.equal(picked.ok, true);
-  assert.equal(picked.tickets.length, TICKET_MAX);
-  assert.equal(h.room.ticketCeiling(), TICKET_MAX);
+  assert.equal(picked.tickets.length, roomCapacity);
+  assert.equal(h.room.ticketCeiling(), ROOM_TICKET_CAPACITY + 2);
+  assert.equal(h.room.selectTickets({ playerId: alice.playerId, playerToken: alice.playerToken, count: roomCapacity + 1 }).max, roomCapacity);
 });
 
-test("a count above the room maximum is refused, not clamped silently", () => {
+test("legacy per-player room settings no longer cap selections at four", () => {
   const h = makeRoom({ config: { maxTicketsPerPlayer: 2 } });
   h.host();
   const alice = h.player("Alice", "sock-a");
-  const tooMany = h.room.selectTickets({ playerId: alice.playerId, playerToken: alice.playerToken, count: 3 });
-  assert.equal(tooMany.ok, false);
-  assert.equal(tooMany.code, ErrorCodes.TICKET_LIMIT);
-  assert.equal(tooMany.max, 2);
-  assert.equal(seatTickets(h.room, alice.playerId).length, 0, "a refused pick mints nothing");
+  const selection = h.room.selectTickets({ playerId: alice.playerId, playerToken: alice.playerToken, count: 5 });
+  assert.equal(selection.ok, true);
+  assert.equal(selection.ticketCount, 5);
+  assert.equal(seatTickets(h.room, alice.playerId).length, 5);
 });
 
 test("tickets lock the moment the round starts", () => {

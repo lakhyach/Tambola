@@ -45,8 +45,10 @@ swappable and keeps it out of the game engine and the Socket.IO transport.
   `schema_migrations`.
 - Re-running `migrate` is a no-op for applied versions. Editing a file that was
   already applied aborts with `MIGRATION_DRIFT` rather than silently diverging.
-- An advisory lock (`MIGRATE_LOCK_KEY`) serialises two servers that boot at the
-  same instant, so they cannot both apply the same migration.
+- A PostgreSQL advisory lock keyed by schema serialises migration runners using
+  the same schema, while independent schemas (including parallel test schemas)
+  can migrate concurrently. This retains same-schema safety without forcing
+  unrelated test fixtures to queue behind one global lock.
 - The SQL never qualifies table names; the connection pins `search_path` to the
   configured schema (`DB_SCHEMA`, default `public`). The identical SQL therefore
   runs in production `public` and in a throwaway test schema.
@@ -62,6 +64,20 @@ node --env-file-if-exists=.env server/db/migrate.js
 | 001 | `001_init.sql` | the full initial game schema below |
 | 002 | `002_owner.sql` | `owner_accounts`, `owner_sessions`, `admin_audit` (the control centre) |
 | 003 | `003_hardening.sql` | owner TOTP columns, `owner_mfa_challenges`, the durable `auth_throttle` counter, an audit read index |
+| 004–005 | `004_multi_ticket.sql`, `005_award_ticket.sql` | multi-ticket seats and durable optional-pattern ticket attribution |
+| 006 | `006_game_instances.sql` | Regular, Bumper and Legacy instances; required room ownership; moderator/grant and platform audit/settings schema |
+| 007 | `007_room_instance_lock.sql` | Database guard against moving a room after its first game starts |
+| 008 | `008_legacy_room_default.sql` | Backward-compatible Legacy default for direct SQL room inserts |
+| 009 | `009_moderator_auth.sql` | Moderator accounts, sessions, grants, MFA challenges, socket tickets and append-only platform audit |
+| 010 | `010_moderator_recovery.sql` | Hash-only short-lived moderator recovery tokens |
+
+Migration 006 maps every pre-existing room to the hidden, archived `legacy`
+instance because no historical product label exists in the source data. This is
+reversible and preserves the original room/game/ticket/call/claim/award rows.
+New host-created rooms default to Regular; owner-created rooms select an active
+instance. Instance ownership is protected by a database trigger once a game has
+started. Pausing blocks new room creation and player joins while current games
+continue.
 
 ---
 
@@ -175,6 +191,10 @@ or is not a contiguous prefix of the stored draw, or a number appears twice.
 `buildHydrationSource` throws `IntegrityError` for those, `recoverRooms` returns
 them in `frozen[]` with a reason, and the room is **not** handed to players as a
 live room. No extra number is ever called simply because the process restarted.
+The current game's start timestamp must parse; `RUNNING` games cannot have a
+completion timestamp, `COMPLETED` games must have one, and completion cannot
+precede start. Room/game status and timestamps are validated together before
+hydration so inconsistent lifecycle rows freeze for operator review.
 
 **Resume policy.** A room that was `RUNNING` comes back `RUNNING` with the same
 cursor; if auto-call was on and a scheduler is present, its per-room clock is
@@ -238,19 +258,22 @@ so browser-only state assumptions are gone in both modes.
 
 ## 8. Single-instance constraint (multi-instance readiness)
 
-The scheduler and Socket.IO fan-out are **safe for one server instance** per
-database. Enforced by a session-scoped advisory lock
+The scheduler and Socket.IO fan-out are **safe for one server process per
+schema**. Enforced by a session-scoped advisory lock keyed from `DB_SCHEMA`
 (`acquireInstanceLease`, [`db/pool.js`](db/pool.js)): a second server pointed at
-the same database **refuses to start** (`INSTANCE_LOCKED`) rather than running
-two schedulers over one set of rooms. `instance_lease` records the current owner
-for observability.
+the same database and schema **refuses to start** (`INSTANCE_LOCKED`) rather
+than running two schedulers over one set of rooms. `instance_lease` records the
+current owner in that schema for observability.
 
 The schema and transaction boundaries are built so this *can* evolve to multiple
 instances - per-room row locks, conditional tick claims keyed in the database,
 idempotent constraint-keyed writes, and durable sessions - but **distributed
 Socket.IO fan-out and a distributed scheduler are not implemented**, so this
-phase does not claim multi-instance production readiness. Deploy exactly one game
-server per database.
+phase does not claim horizontally scalable production readiness within one
+schema. Separate application deployments may use distinct schemas in one
+database, but they share its capacity; run exactly one game server per
+database/schema pair. Product tenants such as Regular and Bumper remain within
+one schema and one server process.
 
 ---
 
@@ -266,7 +289,62 @@ The durable test suite ([`tests/persistence.test.js`](../tests/persistence.test.
 skips cleanly when `DATABASE_URL` is unset and otherwise runs against an isolated
 schema that is created and dropped per run - never `public`, never production.
 
+## 11. Moderator security tables
+
+Migration `009_moderator_auth.sql` adds `moderator_sessions` (hashed bearer token, idle/absolute expiry, revocation), `moderator_invites` (hashed one-time invitations), `moderator_mfa_challenges` (short-lived, attempt-limited, IP-bound challenges), and `moderator_socket_tickets` (single-use handshake tokens). It adds TOTP replay tracking to `moderator_accounts`. The existing `moderator_instance_grants` is the current permission source; permission arrays are checked on every HTTP or moderator socket operation. `platform_audit` remains append-only. These tables are included in whole-database dumps. See [`MODERATOR-SECURITY.md`](MODERATOR-SECURITY.md).
+
+## 12. Scheduled bookings and retention
+
+Migrations `011_ticket_bookings.sql` through `013_booking_moderator_ops.sql`
+store scheduled sessions, count-only reservation holds, one-time secret hashes,
+room-seat assignment and append-only reservation audit. A room lifecycle trigger
+completes its bound session and cancels unassigned reservations when the room
+starts or closes. Whole-schema backup/restore includes these tables and
+triggers; an isolated booking fixture round-trip is covered by
+`tests/bookings.test.js`.
+
+Per the owner's instruction on 1 November 2026, booking records and audit rows
+remain until a retention policy is provided. Expired holds release capacity
+immediately by timestamp and are marked expired on the next booking/operator
+read or mutation. No automatic record deletion or anonymization runs. Display
+names remain on reservation rows, while audit actor labels avoid copying player
+names. This preserves dispute/security history but creates ongoing storage and
+display-name retention; a later owner policy is needed before cleanup is added.
+
 ---
+
+## Theme library and release state (migration 014)
+
+`theme_catalog` holds public identity and review status. Each package belongs to
+an immutable row in `theme_versions`; the only permitted update is the single
+draft-to-approved review transition. Publishing inserts an append-only
+`theme_publications` row and advances `platform_theme_state`, retaining the
+previous version for rollback. `theme_release_schedule` stores the IANA time
+zone, local release time and reviewed rotation versions. A unique daily release
+date and row lock make scheduler retries idempotent.
+
+Instances resolve the latest publication, active rotation, or a pinned approved
+version. Rooms persist the resolved version ID in their configuration at room
+creation, so later releases cannot restyle an active game. The browser receives
+only validated design tokens; it cannot load arbitrary CSS or fonts. Theme
+changes are also recorded in `platform_audit`.
+
+## Poster templates and publications (migration 015)
+
+`poster_templates` describes original vector compositions; immutable
+`poster_template_versions` stores the layout and allow-listed color palette.
+Each version passes a one-way draft-to-approved transition before manual or
+scheduled publication. `poster_template_release_schedule` uses a timezone,
+local release time, and a reviewed rotation list. The existing lease owner runs
+it once per minute; the unique daily date and row lock make retries safe.
+
+`posters` contains an editable draft scoped to one active instance and pins the
+approved template version and optional approved game theme. Publishing appends
+a complete snapshot to `poster_publications` and locks that draft. A revision
+starts by duplicating the published poster, retaining the old content and exact
+template version. Public endpoints serve only publication snapshots and omit
+internal instance IDs. SVG output uses fixed layouts and validated text/color
+fields; arbitrary HTML, scripts, CSS and external image URLs are not accepted.
 
 ## 10. Backup and restore
 
@@ -280,11 +358,14 @@ one unit with standard PostgreSQL tooling.
   manifest recording the migration ledger and every table's row count. The
   connection password reaches the tool through the process environment only - it
   never appears in a filename, a command log or the manifest.
-- `npm run db:restore-check` is the proof, not the exit code: it creates a
-  throwaway database, `pg_restore`s the archive into it, checks the ledger, table
+- `npm run db:restore-check` is the proof, not the exit code: it checks the
+  archive SHA-256 against its manifest, creates a throwaway database,
+  `pg_restore`s the archive into it, checks the ledger, table
   inventory and row counts against the manifest, verifies each round's call log is
   a contiguous prefix of its stored draw (so a restored room is genuinely
   readable), then drops the throwaway database. It never restores into the source.
+  A credential-free `.restore-check.json` sidecar records the result, which the
+  owner Settings page reads along with the local archive manifests.
 - Tool driver: `pg_dump`/`pg_restore` on `PATH` or under `PG_BIN`, or
   `PG_CONTAINER` to run them inside the database container. Restore-check needs a
   role able to `CREATE`/`DROP DATABASE`.
@@ -295,3 +376,33 @@ one unit with standard PostgreSQL tooling.
 Frequency, retention, encryption and the recovery point are deployment decisions;
 the commands, isolation rules and a full operational walkthrough live in
 [`RUNBOOK.md`](RUNBOOK.md) §7.
+
+## Runtime instance identity (migration 016)
+
+`instances.branding` stores optional JSON identity settings. The API accepts only curated local logo paths, bounded plain-text taglines, and approved hex color fields with minimum contrast checks. Public directory and detail reads sanitize stored JSON again, so malformed or legacy values cannot turn into arbitrary image URLs or CSS. Migration 016 seeds distinct original Regular and Bumper marks, palettes and taglines beneath existing configured values.
+
+The client maps the sanitized fields to fixed CSS variables and document metadata. Instance identity follows the resolved instance into booking links and published poster snapshots; poster branding is captured at publication time so later edits do not rewrite old shares. Instance identifiers remain private in public responses.
+
+## Instance operational reports (migration 017)
+
+The owner report API aggregates only counts and groups them by instance. Every room activity source joins `rooms.game_instance_id`; reservation activity joins through `game_sessions.instance_id`. UTC date bounds are inclusive in the UI and are validated to no more than 366 days. The response contains no player names, booking token material, or reservation details. Migration 017 adds date-window indexes for bounded report queries.
+
+## Booking-linked room recovery integrity
+
+Before a recovered room enters the live registry, hydration checks each reservation associated with the room against its linked durable member. The reservation must remain confirmed, have a player, point at this room, and match the member's player, room and locked `ticket_count`. A disagreement freezes the room and records `recovery_error`; booking reservation rows and reservation audit history are not rewritten to make recovery succeed.
+
+After the underlying row discrepancy is corrected from an authoritative source, an authenticated owner may use **Recheck recovery** on the room detail page. The same hydration checks run again. Failure leaves the room frozen; success reopens it in memory and appends an owner action to `admin_audit`. The application does not provide a data-repair operation. Preserve a verified backup and the append-only booking history when arranging any manual repair; do not clear `recovery_error` directly as a substitute for rechecking.
+
+## Reset round recovery
+
+A reset changes the room row to `WAITING` but retains the prior `games` row and its tickets, calls and awards. On a cold restart, the recovery loader validates that completed round against its stored draw and call history, then hydrates only the new empty waiting-room projection. It keeps the roster and chosen ticket counts, while clearing the live projection's draw, calls, tickets and awards; the next start uses the following game number. A waiting room tied to a still-running game row, or a running/completed room whose game row disagrees, fails closed instead of guessing which state is authoritative.
+
+Persisted awards are checked before hydration: pattern IDs and point values must agree with the registry, the winner must still belong to the room, the call index must reference stored history, any supplied ticket attribution must identify a ticket held by that winner, and winner ordinals must be contiguous without duplicate winners. Older records may omit nullable ticket attribution and ordinal metadata; recovery preserves that compatibility without manufacturing values.
+
+The recovery snapshot also loads every claim decision for the current game. Decisions must reference an existing room participant and a call index from zero through the stored call count. Rejected attempts remain historical records even when they contain an unknown pattern ID. Each `AWARDED` claim must match exactly one award on player, pattern and call index, and each award must have exactly one such claim. A mismatch freezes the room; no claim or award row is rewritten to make the pair agree.
+
+## Numbered ticket inventory (migrations 023–024)
+
+Numbered sessions persist their full immutable ticket grid, fingerprint, stable UUID and serial in `session_tickets`. `ticket_inventory_batches` records the exact requested/generated quantity and idempotency key. `ticket_reservation_items` binds specific catalog IDs to holds and preserves release history; partial unique indexes prevent two active allocations for one ticket. `session_ticket_events` is append-only.
+
+`tickets` game rows may carry all three nullable inventory identity columns. Legacy rows keep them null. For numbered rows, composite foreign keys and `tickets_inventory_assignment_guard` require the ticket to match the same room, confirmed reservation, assigned player, active allocation and persisted grid. Game start verifies each seat's issued ID set against its locked allocation before committing the round. Recovery compares each numbered reservation with its active allocation and game-ticket rows; inconsistency freezes the room instead of regenerating tickets. Full state transitions and APIs are documented in [`DURABLE-TICKET-INVENTORY.md`](../docs/DURABLE-TICKET-INVENTORY.md).

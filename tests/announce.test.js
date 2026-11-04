@@ -14,6 +14,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createAnnounceQueue, DEFAULT_ANNOUNCE_OPTIONS } from "../client/src/lib/announce-queue.js";
 import { englishWords, hindiWords, speakWord } from "../client/src/lib/number-words.js";
+import { matchSpeechVoice, speechVoicesForLanguage } from "../client/src/lib/announce.js";
 
 // ---------------------------------------------------------------- fake clock
 
@@ -256,7 +257,7 @@ test("muting speech skips calls and they stay skipped when unmuted", async () =>
   assert.deepEqual(engine.log.started.map((s) => s.number), [42]);
 });
 
-test("hindi announcements use devanagari number words for the same call", async () => {
+test("Hindi announcements use Romanized number words for the same call", async () => {
   let lang = "hi";
   const { clock, queue, engine } = harness({ language: () => lang });
   queue.enqueue(15, 1);
@@ -285,7 +286,7 @@ test("the confusable pairs get distinct words", () => {
   assert.notEqual(englishWords(16), englishWords(60));
   assert.notEqual(hindiWords(15), hindiWords(50));
   assert.notEqual(hindiWords(16), hindiWords(60));
-  assert.equal(hindiWords(90), "नब्बे");
+  assert.equal(hindiWords(90), "nabbe");
 });
 
 test("speakWord never throws and falls back to digits out of range", () => {
@@ -300,4 +301,38 @@ test("defaults are sane and finite (safe maximum wait exists)", () => {
   assert.ok(DEFAULT_ANNOUNCE_OPTIONS.watchdogMaxMs > 0);
   const { clock, queue } = harness();
   assert.equal(queue.isEnabled(), true);
+});
+
+test("voice matching never falls back across language families", () => {
+  const voices = [
+    { name: "Microsoft Zira", voiceURI: "zira", lang: "en-US" },
+    { name: "Hindi voice", voiceURI: "hindi", lang: "hi-IN" },
+  ];
+  assert.equal(matchSpeechVoice(voices.slice(0, 1), "hi"), null);
+  assert.deepEqual(speechVoicesForLanguage(voices, "hi").map((voice) => voice.voiceURI), ["hindi"]);
+  assert.equal(matchSpeechVoice(voices, "hi")?.voiceURI, "hindi");
+  assert.equal(matchSpeechVoice(voices, "en", "hindi")?.voiceURI, "zira", "a saved Hindi voice cannot read English calls");
+  assert.equal(matchSpeechVoice([{ name: "Hindi Latin voice", lang: "hi-Latn-IN" }], "hi")?.lang, "hi-Latn-IN");
+  assert.equal(matchSpeechVoice([{ name: "invalid Hindi tag", lang: "hiVoice" }], "hi"), null);
+});
+
+test("remote voice receives the official index and is cancelled on a round stop", () => {
+  const clock = makeClock();
+  let received;
+  let killed = false;
+  const queue = createAnnounceQueue({
+    setTimeout: clock.setTimeout,
+    clearTimeout: clock.clearTimeout,
+    now: clock.now,
+    toWords: (number) => String(number),
+    speak: (_text, meta) => {
+      received = meta;
+      return { promise: new Promise(() => {}), kill: () => { killed = true; } };
+    },
+  });
+  queue.setEnabled(true);
+  queue.enqueue(45, 17);
+  assert.deepEqual(received, { number: 45, lang: "en", seq: 17, replay: false });
+  queue.stop();
+  assert.equal(killed, true);
 });

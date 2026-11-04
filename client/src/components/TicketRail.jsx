@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import TambolaTicket from "./TambolaTicket.jsx";
 import { activeTicketNo, readTicketMemory, ticketProgress, writeTicketMemory } from "../lib/ticketview.js";
+import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
 
 /**
  * All the tickets one seat owns, with comfortable navigation on a phone.
@@ -17,7 +18,9 @@ import { activeTicketNo, readTicketMemory, ticketProgress, writeTicketMemory } f
  * comes back to the ticket the player was reading, while the tickets themselves
  * still come only from the server.
  */
-const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, playerName, roomId = "", state = "WAITING" }) => {
+const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, playerName, roomId = "", state = "WAITING", language = "en" }) => {
+  const t = (key, variables) => bookingCopy(language, key, variables);
+  const number = (value) => typeof value === "string" && !/^\d+$/.test(value) ? value : formatBookingNumber(value, language);
   const list = useMemo(() => (Array.isArray(tickets) ? tickets.filter((t) => t && t.grid) : []), [tickets]);
   const calledSet = useMemo(() => new Set(Array.isArray(calledNumbers) ? calledNumbers : []), [calledNumbers]);
   const storage = typeof window === "undefined" ? null : window.sessionStorage;
@@ -27,6 +30,11 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
     return activeTicketNo(list, remembered) ?? 1;
   });
   const tabs = useRef([]);
+  const focusIndex = useRef(null);
+  const activeIndex = Math.max(0, list.findIndex((ticket) => ticket.no === activeNo));
+  const pageSize = 9;
+  const pageStart = Math.floor(activeIndex / pageSize) * pageSize;
+  const visibleTabs = list.slice(pageStart, pageStart + pageSize);
 
   // A reset, a re-numbering or a ticket count change must never leave the rail
   // pointing at a ticket this seat no longer owns.
@@ -40,6 +48,12 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
     if (list.length) writeTicketMemory(storage, roomId, activeNo);
   }, [storage, roomId, activeNo, list.length]);
 
+  useEffect(() => {
+    if (focusIndex.current == null) return;
+    tabs.current[focusIndex.current]?.focus();
+    focusIndex.current = null;
+  }, [activeNo]);
+
   if (list.length === 0) {
     return (
       <TambolaTicket
@@ -47,6 +61,7 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
         calledNumbers={calledNumbers}
         currentNumber={currentNumber}
         playerName={playerName}
+        language={language}
       />
     );
   }
@@ -59,6 +74,7 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
         currentNumber={currentNumber}
         playerName={playerName}
         ticketNo={list[0].no}
+        language={language}
       />
     );
   }
@@ -76,23 +92,26 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
     else if (key === "Home") target = 0;
     else if (key === "End") target = count - 1;
     else return;
-    tabs.current[target]?.focus();
+    focusIndex.current = target;
     setActiveNo(list[target].no);
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 festival-ticket-rail">
       <div className="flex items-baseline justify-between gap-2">
         <span className="oh-eyebrow" style={{ color: "var(--oh-text-muted)" }}>
-          Your tickets · {list.length}
+          {t("ticketRailHeading", { count: number(list.length) })}
         </span>
         <span className="oh-eyebrow" style={{ color: "var(--oh-text-faint)" }}>
-          {state === "WAITING" ? "Change before start" : "Locked for this round"}
+          {state === "WAITING" ? t("ticketChangeBeforeStart") : t("ticketLockedForRound")}
         </span>
       </div>
 
-      <div className="oh-ticket-tabs" role="tablist" aria-label="Your tickets" aria-orientation="horizontal">
-        {list.map((ticket, index) => {
+      <div className="oh-ticket-tabs-pager">
+        {pageStart > 0 ? <button type="button" className="oh-chip" onClick={() => setActiveNo(list[Math.max(0, pageStart - 1)].no)} aria-label="Previous tickets">‹</button> : null}
+        <div className="oh-ticket-tabs" role="tablist" aria-label={t("yourTickets")} aria-orientation="horizontal">
+        {visibleTabs.map((ticket, visibleIndex) => {
+          const index = pageStart + visibleIndex;
           const selected = ticket.no === shown.no;
           const progress = ticketProgress(ticket.grid, calledSet);
           return (
@@ -106,20 +125,22 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
               id={tabId(ticket.no)}
               aria-selected={selected}
               aria-controls={panelId(ticket.no)}
-              aria-label={`Ticket ${ticket.no}, ${progress.marked} of ${progress.total} numbers called`}
+              aria-label={t("ticketTabLabel", { number: number(ticket.no), marked: number(progress.marked), total: number(progress.total) })}
               tabIndex={selected ? 0 : -1}
               onClick={() => setActiveNo(ticket.no)}
               onKeyDown={(event) => move(index, event.key)}
               className="oh-ticket-tab oh-num"
               data-selected={String(selected)}
             >
-              <span aria-hidden="true">Ticket {ticket.no}</span>
+              <span aria-hidden="true">{t("ticketTabText", { number: number(ticket.no) })}</span>
               <span className="oh-ticket-tab__count" aria-hidden="true">
-                {progress.marked}/{progress.total}
+                {number(progress.marked)}/{number(progress.total)}
               </span>
             </button>
           );
         })}
+        </div>
+        {pageStart + pageSize < list.length ? <button type="button" className="oh-chip" onClick={() => setActiveNo(list[pageStart + pageSize].no)} aria-label="Next tickets">›</button> : null}
       </div>
 
       <div
@@ -136,6 +157,7 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
           playerName={playerName}
           ticketNo={shown.no}
           ticketTotal={list.length}
+          language={language}
         />
       </div>
     </div>

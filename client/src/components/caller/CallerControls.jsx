@@ -2,8 +2,9 @@
 import { useEffect, useState } from "react";
 import Panel from "../Panel.jsx";
 import Button from "../Button.jsx";
-import { CONFIRM_COPY, disarm, press } from "../../lib/confirmAction.js";
+import { disarm, press } from "../../lib/confirmAction.js";
 import { INTERVAL_PRESETS, intervalLabel, nextCallHint } from "../../lib/caller.js";
+import { bookingCallerText, bookingCopy, localizeBookingDigits } from "../../i18n/booking-locale.js";
 
 /**
  * The console's control surface. Every button is an INTENT sent over the
@@ -25,6 +26,7 @@ import { INTERVAL_PRESETS, intervalLabel, nextCallHint } from "../../lib/caller.
  */
 const CallerControls = ({
   state,
+  language = "en",
   autoCall,
   callIntervalMs,
   actions,
@@ -33,6 +35,7 @@ const CallerControls = ({
   onAction,
   onSetInterval,
 }) => {
+  const t = (key, variables) => bookingCopy(language, key, variables);
   const [armed, setArmed] = useState(null);
 
   // An armed confirmation belongs to the round it was made in.
@@ -55,33 +58,36 @@ const CallerControls = ({
   const finished = state === "COMPLETED";
 
   const primary = waiting
-    ? { action: "game:start", label: busy ? "Opening…" : "Start the round", enabled: actions.start.enabled, reason: actions.start.reason, hint: nextCallHint({ state }) }
+    ? { action: "game:start", label: busy ? t("openingHall") : t("startRound"), enabled: actions.start.enabled, reason: bookingCallerText(language, actions.start.reason), hint: bookingCallerText(language, nextCallHint({ state })) }
     : finished
-      ? { action: null, label: "Round complete", enabled: false, reason: "reset the room to play again", hint: nextCallHint({ state }) }
+      ? { action: null, label: t("voiceRoundComplete"), enabled: false, reason: t("resetToPlayAgain"), hint: bookingCallerText(language, nextCallHint({ state })) }
       : {
           action: paused ? "game:resume" : "game:call-next",
-          label: paused ? "Resume the round" : pendingCall || busy ? "Calling…" : "Call next number",
+          label: paused ? t("resumeRound") : pendingCall || busy ? t("callingNumber") : t("callNextNumber"),
           enabled: paused ? actions.resume.enabled : actions.call.enabled,
-          reason: paused ? actions.resume.reason : actions.call.reason,
-          hint: nextCallHint({ state, autoCall, callIntervalMs }),
+          reason: bookingCallerText(language, paused ? actions.resume.reason : actions.call.reason),
+          hint: bookingCallerText(language, nextCallHint({ state, autoCall, callIntervalMs })),
         };
 
   const intervalNote = waiting
-    ? "Used from the first call of the round."
+    ? "firstCallStarts"
     : paused
-      ? "Applies when you resume."
+      ? "intervalOnResume"
       : running
-        ? "Applies to the next scheduled call — a call already due is never re-timed."
-        : "The round is over.";
+        ? "intervalNextCall"
+        : "intervalRoundOver";
 
-  const armedCopy = armed ? CONFIRM_COPY[armed] : null;
+  const armedCopy = armed ? {
+    armed: t(armed === "game:end" ? "confirmEndLabel" : "confirmResetLabel"),
+    confirm: t(armed === "game:end" ? "confirmEndText" : "confirmResetText"),
+  } : null;
 
   return (
-    <Panel className="p-4 oh-caller-controls">
+    <Panel className="p-4 oh-caller-controls festival-caller-card">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="oh-eyebrow">Draw Controls</h2>
+        <h2 className="oh-eyebrow">{t("drawControls")}</h2>
         <span className="oh-eyebrow" style={{ color: !finished && autoCall ? "var(--oh-ok)" : "var(--oh-text-faint)" }}>
-          {finished ? "round closed" : "auto-call " + (autoCall ? "on · " + intervalLabel(callIntervalMs) : "off")}
+          {finished ? t("roundClosed") : autoCall ? `${t("autoCallOn")} · ${localizeBookingDigits(language, intervalLabel(callIntervalMs))}` : t("autoCallOff")}
         </span>
       </div>
 
@@ -92,18 +98,19 @@ const CallerControls = ({
         disabled={!primary.enabled}
         onClick={() => primary.action && onAction(primary.action)}
         aria-keyshortcuts={primary.action === "game:call-next" ? "c" : undefined}
+        title={primary.reason || primary.hint}
       >
         <span className="oh-callbtn__label">
           {primary.label}
           {primary.action === "game:call-next" ? <span className="oh-kbd oh-kbd--dark">C</span> : null}
         </span>
-        <span className="oh-callbtn__hint">{primary.reason || primary.hint}</span>
+        <span className={primary.enabled ? "oh-sr-only" : "oh-callbtn__hint"}>{primary.reason || primary.hint}</span>
       </button>
 
       <div className="oh-caller-transport mt-3">
         {paused ? (
           <Button variant="ghost" size="sm" disabled={!actions.resume.enabled} onClick={() => onAction("game:resume")}>
-            Resume
+            {t("resumeRound")}
           </Button>
         ) : (
           <Button
@@ -112,9 +119,9 @@ const CallerControls = ({
             disabled={!actions.pause.enabled}
             onClick={() => onAction("game:pause")}
             aria-keyshortcuts="p"
-            title={actions.pause.reason || "Stop the clock without ending the round"}
+            title={bookingCallerText(language, actions.pause.reason || "Stop the clock without ending the round")}
           >
-            Pause {actions.pause.enabled ? <span className="oh-kbd">P</span> : null}
+            {t("pauseRound")} {actions.pause.enabled ? <span className="oh-kbd">P</span> : null}
           </Button>
         )}
 
@@ -124,9 +131,9 @@ const CallerControls = ({
           disabled={!actions.autocall.enabled}
           onClick={() => onAction("game:set-autocall", { enabled: !autoCall })}
           aria-pressed={autoCall}
-          title={actions.autocall.reason || (autoCall ? "Stop the automatic calls" : "Let the server call on the interval")}
+          title={bookingCallerText(language, actions.autocall.reason || (autoCall ? "Stop the automatic calls" : "Let the server call on the interval"))}
         >
-          {autoCall ? "Auto: On" : "Auto: Off"}
+          {autoCall ? t("autoCallOn") : t("autoCallOff")}
         </Button>
 
         <Button
@@ -135,9 +142,9 @@ const CallerControls = ({
           disabled={!actions.end.enabled}
           aria-pressed={armed === "game:end"}
           onClick={() => click("game:end")}
-          title={actions.end.reason || "End this round for everybody"}
+          title={bookingCallerText(language, actions.end.reason || "End this round for everybody")}
         >
-          {armed === "game:end" ? CONFIRM_COPY["game:end"].armed : "End round"}
+          {armed === "game:end" ? armedCopy.armed : t("endRound")}
         </Button>
 
         {finished ? (
@@ -148,7 +155,7 @@ const CallerControls = ({
             aria-pressed={armed === "game:reset"}
             onClick={() => click("game:reset")}
           >
-            {armed === "game:reset" ? CONFIRM_COPY["game:reset"].armed : "Reset room"}
+            {armed === "game:reset" ? armedCopy.armed : t("resetRoom")}
           </Button>
         ) : null}
       </div>
@@ -159,22 +166,22 @@ const CallerControls = ({
             {armedCopy.confirm}
           </p>
           <Button variant="ghost" size="sm" onClick={() => setArmed(disarm())}>
-            Cancel
+            {t("cancel")}
           </Button>
         </div>
       ) : null}
 
-      <div className="oh-rule" style={{ margin: "16px 0 12px" }} />
-
-      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+      <details className="caller-interval-settings">
+      <summary>{t("callingEvery")} <strong>{localizeBookingDigits(language, intervalLabel(callIntervalMs))}</strong></summary>
+      <div className="flex items-center justify-between mb-2 mt-3 gap-2 flex-wrap">
         <h3 className="oh-eyebrow" style={{ margin: 0 }}>
-          Calling every
+          {t("callingEvery")}
         </h3>
         <span className="oh-num" style={{ fontSize: 12, color: "var(--oh-text-muted)" }}>
-          {intervalLabel(callIntervalMs)}
+          {localizeBookingDigits(language, intervalLabel(callIntervalMs))}
         </span>
       </div>
-      <div role="group" aria-label="Call interval" className="oh-seg">
+      <div role="group" aria-label={t("intervalCallGroup")} className="oh-seg">
         {INTERVAL_PRESETS.map((ms) => (
           <button
             key={ms}
@@ -183,15 +190,16 @@ const CallerControls = ({
             data-active={String(ms === callIntervalMs)}
             disabled={!actions.interval.enabled || ms === callIntervalMs}
             onClick={() => onSetInterval(ms)}
-            title={actions.interval.reason || "Call a number every " + intervalLabel(ms)}
+            title={bookingCallerText(language, actions.interval.reason || "Call a number every " + intervalLabel(ms))}
           >
-            {intervalLabel(ms)}
+                {localizeBookingDigits(language, intervalLabel(ms))}
           </button>
         ))}
       </div>
       <p className="oh-caller-note" style={{ marginTop: 8 }}>
-        {actions.interval.enabled ? intervalNote : actions.interval.reason}
+        {actions.interval.enabled ? t(intervalNote) : bookingCallerText(language, actions.interval.reason)}
       </p>
+      </details>
     </Panel>
   );
 };

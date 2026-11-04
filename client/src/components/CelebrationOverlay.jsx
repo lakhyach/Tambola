@@ -1,8 +1,10 @@
 /* eslint-disable react/prop-types */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { FaHandshake, FaTrophy, FaVolumeMute, FaVolumeUp } from "react-icons/fa";
 import Panel from "./Panel.jsx";
 import { config, resolveLang } from "../config.js";
 import { celebrate } from "../i18n/messages.js";
+import { bookingCopy, bookingPatternName, formatBookingNumber, useBookingLanguage } from "../i18n/booking-locale.js";
 
 /**
  * Full-screen celebration for a CONFIRMED win. It is only ever mounted with
@@ -25,30 +27,63 @@ function initialReduceMotion() {
 }
 
 const CelebrationOverlay = ({ event, onDismiss, soundOn, onToggleSound }) => {
-  const lang = resolveLang(config.i18n.default);
+  const language = useBookingLanguage();
+  const lang = language || resolveLang(config.i18n.default);
   const [reduceMotion, setReduceMotion] = useState(initialReduceMotion);
+  const dialogRef = useRef(null);
   const closeRef = useRef(null);
+  const returnFocusRef = useRef(null);
 
   useEffect(() => {
     if (!event) return;
-    const onKey = (e) => {
-      if (e.key === "Escape") onDismiss();
-    };
-    window.addEventListener("keydown", onKey);
+    const active = document.activeElement;
+    returnFocusRef.current = active instanceof HTMLElement ? active : null;
     closeRef.current?.focus();
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      const previous = returnFocusRef.current;
+      if (previous?.isConnected && !previous.closest(".oh-celebrate")) previous.focus();
+      else document.getElementById("main-content")?.focus();
+      returnFocusRef.current = null;
+    };
   }, [event, onDismiss]);
+
+  const handleDialogKeyDown = (e) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onDismiss();
+      return;
+    }
+    if (e.key !== "Tab") return;
+    const focusable = [...(dialogRef.current?.querySelectorAll(
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+    ) || [])].filter((element) => element.getClientRects().length && element.getAttribute("aria-hidden") !== "true");
+    if (!focusable.length) {
+      e.preventDefault();
+      dialogRef.current?.focus();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && (document.activeElement === first || !dialogRef.current?.contains(document.activeElement))) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && (document.activeElement === last || !dialogRef.current?.contains(document.activeElement))) {
+      e.preventDefault();
+      first.focus();
+    }
+  };
 
   const confetti = useMemo(() => {
     if (reduceMotion || !event) return [];
-    // A restrained, on-brand scatter of gold/ivory pips — no rainbow.
-    return Array.from({ length: 46 }, (_, i) => ({
+    // Festival colors add variety while keeping each particle lightweight.
+    const count = window.matchMedia?.("(max-width: 600px)").matches ? 40 : 72;
+    return Array.from({ length: count }, (_, i) => ({
       id: i,
       left: Math.random() * 100,
       delay: Math.random() * 0.6,
       dur: 1.6 + Math.random() * 1.4,
       size: 6 + Math.random() * 8,
-      tone: i % 3,
+      tone: i % 5,
     }));
   }, [reduceMotion, event]);
 
@@ -64,7 +99,7 @@ const CelebrationOverlay = ({ event, onDismiss, soundOn, onToggleSound }) => {
   const winners = isFinal ? event.outcome?.winners || [] : [];
 
   return (
-    <div className="oh-celebrate" role="dialog" aria-modal="true" aria-labelledby="oh-celebrate-title">
+    <div ref={dialogRef} className="oh-celebrate" lang={lang === "hi" ? "hi" : "en"} role="dialog" aria-modal="true" aria-labelledby="oh-celebrate-title" onKeyDown={handleDialogKeyDown}>
       {!reduceMotion && (
         <div className="oh-confetti" aria-hidden="true">
           {confetti.map((c) => (
@@ -85,7 +120,7 @@ const CelebrationOverlay = ({ event, onDismiss, soundOn, onToggleSound }) => {
 
       <Panel className="oh-celebrate__card" style={{ position: "relative", zIndex: 1 }}>
         <p className="oh-celebrate__eyebrow">
-          {isFinal ? celebrate(lang, "resultsTitle", {}) : "🎉"}
+          {isFinal ? celebrate(lang, "resultsTitle", {}) : <FaTrophy aria-hidden="true" />}
         </p>
 
         <h2 id="oh-celebrate-title" className="oh-celebrate__title">
@@ -94,9 +129,9 @@ const CelebrationOverlay = ({ event, onDismiss, soundOn, onToggleSound }) => {
 
         {!isFinal && (
           <p className="oh-celebrate__sub">
-            {event.label}
-            {event.ticketNo != null ? ` · Ticket #${event.ticketNo}` : ""}
-            {event.points != null ? ` · +${event.points}` : ""}
+            {bookingPatternName(lang, event.pattern, event.label)}
+            {event.ticketNo != null ? ` · ${bookingCopy(lang, "ticketLabel", { number: typeof event.ticketNo === "string" && !/^\d+$/.test(event.ticketNo) ? event.ticketNo : formatBookingNumber(event.ticketNo, lang) })}` : ""}
+            {event.points != null ? ` · +${formatBookingNumber(event.points, lang)}` : ""}
           </p>
         )}
 
@@ -107,8 +142,8 @@ const CelebrationOverlay = ({ event, onDismiss, soundOn, onToggleSound }) => {
               <ul className="oh-celebrate__winners">
                 {winners.map((w, i) => (
                   <li key={w.playerId || i}>
-                    <span className="oh-celebrate__medal">{winners.length > 1 ? "🤝" : "🏆"}</span>
-                    {w.player} <span className="oh-num">· {w.points}</span>
+                    <span className="oh-celebrate__medal" aria-hidden="true">{winners.length > 1 ? <FaHandshake /> : <FaTrophy />}</span>
+                    {w.player} <span className="oh-num">· {formatBookingNumber(w.points, lang)}</span>
                   </li>
                 ))}
               </ul>
@@ -119,9 +154,9 @@ const CelebrationOverlay = ({ event, onDismiss, soundOn, onToggleSound }) => {
                 <ol>
                   {event.leaderboard.slice(0, 8).map((p, i) => (
                     <li key={p.playerId || i}>
-                      <span className="oh-num oh-celebrate__rank">{i + 1}</span>
+                      <span className="oh-num oh-celebrate__rank">{formatBookingNumber(i + 1, lang)}</span>
                       <span className="oh-celebrate__name">{p.player}</span>
-                      <span className="oh-num">{p.points}</span>
+                      <span className="oh-num">{formatBookingNumber(p.points, lang)}</span>
                     </li>
                   ))}
                 </ol>
@@ -136,7 +171,7 @@ const CelebrationOverlay = ({ event, onDismiss, soundOn, onToggleSound }) => {
           </button>
           <div className="oh-celebrate__toggles">
             <button className="oh-chip" onClick={onToggleSound} aria-pressed={soundOn}>
-              🔊 {soundOn ? celebrate(lang, "soundOn", {}) : celebrate(lang, "soundOff", {})}
+              {soundOn ? <FaVolumeUp aria-hidden="true" /> : <FaVolumeMute aria-hidden="true" />} {soundOn ? celebrate(lang, "soundOn", {}) : celebrate(lang, "soundOff", {})}
             </button>
             <button className="oh-chip" onClick={toggleMotion} aria-pressed={reduceMotion}>
               {reduceMotion ? celebrate(lang, "motionOff", {}) : celebrate(lang, "motionOn", {})}

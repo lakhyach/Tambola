@@ -31,6 +31,9 @@ import { createAdminQueries } from "./queries.js";
 import { createThrottleSet } from "./rate-limit.js";
 import { createMfaChallengeStore, createMemoryMfaChallengeStore } from "./mfa-challenges.js";
 import { mfaKeyFromEnv } from "./mfa.js";
+import { createThemeService } from "../themes/service.js";
+import { createPosterService } from "../posters/service.js";
+import { createPlatformBrandingService } from "../branding/platform.js";
 
 export function createAdmin({
   db = null,
@@ -50,10 +53,14 @@ export function createAdmin({
   throttle = null,
   challenges = null,
   mfaKey = undefined,
-  mfaIssuer = process.env.MFA_ISSUER || "Tambola",
+  mfaIssuer = process.env.MFA_ISSUER || "Ninety Club",
   challengeTtlMs = undefined,
+  healthProbe = null,
 } = {}) {
   const hasDatabase = Boolean(durable && db);
+  const themeService = hasDatabase ? createThemeService({ db }) : null;
+  const posterService = hasDatabase ? createPosterService({ db }) : null;
+  const platformBrandingService = createPlatformBrandingService({ db: hasDatabase ? db : null });
   const store = ownerStore || (hasDatabase ? createOwnerStore({ db, log }) : createMemoryOwnerStore({ log }));
   const sessions = ownerSessions || (hasDatabase ? createOwnerSessionStore({ db, log }) : createMemoryOwnerSessions({ log }));
   const auditLog = audit || (hasDatabase ? createAdminAudit({ db, log }) : createMemoryAdminAudit({ log }));
@@ -74,6 +81,7 @@ export function createAdmin({
   const mfa = mfaKey === undefined ? mfaKeyFromEnv() : mfaKey;
 
   const router = createAdminRouter({
+    db: hasDatabase ? db : null,
     ownerStore: store,
     ownerSessions: sessions,
     audit: auditLog,
@@ -86,6 +94,10 @@ export function createAdmin({
     challenges: challengeStore,
     mfa: { configured: Boolean(mfa && mfa.configured), key: (mfa && mfa.key) || null, issuer: mfaIssuer },
     production,
+    themeService,
+    posterService,
+    platformBrandingService,
+    healthProbe,
     log,
   });
 
@@ -99,5 +111,8 @@ export function createAdmin({
     challenges: challengeStore,
     mfa: { configured: Boolean(mfa && mfa.configured), issuer: mfaIssuer },
     durable: Boolean(readQueries),
+    themeService,
+    posterService,
+    platformBrandingService,
   };
 }

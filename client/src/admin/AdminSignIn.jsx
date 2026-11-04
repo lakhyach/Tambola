@@ -21,7 +21,7 @@ import Button from "../components/Button.jsx";
 import { api } from "./api.js";
 import { useAdmin } from "./useAdmin.js";
 import { Banner, Boot, ErrorNote, Field } from "./ui.jsx";
-import { APP_NAME } from "../brand.js";
+import { assetUrl, usePlatformBranding } from "../platform-branding.js";
 
 function refusalMessage(error) {
   const code = error && error.code;
@@ -49,6 +49,7 @@ function refusalMessage(error) {
 }
 
 export default function AdminSignIn() {
+  const platformBrand = usePlatformBranding();
   const { status, setupRequired, mfa, error: bootError, signIn, reloadSession } = useAdmin();
   const navigate = useNavigate();
   const location = useLocation();
@@ -62,7 +63,8 @@ export default function AdminSignIn() {
   const codeRef = useRef(null);
 
   const remembered = location.state && typeof location.state.from === "string" ? location.state.from : null;
-  const destination = remembered && remembered.startsWith("/admin") && remembered !== "/admin/signin" ? remembered : "/admin";
+  const base = location.pathname.startsWith("/super-admin") ? "/super-admin" : "/admin";
+  const destination = remembered && (remembered.startsWith("/admin") || remembered.startsWith("/super-admin")) && remembered !== "/admin/signin" && remembered !== "/super-admin/signin" ? remembered : base;
 
   if (status === "loading") return <Boot label="Checking the session…" />;
   if (status === "authenticated") return <Navigate to={destination} replace />;
@@ -125,11 +127,11 @@ export default function AdminSignIn() {
 
   return (
     <div className="adm-signin">
-      <div className="adm-signin__panel oh-panel">
+      <main id="adm-content" tabIndex="-1" className="adm-signin__panel oh-panel">
         <div className="adm-signin__brand">
-          <span className="adm-brand__dot" aria-hidden="true" />
+          <img className="adm-brand__mark" src={assetUrl(platformBrand.logo)} alt="" width="42" height="42" />
           <span>
-            <span className="oh-display adm-brand__name">{APP_NAME}</span>
+            <span className="oh-display adm-brand__name">{platformBrand.name}</span>
             <span className="oh-eyebrow adm-signin__eyebrow">Owner control centre</span>
           </span>
         </div>
@@ -240,7 +242,7 @@ export default function AdminSignIn() {
         <Link to="/" className="adm-signin__back">
           Back to the game
         </Link>
-      </div>
+      </main>
     </div>
   );
 }

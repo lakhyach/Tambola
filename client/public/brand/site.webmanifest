@@ -1,0 +1,16 @@
+{
+  "name": "Ninety Club",
+  "short_name": "Ninety Club",
+  "description": "Free, friendly, real-time Tambola with people you know.",
+  "icons": [
+    {
+      "src": "/brand/tambola-house-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "theme_color": "#30072f",
+  "background_color": "#18051f",
+  "display": "standalone"
+}

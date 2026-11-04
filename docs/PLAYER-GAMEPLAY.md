@@ -269,7 +269,7 @@ capacity claim.
 ## 10. Checking it yourself
 
 ```
-npm run migrate          # once per database: the backup suite asserts the migration ledger
+npm run migrate          # once per configured DB_SCHEMA: each schema has its own migration ledger
 npm run build --prefix client   # the smoke suite asks a live server for client/dist
 npm test                 # 516 tests, including the ticket property and lifecycle suits
 npm run lint

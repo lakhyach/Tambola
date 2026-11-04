@@ -32,7 +32,9 @@ import {
   createBudget,
   LEGACY_EVENTS,
 } from "./validate.js";
-import { ErrorCodes, TICKET_MIN, TICKET_MAX } from "../game/engine.js";
+import { ErrorCodes, TICKET_MIN } from "../game/engine.js";
+import { authorizeRoom } from "../moderator/authorization.js";
+import { buildSarvamAnnouncement, CALLER_FESTIVALS } from "../voice/sarvam-tts.js";
 
 /** Send an ack response if the caller supplied a callback. */
 function reply(ack, payload) {
@@ -62,10 +64,15 @@ function normalise(args) {
 /** Session codes that mean the browser's saved credential is dead, full stop. */
 const SESSION_DEAD = new Set(["SESSION_INVALID", "SESSION_REVOKED", "SESSION_EXPIRED", "SESSION_ROTATED"]);
 
-export function registerGameHandlers(io, { rooms, controller, log = () => {}, limits = {} } = {}) {
+export function registerGameHandlers(io, { rooms, controller, log = () => {}, limits = {}, db = null, moderatorAuth = null, sarvamTts = null } = {}) {
   io.on("connection", (socket) => {
     socket.data.session = null;
+    const moderatorTicket = socket.handshake && socket.handshake.auth && socket.handshake.auth.moderatorTicket;
+    socket.data.moderatorSocket = Boolean(moderatorTicket);
+    const moderatorReady = moderatorTicket && moderatorAuth ? moderatorAuth.consumeSocketTicket(moderatorTicket).catch(() => null) : Promise.resolve(null);
+    socket.data.moderatorReady = moderatorReady;
     const budget = createBudget({ burst: limits.burst ?? 40, perSecond: limits.perSecond ?? 20 });
+    const voiceBudget = createBudget({ burst: 4, perSecond: 1 });
 
     /**
      * Wrap a handler: budget check, payload shape check, then the handler gets
@@ -78,9 +85,20 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
         if (!budget()) {
           return rejected(ack, ErrorCodes.RATE_LIMITED, "too many events, slow down");
         }
+        if (socket.data.moderatorSocket) return rejected(ack, "NOT_ALLOWED", "moderator sockets cannot use player or host game events");
         const shape = sanePayload(payload);
         if (!shape.ok) {
           return rejected(ack, ErrorCodes.BAD_PAYLOAD, shape.error);
+        }
+        if (socket.data.session && ["room:create", "room:join", "session:resume"].includes(event)) {
+          // The SPA may ask its own socket to resume after create/join as the
+          // route changes. Permit that same-room credential recheck, but never
+          // let a bound socket create a second room or switch room membership.
+          // `controller.resume` still verifies the submitted server token.
+          const targetRoomId = asRoomId(shape.value.roomId);
+          if (!["room:join", "session:resume"].includes(event) || targetRoomId !== socket.data.session.roomId) {
+            return rejected(ack, "ALREADY_IN_ROOM", "leave the current room before joining or resuming another room");
+          }
         }
         const session = socket.data.session;
         if (requiresRoom && !session) {
@@ -108,7 +126,11 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
     on("room:create", async ({ socket, payload, ack }) => {
       const name = asName(payload.name);
       if (!name) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "name must be 3-20 characters");
-      const created = await controller.createRoom({ name, socketId: socket.id });
+      const instanceSlug = payload.instanceSlug === undefined ? null : payload.instanceSlug;
+      if (instanceSlug !== null && (typeof instanceSlug !== "string" || !/^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(instanceSlug))) {
+        return rejected(ack, ErrorCodes.BAD_PAYLOAD, "instance is invalid");
+      }
+      const created = await controller.createRoom({ name, socketId: socket.id, instanceSlug });
       if (!created.ok) return reply(ack, created);
       socket.join(created.roomId);
       socket.data.session = {
@@ -123,9 +145,24 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
     on("room:join", async ({ socket, payload, ack }) => {
       const roomId = asRoomId(payload.roomId);
       const name = asName(payload.name);
+      const rawReservationId = payload.reservationId;
+      const rawBookingToken = payload.bookingToken;
+      const hasReservation = rawReservationId !== undefined || rawBookingToken !== undefined;
+      const bookingCredentialsValid = typeof rawReservationId === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawReservationId) &&
+        typeof rawBookingToken === "string" && /^[a-f0-9]{64}$/i.test(rawBookingToken);
       if (!roomId) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "room code must be 6-12 letters or digits");
-      if (!name) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "name must be 3-20 characters");
-      const joined = await controller.joinRoom({ roomId, name, socketId: socket.id });
+      if (hasReservation && !bookingCredentialsValid) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "both the booking reference and private booking code are required");
+      if (!name && !bookingCredentialsValid) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "name must be 3-20 characters");
+      if (payload.name !== undefined && payload.name !== "" && !name && bookingCredentialsValid) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "name must be 3-20 characters");
+      const instanceSlug = typeof payload.instanceSlug === "string" ? payload.instanceSlug : null;
+      if (instanceSlug !== null && !/^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(instanceSlug)) {
+        return rejected(ack, ErrorCodes.BAD_PAYLOAD, "invalid instance");
+      }
+      const joined = await controller.joinRoom({
+        roomId, name, socketId: socket.id, instanceSlug,
+        ...(bookingCredentialsValid ? { reservationId: rawReservationId, bookingToken: rawBookingToken.toLowerCase() } : {}),
+      });
       if (!joined.ok) return reply(ack, joined);
       socket.join(roomId);
       socket.data.session = {
@@ -150,9 +187,12 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
       if (!roomId) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "bad room code");
       if (!sessionToken) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "bad session credential");
 
+      const alreadyAttached = Boolean(socket.data.session);
       const resumed = await controller.resume({ roomId, sessionToken, socketId: socket.id });
       if (!resumed.ok) {
-        if (SESSION_DEAD.has(resumed.code) || resumed.code === ErrorCodes.ROOM_NOT_FOUND || resumed.code === ErrorCodes.UNKNOWN_PLAYER) {
+        // A failed credential probe must not clear an already-authenticated
+        // socket's room binding; otherwise it could join a second room next.
+        if (!alreadyAttached && (SESSION_DEAD.has(resumed.code) || resumed.code === ErrorCodes.ROOM_NOT_FOUND || resumed.code === ErrorCodes.UNKNOWN_PLAYER)) {
           socket.data.session = null;
         }
         return reply(ack, resumed);
@@ -185,6 +225,40 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
     );
 
     on(
+      "voice:audio",
+      async ({ room, payload, ack }) => {
+        if (!voiceBudget()) return rejected(ack, ErrorCodes.RATE_LIMITED, "caller voice requests are arriving too quickly");
+        const number = asInteger(payload.number, { min: 1, max: 90 });
+        const index = asInteger(payload.index, { min: 1, max: 90 });
+        const language = payload.language;
+        const includeCallout = payload.includeCallout === undefined ? true : payload.includeCallout;
+        const festival = payload.festival === undefined ? "classic" : payload.festival;
+        if (!sarvamTts) return rejected(ack, "VOICE_UNAVAILABLE", "caller voice service is unavailable");
+        if (!Number.isInteger(number) || !Number.isInteger(index) || !["en", "hi", "hinglish"].includes(language)
+          || typeof includeCallout !== "boolean" || !CALLER_FESTIVALS.includes(festival)) {
+          return rejected(ack, ErrorCodes.BAD_PAYLOAD, "voice request is invalid");
+        }
+        // Only audio for an already committed server call can be synthesized.
+        // The browser cannot choose text or ask for a future/predicted number.
+        if (room.calledNumbers[index - 1] !== number) {
+          return rejected(ack, "CALL_NOT_FOUND", "that number is not an official call in this room");
+        }
+        const text = buildSarvamAnnouncement(number, { language, includeCallout, festival });
+        if (!text) return rejected(ack, "VOICE_UNAVAILABLE", "caller voice is unavailable");
+        const result = await sarvamTts.generate({ text, language });
+        if (!result.ok) return rejected(ack, result.code, "caller voice is temporarily unavailable");
+        reply(ack, {
+          ok: true,
+          contentType: "audio/wav",
+          audio: result.audio.toString("base64"),
+          cache: result.cache,
+          latencyMs: result.latencyMs ?? 0,
+        });
+      },
+      { requiresRoom: true }
+    );
+
+    on(
       "room:leave",
       async ({ socket, session, room, ack }) => {
         const left = await controller.leave({ room, playerId: session.playerId, socketId: socket.id });
@@ -211,6 +285,36 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
     );
 
     on(
+      "room:remove-player",
+      async ({ session, room, payload, ack }) => {
+        const playerId = typeof payload.playerId === "string" && payload.playerId.trim().length <= 80
+          ? payload.playerId.trim()
+          : null;
+        if (!playerId) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "playerId is invalid");
+        if (room.state !== "WAITING") return rejected(ack, ErrorCodes.INVALID_STATE, "participants can only be removed before the round starts");
+        const targetSocketId = room.players.get(playerId)?.socketId || null;
+        const result = await controller.removeParticipant({
+          room,
+          playerId,
+          reason: "removed-by-host",
+          actorPlayerId: session.playerId,
+          waitingOnly: true,
+        });
+        if (!result.ok) return reply(ack, result);
+        if (targetSocketId) {
+          const targetSocket = io.sockets.sockets.get(targetSocketId);
+          if (targetSocket) {
+            targetSocket.emit("room:removed", { reason: "removed-by-host" });
+            targetSocket.leave(room.roomId);
+            targetSocket.data.session = null;
+          }
+        }
+        reply(ack, { ok: true, removed: playerId });
+      },
+      { requiresRoom: true, hostOnly: true }
+    );
+
+    on(
       "game:call-next",
       async ({ socket, room, ack }) => {
         // no number is read from the payload, ever
@@ -229,6 +333,48 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
       );
     }
 
+    // Moderator sockets have a separate command namespace. They never join a
+    // game room, and every event rechecks the live session and grant from the
+    // database. A ticket or permission copied at handshake cannot outlive revoke.
+    for (const action of ["start", "pause", "resume", "end", "reset"]) {
+      socket.on(`moderator:room:${action}`, async (...args) => {
+        const { payload, ack } = normalise(args);
+        if (!socket.data.moderatorSocket || !moderatorAuth || !db) return rejected(ack, "UNAUTHENTICATED", "moderator socket authentication is required");
+        if (!budget()) return rejected(ack, ErrorCodes.RATE_LIMITED, "too many events, slow down");
+        const shape = sanePayload(payload);
+        if (!shape.ok) return rejected(ack, ErrorCodes.BAD_PAYLOAD, shape.error);
+        const roomId = asRoomId(shape.value.roomId);
+        if (!roomId) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "roomId is invalid");
+        try {
+          const handshakePrincipal = await moderatorReady;
+          if (!handshakePrincipal) return rejected(ack, "UNAUTHENTICATED", "moderator session is expired or revoked");
+          const principal = await moderatorAuth.verifySession({ sessionId: handshakePrincipal.sessionId });
+          if (!principal || !principal.mfaEnrolled) return rejected(ack, "UNAUTHENTICATED", "moderator session is expired, revoked, or lacks MFA");
+          const permission = { start: "room.start", pause: "room.pause", resume: "room.pause", end: "room.end", reset: "room.reset" }[action];
+          const access = await authorizeRoom({ db, moderatorId: principal.moderatorId, roomId, permission });
+          if (!access.ok) {
+            await db.query(`INSERT INTO platform_audit(actor,actor_role,room_code,action,result,metadata)
+              VALUES($1,'moderator',(SELECT room_code FROM rooms WHERE room_code=$2),$3,'failure',$4::jsonb)`, [principal.username, roomId, `moderator.socket.room.${action}`, JSON.stringify({ code: access.code, requestedRoomId: roomId })]);
+            return rejected(ack, access.code === "LIFECYCLE" ? "INVALID_STATE" : "NOT_ALLOWED", "room not found or permission denied");
+          }
+          if (action === "start" && access.instanceStatus !== "active") return rejected(ack, "INVALID_STATE", "instance is not active");
+          const ensured = await controller.ensureRoom({ roomId });
+          if (!ensured.ok) return rejected(ack, ensured.code || "ROOM_NOT_FOUND", ensured.error || "room is unavailable");
+          const room = ensured.room || rooms.get(roomId);
+          if (!room) return rejected(ack, "ROOM_NOT_FOUND", "room is unavailable");
+          const auth = { hostToken: room.hostCredential() };
+          const result = action === "start" ? await controller.start({ room, auth }) : await controller.transition({ room, action, auth });
+          if (!result.ok) return rejected(ack, result.code || "INVALID_STATE", result.error || "operation refused");
+          await db.query(`INSERT INTO platform_audit(actor,actor_role,instance_id,room_code,action,result,metadata)
+            VALUES($1,'moderator',$2,$3,$4,'success','{}'::jsonb)`, [principal.username, access.instanceId, roomId, `moderator.socket.room.${action}`]);
+          reply(ack, { ok: true, state: room.state });
+        } catch (error) {
+          log("moderator socket authorization failed", action, error && error.message);
+          rejected(ack, "INTERNAL", "the moderator operation could not be completed");
+        }
+      });
+    }
+
     on(
       "game:set-autocall",
       async ({ socket, room, payload, ack }) => {
@@ -239,6 +385,7 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
       },
       { requiresRoom: true, hostOnly: true }
     );
+
 
     /**
      * Prizes this room plays for. Host-only, and the engine refuses it once the
@@ -268,8 +415,8 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
         // an optional ticketNo targets one owned ticket; the server never trusts
         // it as a hint about the grid, it only narrows which of the claimant's
         // own tickets the claim is checked against
-        const ticketNo = asInteger(payload.ticketNo, { min: TICKET_MIN, max: TICKET_MAX });
-        if (ticketNo === null) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "ticketNo must be a ticket you hold");
+        const ticketNo = asInteger(payload.ticketNo, { min: TICKET_MIN, max: Number.MAX_SAFE_INTEGER });
+        if (ticketNo === null || ticketNo > room.roomTicketCapacity()) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "ticketNo must be a ticket you hold");
         // identity comes from the socket's own session, never from the payload
         reply(
           ack,
@@ -288,7 +435,7 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
     on(
       "tickets:select",
       async ({ socket, session, room, payload, ack }) => {
-        const count = asInteger(payload.count, { min: TICKET_MIN, max: TICKET_MAX });
+        const count = asInteger(payload.count, { min: TICKET_MIN, max: Number.MAX_SAFE_INTEGER });
         if (count === undefined || count === null) {
           return rejected(ack, ErrorCodes.BAD_PAYLOAD, "count must be a whole number of tickets");
         }

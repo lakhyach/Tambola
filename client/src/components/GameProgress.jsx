@@ -2,8 +2,11 @@
  * A slim progress read-out built only from real called numbers. The bar is the
  * fraction of the ninety that have gone; nothing is invented.
  */
+import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
+
 // eslint-disable-next-line react/prop-types
-const GameProgress = ({ state = "WAITING", calledCount = 0, total = 90, remaining }) => {
+const GameProgress = ({ state = "WAITING", calledCount = 0, total = 90, remaining, language = "en" }) => {
+  const t = (key, variables) => bookingCopy(language, key, variables);
   const pct = Math.min(100, Math.round((calledCount / total) * 100));
   const left = remaining == null ? total - calledCount : remaining;
   const tone =
@@ -22,14 +25,15 @@ const GameProgress = ({ state = "WAITING", calledCount = 0, total = 90, remainin
           className="uppercase tracking-wider"
           style={{ color: tone, fontSize: 12, fontWeight: 700 }}
         >
-          {state}
+          {t(`state${state}`)}
         </span>
         <span className="oh-num" style={{ color: "var(--oh-text-muted)", fontSize: 12 }}>
-          {calledCount}/{total} · {left} left
+          {formatBookingNumber(calledCount, language)}/{formatBookingNumber(total, language)} · {t("numbersLeft", { count: formatBookingNumber(left, language) })}
         </span>
       </div>
       <div
         role="progressbar"
+        aria-label={t(`state${state}`)}
         aria-valuemin={0}
         aria-valuemax={total}
         aria-valuenow={calledCount}

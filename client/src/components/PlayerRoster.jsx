@@ -1,22 +1,24 @@
 import Panel from "./Panel.jsx";
-import { rosterStatistic, rosterTally } from "../lib/playerview.js";
+import { rosterStatistic } from "../lib/playerview.js";
+import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
 
 /**
  * The right edge of a seat row: tickets before a round, points during it, and
  * nothing when the number would carry no meaning. See lib/playerview.js.
  */
 // eslint-disable-next-line react/prop-types
-const SeatStatistic = ({ seat, state }) => {
+const SeatStatistic = ({ seat, state, language = "en" }) => {
   const stat = rosterStatistic(seat, state);
   if (!stat) return null;
+  const unitKey = stat.unit === "pts" ? "pointsUnit" : stat.unit === "ticket" ? "oneTicket" : "manyTickets";
   return (
     <span className="oh-num" style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
-      {stat.value}
+      {formatBookingNumber(stat.value, language)}
       <span
         className="oh-eyebrow"
         style={{ marginLeft: 5, fontSize: 9, color: "var(--oh-text-faint)" }}
       >
-        {stat.unit}
+        {bookingCopy(language, unitKey)}
       </span>
     </span>
   );
@@ -30,20 +32,22 @@ const SeatStatistic = ({ seat, state }) => {
  * numbers are being called when they are not.
  */
 // eslint-disable-next-line react/prop-types
-const PlayerRoster = ({ players = [], leaderboard = [], myPlayerId, state = "WAITING" }) => {
+const PlayerRoster = ({ players = [], leaderboard = [], myPlayerId, state = "WAITING", language = "en", onRemovePlayer, removalBusy = false }) => {
   const pointsById = new Map(leaderboard.map((p) => [p.playerId, p.points]));
+  const t = (key, variables) => bookingCopy(language, key, variables);
+  const stateKey = state === "RUNNING" || state === "PAUSED" ? "playing" : state === "COMPLETED" ? "played" : "seated";
 
   return (
     <Panel className="p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="oh-eyebrow">In the Hall</h2>
+        <h2 className="oh-eyebrow">{t("inTheHall")}</h2>
         <span className="oh-num" style={{ color: "var(--oh-text-muted)", fontSize: 12 }}>
-          {rosterTally(state, players.length)}
+          {formatBookingNumber(players.length, language)} {t(stateKey)}
         </span>
       </div>
 
       {players.length === 0 ? (
-        <p style={{ color: "var(--oh-text-faint)", fontSize: 13 }}>Waiting for players…</p>
+        <p style={{ color: "var(--oh-text-faint)", fontSize: 13 }}>{t("waitingPlayers")}</p>
       ) : (
         <ul className="flex flex-col gap-2" style={{ listStyle: "none", margin: 0, padding: 0 }}>
           {players.map((p) => (
@@ -59,7 +63,7 @@ const PlayerRoster = ({ players = [], leaderboard = [], myPlayerId, state = "WAI
               <span className="flex items-center gap-2" style={{ minWidth: 0 }}>
                 <span
                   aria-hidden="true"
-                  title={p.connected ? "connected" : "away"}
+                  title={t(p.connected ? "connected" : "away")}
                   style={{
                     width: 8,
                     height: 8,
@@ -77,18 +81,33 @@ const PlayerRoster = ({ players = [], leaderboard = [], myPlayerId, state = "WAI
                   }}
                 >
                   {p.name}
-                  {p.id === myPlayerId ? " (you)" : ""}
+                  {p.id === myPlayerId ? ` ${t("you")}` : ""}
                 </span>
                 {p.isHost ? (
                   <span
                     className="oh-eyebrow"
                     style={{ color: "var(--oh-gold)", fontSize: 9, marginLeft: 4 }}
                   >
-                    host
+                    {t("host")}
                   </span>
                 ) : null}
               </span>
-              <SeatStatistic seat={{ ...p, points: pointsById.get(p.id) ?? p.points }} state={state} />
+              <div className="flex items-center gap-2" style={{ flex: "0 0 auto" }}>
+                <SeatStatistic seat={{ ...p, points: pointsById.get(p.id) ?? p.points }} state={state} language={language} />
+                {state === "WAITING" && !p.isHost && onRemovePlayer ? (
+                  <button
+                    type="button"
+                    className="oh-seat__remove"
+                    aria-label={t("removeParticipantLabel", { name: p.name })}
+                    disabled={removalBusy}
+                    onClick={() => {
+                      if (window.confirm(t("removeParticipantConfirm", { name: p.name }))) onRemovePlayer(p.id);
+                    }}
+                  >
+                    {t("removeParticipant")}
+                  </button>
+                ) : null}
+              </div>
             </li>
           ))}
         </ul>

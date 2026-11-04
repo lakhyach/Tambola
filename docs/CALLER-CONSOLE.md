@@ -207,10 +207,11 @@ phone, and nothing in the reports claims otherwise.
 
 - It does not pick, reorder or predict a number. `nextCallPreview()` has no numeric
   field, and no client code holds the round's draw.
-- It does not moderate seats. The authorization model has no kick/ban/approve
-  event, so no such control is offered; a host who needs a seat gone ends the round
-  and resets the room. Adding moderation is a server feature with an audit trail,
-  not a button on this panel.
+- It does not offer seat removal after a round starts. The waiting-room roster
+  allows the connected host to remove a non-host seat before play; the server
+  revokes that seat's session, removes its socket from the room, and records the
+  host seat ID in room audit history. Permanent bans and approval queues are not
+  implemented.
 - It does not show a session token, a credential or another seat's ticket. It reads
   only what every player's screen already shows: name, host mark, connection state,
   ticket count, points.

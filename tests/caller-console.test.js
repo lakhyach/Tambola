@@ -227,7 +227,7 @@ test("the call sheet keeps the server's order and numbers its rows", () => {
 
 test("the voice line is honest about every way speech can be unavailable", () => {
   assert.equal(voiceStatus({ engine: false }).tone, "off");
-  assert.match(voiceStatus({ engine: false }).detail, /cannot speak/);
+  assert.match(voiceStatus({ engine: false }).detail, /No configured caller voice/);
   assert.equal(voiceStatus({ dead: true }).tone, "danger");
   assert.equal(voiceStatus({ speech: false }).tone, "muted");
   assert.equal(voiceStatus({ speech: true, speaking: 12 }).tone, "ok");
@@ -236,6 +236,9 @@ test("the voice line is honest about every way speech can be unavailable", () =>
   assert.match(voiceStatus({ speech: true, pending: 2 }).detail, /catching up/);
   assert.equal(voiceStatus({ speech: true, voices: 0, lang: "hi" }).tone, "warn");
   assert.match(voiceStatus({ speech: true, voices: 0, lang: "hi" }).label, /Hindi/);
+  assert.equal(voiceStatus({ speech: true, voices: 0, lang: "hinglish" }).tone, "warn");
+  assert.match(voiceStatus({ speech: true, voices: 0, lang: "hinglish" }).label, /Hinglish/);
+  assert.equal(voiceStatus({ speech: true, voices: 0, lang: "hi", providerAvailable: true }).tone, "ok");
   assert.equal(voiceStatus({ speech: true, voices: 3 }).tone, "ok");
   assert.match(voiceStatus({ speech: true, voices: 3, lang: "hi" }).detail, /Hindi/);
 

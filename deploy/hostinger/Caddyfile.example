@@ -1,0 +1,6 @@
+# Replace tambola.example.com with the configured public domain.
+# Caddy obtains and renews TLS certificates and proxies Socket.IO upgrades.
+tambola.example.com {
+	encode zstd gzip
+	reverse_proxy 127.0.0.1:4000
+}

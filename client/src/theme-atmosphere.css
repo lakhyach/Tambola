@@ -1,0 +1,143 @@
+/* Full-bleed festival canvas system. Page wrappers stay edge-to-edge; the
+   centered content shells and their readable cards remain independently sized. */
+:root {
+  --oh-atmo-a: #ed3d9d;
+  --oh-atmo-b: #ff932b;
+  --oh-atmo-c: #36cabb;
+  --oh-atmo-d: #35b87c;
+  /* The original Diwali courtyard is the default scene as well as the landing
+     hero. Keeping it on a fixed viewport layer lets every long experience
+     inherit the festival atmosphere without repeating or stretching artwork. */
+  --oh-atmo-scene: url("/brand/festival-courtyard-hero-v1.webp");
+  --oh-caller-stage: url("/brand/festival-caller-stage-v1.webp");
+  --fest-hero-scene: url("/brand/festival-courtyard-hero-v1.webp");
+}
+
+:root[data-theme-id="obsidian-hall"] { --oh-atmo-a:#e63f9c; --oh-atmo-b:#ff842e; --oh-atmo-c:#3ccbc0; --oh-atmo-d:#28b77c; }
+:root[data-theme-id="midnight-indigo"] { --oh-atmo-a:#8175ff; --oh-atmo-b:#cb73ff; --oh-atmo-c:#40c8ed; --oh-atmo-d:#6e8de8; }
+:root[data-theme-id="marigold-festival"] { --oh-atmo-a:#f1519a; --oh-atmo-b:#ff9b32; --oh-atmo-c:#4fc6ac; --oh-atmo-d:#70bd63; }
+:root[data-theme-id="cobalt-arcade"] { --oh-atmo-a:#ed38b7; --oh-atmo-b:#ff8c32; --oh-atmo-c:#42d9ef; --oh-atmo-d:#39d197; }
+:root[data-theme-id="terracotta-house"] { --oh-atmo-a:#df6472; --oh-atmo-b:#f3a043; --oh-atmo-c:#47b9a8; --oh-atmo-d:#78c67a; }
+:root[data-theme-id="monsoon-garden"] { --oh-atmo-a:#708be8; --oh-atmo-b:#bc7ded; --oh-atmo-c:#35c8ca; --oh-atmo-d:#66bda5; }
+:root[data-theme-id="paper-lantern"] { --oh-atmo-a:#e84691; --oh-atmo-b:#ff9d32; --oh-atmo-c:#48b9a1; --oh-atmo-d:#58b878; }
+:root[data-theme-id="snowlight-minimal"] { --oh-atmo-a:#79a9ed; --oh-atmo-b:#91d4ea; --oh-atmo-c:#68c8d1; --oh-atmo-d:#a0d7c3; }
+:root[data-theme-id="kesar-royale"] { --oh-atmo-a:#d94b91; --oh-atmo-b:#f0a128; --oh-atmo-c:#42aaa5; --oh-atmo-d:#62b786; }
+:root[data-theme-id="diwali-celebration"] { --oh-atmo-a:#f342a6; --oh-atmo-b:#ffab24; --oh-atmo-c:#42d5c2; --oh-atmo-d:#5ec675; --oh-atmo-scene:url("/brand/festival-courtyard-hero-v1.webp"); --fest-hero-scene:url("/brand/festival-courtyard-hero-v1.webp"); }
+:root[data-theme-id]:not([data-theme-id="diwali-celebration"]) { --oh-caller-stage: var(--oh-atmo-scene); }
+:root[data-theme-id="holi-colours"] { --oh-atmo-a:#fa36c5; --oh-atmo-b:#ff9c26; --oh-atmo-c:#28d5df; --oh-atmo-d:#67d854; --oh-atmo-scene:url("/brand/festival-holi-environment-v1.webp"); --fest-hero-scene:url("/brand/festival-holi-environment-v1.webp"); }
+:root[data-theme-id="durga-puja"] { --oh-atmo-a:#ed427f; --oh-atmo-b:#fa9730; --oh-atmo-c:#35c7b8; --oh-atmo-d:#61c478; --oh-atmo-scene:url("/brand/festival-durga-puja-environment-v1.webp"); --fest-hero-scene:url("/brand/festival-durga-puja-environment-v1.webp"); }
+:root[data-theme-id="navratri-garba"] { --oh-atmo-a:#f04cc1; --oh-atmo-b:#ff9b2f; --oh-atmo-c:#37c5df; --oh-atmo-d:#76cb59; --oh-atmo-scene:url("/brand/festival-navratri-environment-v1.webp"); --fest-hero-scene:url("/brand/festival-navratri-environment-v1.webp"); }
+:root[data-theme-id="ganesh-chaturthi"] { --oh-atmo-a:#ec536e; --oh-atmo-b:#ff9d2d; --oh-atmo-c:#42c7ae; --oh-atmo-d:#67c477; --oh-atmo-scene:url("/brand/festival-ganesh-chaturthi-environment-v1.webp"); --fest-hero-scene:url("/brand/festival-ganesh-chaturthi-environment-v1.webp"); }
+:root[data-theme-id="onam-pookalam"] { --oh-atmo-a:#ed5494; --oh-atmo-b:#efa936; --oh-atmo-c:#32c7a8; --oh-atmo-d:#79ce5d; --oh-atmo-scene:url("/brand/festival-onam-environment-v1.webp"); --fest-hero-scene:url("/brand/festival-onam-environment-v1.webp"); }
+:root[data-theme-id="pongal-harvest"] { --oh-atmo-a:#e56d79; --oh-atmo-b:#f3ae32; --oh-atmo-c:#47c2a0; --oh-atmo-d:#82c953; --oh-atmo-scene:url("/brand/festival-pongal-environment-v1.webp"); --fest-hero-scene:url("/brand/festival-pongal-environment-v1.webp"); }
+:root[data-theme-id="eid-moonlight"] { --oh-atmo-a:#8178f0; --oh-atmo-b:#dda55f; --oh-atmo-c:#37c9b8; --oh-atmo-d:#58bd8e; --oh-atmo-scene:url("/brand/festival-eid-environment-v1.webp"); --fest-hero-scene:url("/brand/festival-eid-environment-v1.webp"); }
+:root[data-theme-id="christmas-winter"] { --oh-atmo-a:#e55383; --oh-atmo-b:#e1bc5c; --oh-atmo-c:#35cbb0; --oh-atmo-d:#2fbe79; --oh-atmo-scene:url("/brand/festival-christmas-environment-v1.webp"); --fest-hero-scene:url("/brand/festival-christmas-environment-v1.webp"); }
+:root[data-theme-id="halloween-night"] { --oh-atmo-a:#c868f1; --oh-atmo-b:#ff8d27; --oh-atmo-c:#42c7bd; --oh-atmo-d:#82c953; --oh-atmo-scene:url("/brand/festival-halloween-environment-v1.webp"); --fest-hero-scene:url("/brand/festival-halloween-environment-v1.webp"); }
+:root[data-theme-id="new-year-celebration"] { --oh-atmo-a:#eb5bce; --oh-atmo-b:#ffc44d; --oh-atmo-c:#48c9dd; --oh-atmo-d:#76c98b; --oh-atmo-scene:url("/brand/festival-new-year-environment-v1.webp"); --fest-hero-scene:url("/brand/festival-new-year-environment-v1.webp"); }
+:root[data-theme-id="wedding-celebration"] { --oh-atmo-a:#f081ab; --oh-atmo-b:#f0c878; --oh-atmo-c:#69cbbc; --oh-atmo-d:#a7d28c; }
+:root[data-theme-id="indian-textile-heritage"] { --oh-atmo-a:#d65b8d; --oh-atmo-b:#e0a64c; --oh-atmo-c:#48b7c9; --oh-atmo-d:#7cbb82; }
+
+/* Scene mappings for the remaining named packages. These files are added as
+   original, locally bundled art; each package still drives the global canvas
+   and the landing hero through the same theme-aware tokens. */
+:root[data-theme-id="obsidian-hall"] { --oh-atmo-scene:url("/brand/festival-obsidian-hall-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+:root[data-theme-id="midnight-indigo"] { --oh-atmo-scene:url("/brand/festival-midnight-indigo-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+:root[data-theme-id="marigold-festival"] { --oh-atmo-scene:url("/brand/festival-marigold-festival-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+:root[data-theme-id="cobalt-arcade"] { --oh-atmo-scene:url("/brand/festival-cobalt-arcade-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+:root[data-theme-id="terracotta-house"] { --oh-atmo-scene:url("/brand/festival-terracotta-house-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+:root[data-theme-id="monsoon-garden"] { --oh-atmo-scene:url("/brand/festival-monsoon-garden-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+:root[data-theme-id="paper-lantern"] { --oh-atmo-scene:url("/brand/festival-paper-lantern-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+:root[data-theme-id="snowlight-minimal"] { --oh-atmo-scene:url("/brand/festival-snowlight-minimal-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+:root[data-theme-id="kesar-royale"] { --oh-atmo-scene:url("/brand/festival-kesar-royale-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+:root[data-theme-id="wedding-celebration"] { --oh-atmo-scene:url("/brand/festival-wedding-celebration-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+:root[data-theme-id="indian-textile-heritage"] { --oh-atmo-scene:url("/brand/festival-indian-textile-heritage-environment-v1.webp"); --fest-hero-scene:var(--oh-atmo-scene); }
+
+/* Default and selected-theme page canvas. Broad color fields reach all four
+   viewport edges, while a subtle textile-like dot weave adds depth without
+   competing with small text, boards, or ticket cells. */
+html body {
+  min-height: 100vh;
+  background-color: var(--oh-void);
+  background-image:
+    var(--oh-atmo-scene),
+    radial-gradient(ellipse 64rem 44rem at -3% -8%, color-mix(in srgb, var(--oh-atmo-a) 36%, transparent), transparent 69%),
+    radial-gradient(ellipse 60rem 43rem at 103% 4%, color-mix(in srgb, var(--oh-atmo-b) 31%, transparent), transparent 70%),
+    radial-gradient(ellipse 58rem 42rem at 62% 108%, color-mix(in srgb, var(--oh-atmo-c) 23%, transparent), transparent 72%),
+    radial-gradient(ellipse 48rem 36rem at 20% 66%, color-mix(in srgb, var(--oh-atmo-d) 13%, transparent), transparent 73%),
+    radial-gradient(circle, rgba(255, 230, 184, .075) .7px, transparent 1.3px),
+    linear-gradient(155deg, var(--oh-obsidian), var(--oh-void) 82%);
+  background-size: cover, auto, auto, auto, auto, 23px 23px, auto;
+  background-position: center top, center center, center center, center center, center center, 0 0, center center;
+  background-attachment: fixed, scroll, scroll, scroll, scroll, scroll, scroll;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat, no-repeat;
+}
+
+/* Explicitly keep the outer page shells full width and unrounded. Decoration
+   belongs to the canvas; rounded borders remain reserved for inner components. */
+html .public-page {
+  width: 100%;
+  min-height: 100vh;
+  overflow: visible;
+  border-radius: 0;
+  background-color: transparent;
+  background-image:
+    radial-gradient(ellipse 58rem 40rem at 50% -14%, color-mix(in srgb, var(--oh-atmo-a) 32%, transparent), transparent 70%),
+    radial-gradient(ellipse 45rem 36rem at 100% 47%, color-mix(in srgb, var(--oh-atmo-c) 18%, transparent), transparent 72%),
+    radial-gradient(ellipse 44rem 34rem at 0% 94%, color-mix(in srgb, var(--oh-atmo-b) 17%, transparent), transparent 74%),
+    radial-gradient(circle, rgba(255, 230, 184, .05) .7px, transparent 1.3px);
+  background-size: auto, auto, auto, 27px 27px;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat;
+}
+
+html .booking-page {
+  background-color: transparent;
+  background-image:
+    radial-gradient(ellipse 42rem 34rem at 100% 5%, color-mix(in srgb, var(--oh-atmo-b) 18%, transparent), transparent 72%),
+    radial-gradient(ellipse 40rem 34rem at 0% 88%, color-mix(in srgb, var(--oh-atmo-c) 13%, transparent), transparent 74%);
+}
+
+/* The full-viewport game hall is darker directly behind active information,
+   with lively color concentrated at the sides and lower edge. */
+html .oh-app-shell,
+html .oh-console-shell,
+html .player-room-page,
+html .festival-host-route {
+  background-color: transparent;
+  background-image:
+    radial-gradient(ellipse 35rem 42rem at 0% 18%, color-mix(in srgb, var(--oh-atmo-a) 21%, transparent), transparent 74%),
+    radial-gradient(ellipse 36rem 42rem at 100% 24%, color-mix(in srgb, var(--oh-atmo-b) 19%, transparent), transparent 74%),
+    radial-gradient(ellipse 54rem 28rem at 55% 100%, color-mix(in srgb, var(--oh-atmo-c) 12%, transparent), transparent 74%);
+}
+html .oh-console-shell {
+  max-width: none;
+  margin-inline: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background-image:
+    radial-gradient(ellipse 38rem 42rem at 0% 17%, color-mix(in srgb, var(--oh-atmo-b) 23%, transparent), transparent 74%),
+    radial-gradient(ellipse 34rem 38rem at 100% 20%, color-mix(in srgb, var(--oh-atmo-a) 19%, transparent), transparent 74%),
+    radial-gradient(ellipse 50rem 28rem at 55% 100%, color-mix(in srgb, var(--oh-atmo-c) 11%, transparent), transparent 76%);
+}
+
+/* Admin and moderator retain a calm, information-first center while the
+   full-width outer canvas carries each theme's own jewel palette. */
+html .adm-shell {
+  width: 100%;
+  min-height: 100vh;
+  border-radius: 0;
+  background-color: transparent;
+  background-image:
+    radial-gradient(ellipse 54rem 38rem at 94% 0%, color-mix(in srgb, var(--oh-atmo-a) 23%, transparent), transparent 72%),
+    radial-gradient(ellipse 45rem 38rem at 4% 100%, color-mix(in srgb, var(--oh-atmo-c) 14%, transparent), transparent 74%);
+}
+html .adm-sidebar {
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--oh-atmo-a) 12%, var(--oh-obsidian)), color-mix(in srgb, var(--oh-atmo-c) 5%, var(--oh-void)));
+}
+html .moderator-bookings-page {
+  min-height: 100vh;
+  background-color: transparent;
+  background-image:
+    radial-gradient(ellipse 46rem 34rem at 0% 12%, color-mix(in srgb, var(--oh-atmo-a) 23%, transparent), transparent 72%),
+    radial-gradient(ellipse 50rem 38rem at 100% 0%, color-mix(in srgb, var(--oh-atmo-b) 18%, transparent), transparent 74%),
+    radial-gradient(ellipse 46rem 36rem at 70% 100%, color-mix(in srgb, var(--oh-atmo-c) 13%, transparent), transparent 74%);
+}

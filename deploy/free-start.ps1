@@ -98,8 +98,11 @@ if (-not $publicUrl) { Fail "Tunnel URL did not appear in $logFile within 30s. S
 
 # --- (re)create the container bound to the live tunnel URL -------------------
 docker rm -f $ContainerName *> $null
-docker run -d --name $ContainerName -p "${Port}:4000" `
-  -e NODE_ENV=production -e PORT=4000 -e DB_SCHEMA=public -e MFA_ISSUER=Tambola `
+# The Quick Tunnel connects from this host through loopback. Never expose the
+# trusted-proxy app port on a public interface, where clients could spoof the
+# forwarded address headers used for rate limits and audit metadata.
+docker run -d --name $ContainerName -p "127.0.0.1:${Port}:4000" `
+  -e NODE_ENV=production -e PORT=4000 -e DB_SCHEMA=public -e "MFA_ISSUER=Ninety Club" `
   -e TRUST_PROXY=1 -e TAMBOLA_COOKIE_SECURE=1 `
   -e PUBLIC_ORIGIN=$publicUrl -e DATABASE_URL=$dbUrl -e OWNER_MFA_KEY=$mfa `
   $Image *> $null

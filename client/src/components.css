@@ -1,5 +1,5 @@
 /*
- * OBSIDIAN HALL — component styles
+ * NINETY CLUB — component styles
  * --------------------------------
  * Signature elements (surfaces, buttons, number tiles, ticket cells, the
  * current-number reveal, toasts) are hand-authored here because Tailwind
@@ -40,6 +40,13 @@
   font-size: 11px;
   font-weight: 600;
   color: var(--oh-text-faint);
+}
+
+.player-entry-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px 16px; }
+.player-entry-footer__note { max-width: 52%; text-align: right; line-height: 1.45; }
+@media (max-width: 520px) {
+  .player-entry-footer { flex-direction: column; align-items: flex-start; }
+  .player-entry-footer__note { max-width: 100%; text-align: left; }
 }
 
 .oh-display {
@@ -89,10 +96,10 @@
 .oh-btn--gold {
   color: #1a1408;
   background: linear-gradient(180deg, var(--oh-gold-bright), var(--oh-gold) 55%, var(--oh-gold-deep));
-  box-shadow: 0 10px 24px -14px rgba(207, 171, 99, 0.9), var(--oh-inner-glow);
+  box-shadow: 0 10px 24px -14px rgba(255, 190, 77, 0.9), var(--oh-inner-glow);
 }
 .oh-btn--gold:hover:not(:disabled) {
-  box-shadow: 0 14px 30px -12px rgba(207, 171, 99, 0.95), var(--oh-inner-glow);
+  box-shadow: 0 14px 30px -12px rgba(255, 190, 77, 0.95), var(--oh-inner-glow);
 }
 
 .oh-btn--ghost {
@@ -142,7 +149,7 @@
   outline: none;
   border-color: var(--oh-gold);
   background: #0a0c11;
-  box-shadow: 0 0 0 3px rgba(207, 171, 99, 0.16);
+  box-shadow: 0 0 0 3px rgba(255, 190, 77, 0.16);
 }
 
 /* ---------------------------------------------------- chat quick-reply chips */
@@ -170,12 +177,12 @@
 }
 .oh-chip:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(207, 171, 99, 0.22);
+  box-shadow: 0 0 0 3px rgba(255, 190, 77, 0.22);
 }
 .oh-chip--active {
   color: var(--oh-gold-bright);
   border-color: var(--oh-line-gold);
-  background: rgba(207, 171, 99, 0.12);
+  background: rgba(255, 190, 77, 0.12);
 }
 .oh-chip--lang {
   font-weight: 600;
@@ -200,9 +207,12 @@
   font-variant-numeric: tabular-nums lining-nums;
   font-weight: 600;
   user-select: none;
-  background: var(--oh-inset);
-  border: 1px solid var(--oh-line);
-  color: var(--oh-text-faint);
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255, 247, 233, 0.08), transparent 48%),
+    linear-gradient(145deg, color-mix(in srgb, var(--oh-panel-raised) 68%, var(--oh-inset)), var(--oh-inset));
+  border: 1px solid color-mix(in srgb, var(--oh-line) 82%, var(--oh-brand-coral));
+  color: var(--oh-text-muted);
   transition: background var(--oh-med) var(--oh-ease),
     color var(--oh-med) var(--oh-ease), border-color var(--oh-med) var(--oh-ease),
     transform var(--oh-fast) var(--oh-ease);
@@ -210,9 +220,11 @@
 
 .oh-tile[data-called="true"] {
   color: #14100a;
-  border-color: transparent;
-  background: radial-gradient(120% 120% at 30% 20%, var(--oh-gold-bright), var(--oh-gold) 60%, var(--oh-gold-deep));
-  box-shadow: var(--oh-inner-glow), 0 6px 16px -10px rgba(207, 171, 99, 0.8);
+  border-color: color-mix(in srgb, var(--oh-gold-bright) 70%, var(--oh-gold-deep));
+  background:
+    radial-gradient(circle at 28% 18%, rgba(255, 255, 255, 0.72), transparent 38%),
+    linear-gradient(145deg, var(--oh-gold-bright), var(--oh-gold) 62%, var(--oh-gold-deep));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .62), 0 5px 15px -10px color-mix(in srgb, var(--oh-gold) 86%, transparent);
 }
 .oh-tile[data-called="true"]::after {
   content: "";
@@ -227,7 +239,29 @@
 
 .oh-tile[data-current="true"] {
   animation: oh-tile-pop var(--oh-slow) var(--oh-ease-out);
-  box-shadow: 0 0 0 2px var(--oh-ivory), 0 8px 22px -8px rgba(239, 212, 154, 0.9);
+  z-index: 2;
+  border-color: var(--oh-ivory);
+  box-shadow: 0 0 0 2px var(--oh-ivory), 0 0 0 5px color-mix(in srgb, var(--oh-gold) 48%, transparent), 0 9px 24px -8px color-mix(in srgb, var(--oh-gold) 90%, transparent);
+}
+.oh-tile[data-recent="true"] {
+  color: #fff8ef;
+  border-color: color-mix(in srgb, var(--oh-brand-coral) 72%, var(--oh-gold));
+  background:
+    radial-gradient(circle at 24% 16%, rgba(255, 255, 255, .6), transparent 36%),
+    linear-gradient(145deg, color-mix(in srgb, var(--oh-brand-coral) 86%, var(--oh-gold)), color-mix(in srgb, var(--oh-brand-coral) 72%, #6f174d));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32), 0 5px 15px -10px color-mix(in srgb, var(--oh-brand-coral) 82%, transparent);
+}
+.oh-tile[data-current="true"][data-recent="true"] {
+  color: #241126;
+  background: radial-gradient(circle at 28% 18%, #fffaf0, var(--oh-gold-bright) 44%, var(--oh-gold) 76%, var(--oh-brand-coral));
+}
+.oh-tile[data-recent="true"]::after {
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border: 1px solid rgba(255, 255, 255, .9);
+  background: var(--oh-brand-coral);
 }
 
 .oh-ticket-cell {
@@ -325,7 +359,7 @@
 }
 
 /* ------------------------------------------------- winning-pattern display (§7) */
-/* A pattern drawn on the ticket grid, in the OBSIDIAN HALL identity. The
+/* A pattern drawn on the ticket grid, in the NINETY CLUB identity. The
    coordinates are the server's own, so this is a picture of what the evaluator
    checks — never a shape the client invented. */
 .oh-pattern-item {
@@ -524,6 +558,10 @@
   padding-bottom: 2px;
   scrollbar-width: thin;
 }
+.oh-ticket-tabs-pager { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.oh-ticket-tabs-pager > .oh-chip { flex: 0 0 38px; min-height: 42px; font-size: 22px; }
+.oh-ticket-count-input { display: inline-flex; align-items: center; gap: 8px; }
+.oh-ticket-count-input input { width: min(24vw, 150px); min-width: 88px; min-height: 44px; padding: 8px 12px; border: 1px solid var(--oh-line-gold); border-radius: 10px; color: var(--oh-ivory); background: var(--oh-inset); font-variant-numeric: tabular-nums; }
 .oh-ticket-tab {
   flex: 0 0 auto;
   display: inline-flex;
@@ -547,7 +585,7 @@
 }
 .oh-ticket-tab[data-selected="true"] {
   color: var(--oh-gold-bright);
-  background: rgba(207, 171, 99, 0.14);
+  background: rgba(255, 190, 77, 0.14);
   border-color: var(--oh-line-gold);
 }
 .oh-ticket-tab__count {
@@ -586,7 +624,7 @@
 }
 .oh-step:hover:not(:disabled) {
   border-color: var(--oh-line-gold);
-  background: rgba(207, 171, 99, 0.1);
+  background: rgba(255, 190, 77, 0.1);
 }
 .oh-step:disabled {
   opacity: 0.4;
@@ -620,7 +658,7 @@
   color: #14100a;
   background: linear-gradient(180deg, var(--oh-gold-bright), var(--oh-gold));
   border-color: transparent;
-  box-shadow: 0 6px 16px -10px rgba(207, 171, 99, 0.9);
+  box-shadow: 0 6px 16px -10px rgba(255, 190, 77, 0.9);
 }
 .oh-ticket-choice__item:disabled {
   opacity: 0.45;
@@ -655,10 +693,97 @@
   font-size: clamp(64px, 22vw, 128px);
   line-height: 1;
   color: var(--oh-gold-bright);
-  text-shadow: 0 8px 30px rgba(207, 171, 99, 0.35);
+  text-shadow: 0 8px 30px color-mix(in srgb, var(--oh-gold) 45%, transparent);
+}
+.oh-reveal__canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+/* Keep the authoritative number visible while the per-call 3D model loads. */
+.oh-reveal:not([data-ball-ready="true"]) .oh-reveal__canvas {
+  opacity: 0;
+}
+.oh-reveal[data-ball-ready="true"] .oh-reveal__canvas {
+  opacity: 1;
+}
+.oh-ball-state {
+  position: absolute;
+  z-index: 3;
+  inset-inline: 0;
+  bottom: 6px;
+  color: var(--oh-text-faint);
+  font: 500 9px/1.2 var(--oh-font-ui);
+  text-align: center;
+  pointer-events: none;
+}
+/* If WebGL fails, its renderer can still leave a mounted but empty canvas.
+   Keep the authoritative DOM number visible above that failed visual layer. */
+.oh-reveal[data-ball-state="error"] .oh-reveal__canvas {
+  display: none;
+}
+.oh-reveal[data-ball-ready="true"] {
+  overflow: visible;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.oh-reveal[data-ball-ready="true"] .oh-reveal__num,
+.oh-reveal[data-ball-ready="true"] .theme-preview__ball-art {
+  opacity: 0;
 }
 .oh-reveal__num[data-anim="true"] {
   animation: oh-reveal var(--oh-slow) var(--oh-ease-out);
+}
+
+/* A server call remounts the real number ball on its official call index.
+   Motion is purely presentational and the project-wide reduced-motion rule
+   reduces this to an immediate value change. */
+.oh-reveal[data-call-index] {
+  animation: oh-ball-arrive var(--oh-slow) var(--oh-ease-out) both;
+}
+
+/* Official call history uses the same lacquered, dimensional ball language as
+   the hero reveal. Ordinals remain visible so recovery order is unambiguous. */
+.oh-call-history {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 2px 1px 5px;
+  list-style: none;
+}
+.oh-call-ball {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border: 1px solid rgba(255, 248, 224, .82);
+  border-radius: 50%;
+  color: #542239;
+  background:
+    radial-gradient(ellipse at 28% 19%, rgba(255,255,255,.98) 0 3%, rgba(255,255,255,.66) 7%, transparent 23%),
+    radial-gradient(circle at 34% 29%, #fff8df 0 13%, #ffe49b 35%, #f4ae3f 69%, #9f3c52 100%);
+  box-shadow: inset -5px -7px 10px rgba(79,25,55,.32), inset 2px 3px 5px rgba(255,255,255,.9), 0 5px 10px rgba(5,2,11,.42), 0 0 0 2px rgba(255,209,92,.13);
+}
+.oh-call-ball::before { position:absolute; inset:5px; border:1px solid rgba(111,50,51,.2); border-radius:50%; content:""; }
+.oh-call-ball__number { z-index:1; font:700 17px/1 var(--oh-font-num); font-variant-numeric:tabular-nums; text-shadow:0 1px rgba(255,255,255,.55); }
+.oh-call-ball__ordinal { position:absolute; right:-4px; bottom:-4px; min-width:17px; height:17px; display:grid; place-items:center; border:1px solid rgba(255,247,224,.9); border-radius:50%; color:#2d1736; background:linear-gradient(#ffe5a1,#ffb943); font:700 9px/1 var(--oh-font-num); box-shadow:0 2px 5px rgba(6,2,12,.4); }
+.oh-call-ball[data-latest="true"] { z-index:1; box-shadow: inset -5px -7px 10px rgba(79,25,55,.3), inset 2px 3px 5px rgba(255,255,255,.92), 0 6px 12px rgba(5,2,11,.45), 0 0 0 3px rgba(255,209,92,.25); }
+.oh-call-ball[data-latest="true"] { animation: oh-history-arrive 320ms var(--oh-ease-out) both; }
+@keyframes oh-history-arrive { from { opacity:0; transform:translateY(6px) scale(.78); } to { opacity:1; transform:translateY(0) scale(1); } }
+
+@keyframes oh-ball-arrive {
+  0% { opacity: .82; transform: scale(.88) rotate(-7deg); filter: saturate(.84); }
+  58% { opacity: 1; transform: scale(1.045) rotate(2deg); filter: saturate(1.12); }
+  100% { opacity: 1; transform: scale(1) rotate(0); filter: saturate(1); }
 }
 
 /* ---------------------------------------------------------------- toast */
@@ -828,6 +953,8 @@
 .oh-confetti__pip--0 { background: var(--oh-gold); }
 .oh-confetti__pip--1 { background: var(--oh-gold-bright); }
 .oh-confetti__pip--2 { background: var(--oh-ivory); }
+.oh-confetti__pip--3 { background: var(--oh-brand-coral, #ff7187); border-radius: 50% 0 50% 0; }
+.oh-confetti__pip--4 { background: #ff8b36; border-radius: 50%; }
 
 @keyframes oh-fade {
   from { opacity: 0; }
@@ -936,7 +1063,7 @@
 .oh-statechip[data-tone="completed"] {
   color: var(--oh-gold-bright);
   border-color: var(--oh-line-gold);
-  background: rgba(207, 171, 99, 0.1);
+  background: rgba(255, 190, 77, 0.1);
 }
 
 .oh-dot {
@@ -1014,7 +1141,7 @@
 .oh-caller-cell--sealed {
   border-style: dashed;
   border-color: var(--oh-line-gold);
-  background: rgba(207, 171, 99, 0.05);
+  background: rgba(255, 190, 77, 0.05);
 }
 .oh-sealed {
   color: var(--oh-gold);
@@ -1047,7 +1174,7 @@
   padding: 13px 16px;
   border-radius: var(--oh-r-md);
   border: 1px solid var(--oh-line-gold);
-  background: linear-gradient(180deg, rgba(207, 171, 99, 0.16), rgba(207, 171, 99, 0.05));
+  background: linear-gradient(180deg, rgba(255, 190, 77, 0.16), rgba(255, 190, 77, 0.05));
   color: var(--oh-gold-bright);
   font-family: var(--oh-font-ui);
   cursor: pointer;
@@ -1055,7 +1182,7 @@
     transform var(--oh-fast) var(--oh-ease), opacity var(--oh-fast) linear;
 }
 .oh-callbtn:hover:not(:disabled) {
-  background: linear-gradient(180deg, rgba(207, 171, 99, 0.24), rgba(207, 171, 99, 0.1));
+  background: linear-gradient(180deg, rgba(255, 190, 77, 0.24), rgba(255, 190, 77, 0.1));
 }
 .oh-callbtn:active:not(:disabled) {
   transform: translateY(1px) scale(0.995);
@@ -1084,7 +1211,7 @@
   color: #1a1408;
   border-color: transparent;
   background: linear-gradient(180deg, var(--oh-gold-bright), var(--oh-gold) 55%, var(--oh-gold-deep));
-  box-shadow: 0 12px 26px -16px rgba(207, 171, 99, 0.9), var(--oh-inner-glow);
+  box-shadow: 0 12px 26px -16px rgba(255, 190, 77, 0.9), var(--oh-inner-glow);
 }
 .oh-callbtn--call:hover:not(:disabled) {
   background: linear-gradient(180deg, var(--oh-ivory), var(--oh-gold-bright) 55%, var(--oh-gold));
@@ -1131,7 +1258,7 @@
 .oh-seg__item[data-active="true"] {
   color: var(--oh-gold-bright);
   border-color: var(--oh-line-gold);
-  background: rgba(207, 171, 99, 0.14);
+  background: rgba(255, 190, 77, 0.14);
 }
 .oh-seg__item:disabled {
   cursor: not-allowed;
@@ -1188,7 +1315,7 @@
 }
 .oh-log__row[data-current="true"] {
   border-color: var(--oh-line-gold);
-  background: rgba(207, 171, 99, 0.1);
+  background: rgba(255, 190, 77, 0.1);
 }
 .oh-log__ordinal {
   font-size: 11px;
@@ -1295,6 +1422,19 @@
   font-size: 9px;
   letter-spacing: 0.1em;
 }
+.oh-seat__remove {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--oh-danger) 48%, transparent);
+  border-radius: var(--oh-r-sm);
+  background: color-mix(in srgb, var(--oh-danger) 9%, transparent);
+  color: var(--oh-danger);
+  font: 700 11px/1 var(--oh-font-ui);
+  cursor: pointer;
+}
+.oh-seat__remove:disabled { opacity: 0.55; cursor: wait; }
+.oh-seat__remove:focus-visible { outline: 2px solid var(--oh-gold-bright); outline-offset: 2px; }
 
 .oh-sr-only {
   position: absolute;

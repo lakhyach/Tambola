@@ -236,7 +236,7 @@ describe("owner control centre over HTTP (in-memory backends)", () => {
 
   test("an unauthenticated caller is refused on every protected endpoint", async () => {
     const anon = new AdminClient(url);
-    for (const path of ["/api/admin/overview", "/api/admin/games", "/api/admin/players", "/api/admin/history", "/api/admin/settings", "/api/admin/audit"]) {
+    for (const path of ["/api/admin/overview", "/api/admin/health", "/api/admin/games", "/api/admin/players", "/api/admin/history", "/api/admin/settings", "/api/admin/audit", "/api/admin/reports/instances", "/api/admin/instances/regular/overview", "/api/admin/backups/status"]) {
       const res = await anon.get(path);
       assert.equal(res.status, 401, path + " must require the owner");
       assert.equal(res.body.code, "UNAUTHENTICATED");
@@ -336,6 +336,80 @@ describe("owner control centre over HTTP (in-memory backends)", () => {
     assert.equal(res.body.ok, true);
     assert.equal(res.body.source, "live");
     assert.equal(typeof res.body.counts.waiting, "number");
+    assert.ok(Array.isArray(res.body.recentPlatformActivity));
+    assert.equal(typeof res.body.backupStatus.directoryStatus, "string");
+    assert.equal(res.body.health.mode, "memory");
+    assert.equal(res.body.health.readiness, "degraded");
+    assert.equal(res.body.health.database, "not-configured");
+    assert.equal(typeof res.body.health.rooms.live, "number");
+    const health = await client.get("/api/admin/health");
+    assert.equal(health.status, 200);
+    assert.equal(health.body.readiness, "degraded");
+    assert.equal(JSON.stringify(health.body).includes("password"), false);
+    assert.equal(JSON.stringify(health.body).includes("postgres://"), false);
+    const reports = await client.get("/api/admin/reports/instances");
+    assert.equal(reports.status, 503, "aggregate historical reports require durable records");
+    assert.equal(reports.body.code, "DURABLE_REQUIRED");
+    const backupStatus = await client.get("/api/admin/backups/status");
+    assert.equal(backupStatus.status, 200);
+    assert.equal(typeof backupStatus.body.directoryStatus, "string");
+    if (process.env.DATABASE_URL) assert.equal(JSON.stringify(backupStatus.body).includes(process.env.DATABASE_URL), false);
+  });
+
+  test("owner health dashboard exposes bounded readiness signals and strips internals", async () => {
+    const seeded = seededMemoryStore();
+    await seeded.store.create({ username: OWNER.username, passwordHash: await hashPassword(OWNER.password) });
+    const probe = {
+      report: async () => ({
+        ready: false,
+        live: true,
+        mode: "durable",
+        database: true,
+        migrations: { current: false, latest: "021_example.sql", pending: ["022_pending.sql"] },
+        lease: { held: false, lost: true, token: "private-lease-token" },
+        draining: false,
+        rooms: { live: 3, frozen: 1 },
+        scheduler: { armed: 2, nextDueInMs: 1250, overdue: true, ticking: false },
+        pool: { total: 8, idle: 0, waiting: 2, max: 8, errors: 3, connectionString: "postgres://private" },
+        reasons: ["instance_lease_lost"],
+        uptimeSeconds: 95,
+        at: Date.now(),
+        password: "private-password",
+      }),
+    };
+    const app = await createApp({
+      memoryOnly: true,
+      origins: [],
+      ownerStore: seeded.store,
+      ownerSessions: seeded.sessions,
+      audit: seeded.audit,
+      healthProbe: probe,
+      log: () => {},
+    });
+    const port = await app.listen(0);
+    try {
+      const owner = new AdminClient(`http://127.0.0.1:${port}`);
+      await owner.signIn();
+      const overview = await owner.get("/api/admin/overview");
+      assert.equal(overview.status, 200);
+      assert.equal(overview.body.health.readiness, "not-ready");
+      assert.equal(overview.body.health.database, "ok");
+      assert.deepEqual(overview.body.health.migrations.pending, ["022_pending.sql"]);
+      assert.equal(overview.body.health.lease.lost, true);
+      assert.equal(overview.body.health.rooms.frozen, 1);
+      assert.equal(overview.body.health.scheduler.overdue, true);
+      assert.deepEqual(overview.body.health.pool, { total: 8, idle: 0, waiting: 2, max: 8, errors: 3 });
+      assert.equal(overview.body.health.uptimeSeconds, 95);
+      const health = await owner.get("/api/admin/health");
+      assert.equal(health.status, 200);
+      assert.equal(health.body.readiness, "not-ready");
+      const text = JSON.stringify({ overview: overview.body.health, health: health.body });
+      for (const secret of ["private-lease-token", "postgres://private", "private-password", "connectionString"]) {
+        assert.equal(text.includes(secret), false, `${secret} must not leave the owner health API`);
+      }
+    } finally {
+      await app.closeServer();
+    }
   });
 
   test("a game-host session token is not an owner credential", async () => {
@@ -636,6 +710,28 @@ describe("durable owner layer and admin queries", { skip }, () => {
     assert.equal(tables.rows.length, 3);
   });
 
+  test("migration 017 installs date-window indexes for operational reports", async () => {
+    const indexes = await db.query("SELECT indexname FROM pg_indexes WHERE schemaname=$1 AND indexname LIKE '%reporting_%'", [schema]);
+    assert.equal(indexes.rows.length, 7);
+  });
+
+  test("platform activity combines owner security decisions and moderator instance actions", async () => {
+    await audit.record({ actor: "owner-feed-test", action: "owner.signin.failure", targetType: "owner", targetId: "owner-feed-test" });
+    await db.query(
+      `INSERT INTO platform_audit(actor,actor_role,instance_id,room_code,action,result,metadata)
+       VALUES('moderator-feed-test','moderator','regular','ROOMBBB2','moderator.room.read','failure','{}')`
+    );
+
+    const events = await queries.recentPlatformActivity({ limit: 2 });
+    assert.equal(events.length, 2);
+    assert.equal(events[0].source, "platform");
+    assert.equal(events[0].actor, "moderator-feed-test");
+    assert.equal(events[0].result, "failure");
+    assert.equal(events[0].instanceId, "regular");
+    assert.equal(events[1].source, "owner");
+    assert.equal(events[1].action, "owner.signin.failure");
+  });
+
   test("owner accounts, hashed sessions and audit round-trip in Postgres", async () => {
     const created = await ownerStore.create({ username: "DbOwner", passwordHash: await hashPassword("db-owner-secret") });
     assert.equal(await ownerStore.count(), 1);
@@ -722,5 +818,27 @@ describe("durable owner layer and admin queries", { skip }, () => {
     assert.equal(closed.games[0].participants, 2);
     const all = await queries.history({ limit: 10, offset: 0 });
     assert.equal(all.total, 2, "closing a room does not remove it from history");
+  });
+
+  test("instance reports aggregate persisted activity only inside the requested tenant and date window", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const report = await queries.instanceReport({ instanceId: "legacy", from: today, to: today });
+    assert.equal(report.instances.length, 1);
+    assert.equal(report.instances[0].instance_id, "legacy");
+    assert.equal(report.instances[0].rooms, 2);
+    assert.equal(report.instances[0].rounds, 1);
+    assert.equal(report.instances[0].completed_rounds, 1);
+    assert.equal(report.instances[0].players, 2);
+    assert.equal(report.instances[0].tickets, 1);
+    assert.equal(report.instances[0].valid_claims, 1);
+    assert.equal(report.instances[0].rejected_claims, 1);
+    assert.equal(report.instances[0].awards, 1);
+    assert.deepEqual(report.instances[0].reservations, 0);
+    assert.ok(report.daily.every((row) => (row.day instanceof Date ? row.day.toISOString() : String(row.day)).slice(0, 10) === today));
+
+    const other = await queries.instanceReport({ instanceId: "regular", from: today, to: today });
+    assert.equal(other.instances.length, 1);
+    assert.equal(other.instances[0].rooms, 0, "legacy room rows must not appear in a Regular report");
+    assert.equal(other.daily.length, 0);
   });
 });

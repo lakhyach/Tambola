@@ -1,0 +1,146 @@
+.festival-host-route {
+  --fh-plum: #221632;
+  --fh-cream: #fff7e9;
+  --fh-saffron: #ffbe4d;
+  background-color: transparent;
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(255, 113, 135, 0.12), transparent 30rem),
+    radial-gradient(ellipse at 90% 32%, rgba(255, 190, 77, 0.1), transparent 28rem);
+}
+
+.festival-host-screen {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  background-color: transparent;
+  background-image:
+    radial-gradient(ellipse at 0% 0%, rgba(185, 154, 255, 0.07), transparent 30rem),
+    radial-gradient(ellipse at 100% 20%, rgba(255, 190, 77, 0.08), transparent 26rem);
+}
+
+.festival-host-screen--room {
+  max-width: 820px !important;
+  padding-inline: clamp(14px, 3vw, 28px) !important;
+}
+
+.festival-host-card {
+  overflow: hidden;
+  border: 1px solid rgba(255, 190, 77, 0.27);
+  border-radius: 24px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.055), transparent 58%),
+    linear-gradient(155deg, #30203e, #211630 72%);
+  box-shadow: 0 20px 48px rgba(7, 3, 14, 0.32), inset 0 1px 0 rgba(255, 247, 233, 0.07);
+}
+
+.festival-host-screen .oh-display {
+  color: var(--fh-cream);
+}
+
+.festival-host-screen .oh-eyebrow {
+  color: var(--oh-text-faint);
+}
+
+.festival-host-screen .oh-field {
+  min-height: 46px;
+  border-color: rgba(255, 190, 77, 0.28);
+  border-radius: 13px;
+  background: rgba(15, 10, 23, 0.52);
+}
+
+.festival-host-screen .oh-field:focus-visible {
+  border-color: var(--fh-saffron);
+  outline: 3px solid rgba(255, 190, 77, 0.25);
+  outline-offset: 2px;
+}
+
+.festival-host-screen .oh-btn--gold {
+  min-height: 48px;
+  border-color: rgba(255, 232, 171, 0.42);
+  border-radius: 15px;
+  background: linear-gradient(130deg, #ffd76a, #ffad36 58%, #f57b62);
+  box-shadow: 0 9px 24px rgba(223, 122, 50, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.48);
+  color: #432039;
+}
+
+.festival-host-screen .oh-btn--gold:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.festival-host-screen .oh-btn:focus-visible,
+.festival-host-screen .oh-step:focus-visible,
+.festival-host-screen .oh-ticket-choice__item:focus-visible {
+  outline: 3px solid #fff1aa;
+  outline-offset: 3px;
+}
+
+.festival-host-intro {
+  position: relative;
+  background:
+    radial-gradient(circle at 92% 8%, rgba(255, 190, 77, 0.11), transparent 12rem),
+    linear-gradient(145deg, #30203e, #211630 72%);
+}
+
+.festival-host-intro::after {
+  position: absolute;
+  top: -46px;
+  right: -50px;
+  width: 132px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 215, 106, 0.2);
+  border-radius: 50%;
+  box-shadow: 0 0 0 12px rgba(255, 215, 106, 0.035), 0 0 0 24px rgba(255, 215, 106, 0.025);
+  content: "";
+  pointer-events: none;
+}
+
+.festival-host-room .oh-statechip {
+  border-color: rgba(255, 190, 77, 0.35);
+  background: rgba(255, 190, 77, 0.11);
+  color: #ffdb8b;
+}
+
+.festival-host-room .oh-num {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.festival-host-room .oh-prize {
+  border-color: rgba(255, 190, 77, 0.18);
+  background: rgba(15, 10, 23, 0.3);
+}
+
+.festival-host-room .oh-prize[data-on="true"] {
+  border-color: rgba(115, 223, 174, 0.4);
+  background: rgba(115, 223, 174, 0.07);
+}
+
+.festival-host-room [role="alert"] {
+  border-radius: 12px;
+}
+
+@media (max-width: 520px) {
+  .festival-host-card {
+    border-radius: 19px;
+  }
+
+  .festival-host-screen--start {
+    padding: 12px !important;
+    align-items: flex-start;
+  }
+
+  .festival-host-screen--start .festival-host-card {
+    padding: 18px !important;
+  }
+
+  .festival-host-screen--room {
+    padding-top: 10px !important;
+    padding-bottom: 30px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .festival-host-screen .oh-btn--gold {
+    transition: none;
+  }
+}

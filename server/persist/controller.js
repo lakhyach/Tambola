@@ -28,6 +28,7 @@
  */
 
 import { ErrorCodes, GameState, IntegrityError } from "../game/engine.js";
+import { validateRoomDefaults } from "../instances/room-defaults.js";
 
 /**
  * What a client is allowed to see about the room's configuration.
@@ -44,7 +45,6 @@ const PUBLIC_CONFIG_KEYS = [
   "maxChatLength",
   "earlyFiveMaxCalls",
   "claimWindowCalls",
-  "maxTicketsPerPlayer",
   "patterns",
   "multipleWinnersPerPattern",
 ];
@@ -110,9 +110,9 @@ export function createGameController({ store, sessions, registry: initialRegistr
 
   /** Create a room on the owner's behalf. A phantom host seat stands in for the
    *  absent browser host so lifecycle rules (which need an owner) still hold. */
-  async function createManagedRoom({ hostName = "Operator", overrides } = {}) {
+  async function createManagedRoom({ hostName = "Operator", overrides, instanceId = "regular" } = {}) {
     const socketId = "operator:" + Math.random().toString(36).slice(2, 10);
-    const created = await createRoom({ name: hostName, socketId, overrides });
+    const created = await createRoom({ name: hostName, socketId, overrides, instanceId });
     if (!created.ok) return created;
     // the operator does not need a browser session token for the phantom host;
     // revoke it so a leaked ack could never resume a seat nobody owns
@@ -129,9 +129,12 @@ export function createGameController({ store, sessions, registry: initialRegistr
   }
 
   /** Remove a disruptive participant without touching their earned history. */
-  async function removeParticipant({ room, playerId, reason = "removed-by-operator" }) {
+  async function removeParticipant({ room, playerId, reason = "removed-by-operator", actorPlayerId = null, waitingOnly = false }) {
     const blocked = refuseFrozen(room.roomId);
     if (blocked) return blocked;
+    if (waitingOnly && room.state !== GameState.WAITING) {
+      return { ok: false, code: ErrorCodes.INVALID_STATE, error: "participants can only be removed before the round starts" };
+    }
     if (room.hostPlayerId === playerId) {
       return { ok: false, code: "NOT_ALLOWED", error: "the host seat cannot be removed while the room lives" };
     }
@@ -139,18 +142,21 @@ export function createGameController({ store, sessions, registry: initialRegistr
       return { ok: false, code: ErrorCodes.UNKNOWN_PLAYER, error: "no such participant in this room" };
     }
     if (!durable) {
-      room.dropPlayer(playerId, reason);
+      room.dropPlayer(playerId, reason, { actorPlayerId, actorRole: actorPlayerId ? "host" : null });
       if (sessions) await sessions.revoke({ roomId: room.roomId, playerId, reason }).catch(() => {});
       return { ok: true, removed: playerId };
     }
     return runExclusive(room.roomId, async () => {
+      if (waitingOnly && room.state !== GameState.WAITING) {
+        return { ok: false, code: ErrorCodes.INVALID_STATE, error: "participants can only be removed before the round starts" };
+      }
       const gate = registry.dispatchFor(room.roomId);
       gate.suspend();
       try {
         // the engine drops the live seat and stamps `left_at`; the tickets,
         // claims and awards that player already earned stay attached to history
-        room.dropPlayer(playerId, reason);
-        await store.markSeatLeft({ roomId: room.roomId, playerId, reason });
+        room.dropPlayer(playerId, reason, { actorPlayerId, actorRole: actorPlayerId ? "host" : null });
+        await store.markSeatLeft({ roomId: room.roomId, playerId, reason, actorPlayerId, actorRole: actorPlayerId ? "host" : null });
         await sessions.revoke({ roomId: room.roomId, playerId, reason });
         gate.flush();
         return { ok: true, removed: playerId };
@@ -334,7 +340,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
     if (entry.type === "removed") {
       // a swept host seat stays active: the room is theirs and still waiting
       if (entry.wasHost) return;
-      await store.markSeatLeft({ roomId, playerId: entry.player, reason: entry.reason || "removed" });
+      await store.markSeatLeft({ roomId, playerId: entry.player, reason: entry.reason || "removed", actorPlayerId: entry.actorPlayerId || null, actorRole: entry.actorRole || null });
       return;
     }
     if (entry.type === "host-lost") {
@@ -350,8 +356,34 @@ export function createGameController({ store, sessions, registry: initialRegistr
 
   // ------------------------------------------------------------- room lifecycle
 
-  async function createRoom({ name, socketId, overrides }) {
-    const room = registry.create(overrides || {});
+  async function createRoom({ name, socketId, overrides, instanceId = "regular", instanceSlug = null }) {
+    if (instanceSlug !== null) {
+      if (typeof instanceSlug !== "string" || !/^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(instanceSlug)) {
+        return { ok: false, code: "BAD_PAYLOAD", error: "instance is invalid" };
+      }
+      if (!durable) {
+        if (instanceSlug !== "regular") return { ok: false, code: "INSTANCE_UNAVAILABLE", error: "that game hall is not available" };
+        instanceId = "regular";
+      } else {
+        instanceId = await store.publicInstanceIdBySlug({ slug: instanceSlug });
+        if (!instanceId) return { ok: false, code: "INSTANCE_UNAVAILABLE", error: "that game hall is not available" };
+      }
+    }
+    let themeVersionId = null;
+    if (durable) {
+      const instanceStatus = await store.instanceStatus({ instanceId });
+      if (instanceStatus !== "active") return { ok: false, code: "INSTANCE_UNAVAILABLE", error: "rooms can only be created in an active instance" };
+      if (typeof store.themeVersionForInstance === "function") themeVersionId = await store.themeVersionForInstance({ instanceId });
+    }
+    let roomConfig = { ...(overrides || {}) };
+    if (durable && typeof store.instanceRoomDefaults === "function") {
+      const defaultsResult = validateRoomDefaults(await store.instanceRoomDefaults({ instanceId }));
+      if (defaultsResult.error) {
+        return { ok: false, code: "INSTANCE_CONFIGURATION_INVALID", error: "this game hall has invalid room defaults" };
+      }
+      roomConfig = { ...defaultsResult.roomDefaults, ...roomConfig };
+    }
+    const room = registry.create(roomConfig);
     const gate = registry.dispatchFor(room.roomId);
     if (!durable) {
       const joined = room.join({ name, socketId });
@@ -385,7 +417,8 @@ export function createGameController({ store, sessions, registry: initialRegistr
       room.setHost({ socketId, playerId: joined.playerId });
       await store.createRoom({
         roomId: room.roomId,
-        config: publicConfig(room.config),
+        config: { ...publicConfig(room.config), ...(themeVersionId ? { themeVersionId } : {}) },
+        instanceId,
         host: { playerId: joined.playerId, name: joined.name, connected: true },
       });
       await store.upsertSchedule({
@@ -415,7 +448,35 @@ export function createGameController({ store, sessions, registry: initialRegistr
     }
   }
 
-  async function joinRoom({ roomId, name, socketId }) {
+  async function joinRoom({ roomId, name, socketId, instanceSlug = null, reservationId = null, bookingToken = null }) {
+    let booking = null;
+    if (durable) {
+      if (instanceSlug !== null) {
+        const actualSlug = await store.instanceSlugForRoom({ roomId });
+        if (!actualSlug || actualSlug !== instanceSlug) {
+          return { ok: false, code: ErrorCodes.ROOM_NOT_FOUND, error: "no game with that room code" };
+        }
+      } else if (typeof roomId !== "string") {
+        return { ok: false, code: ErrorCodes.ROOM_NOT_FOUND, error: "no game with that room code" };
+      }
+      const status = await store.instanceStatusForRoom({ roomId });
+      if (status === "paused" || status === "archived") return { ok: false, code: "INSTANCE_UNAVAILABLE", error: "this game instance is not accepting new players" };
+      const bookingSession = await store.bookingSessionForRoom({ roomId });
+      if (bookingSession) {
+        if (bookingSession.status !== "open" || bookingSession.instance_status !== "active" || bookingSession.room_status !== "WAITING" || Number(bookingSession.game_number) !== 0) {
+          return { ok: false, code: "SESSION_UNAVAILABLE", error: "this scheduled room is not accepting new bookings" };
+        }
+        if (!reservationId || !bookingToken) return { ok: false, code: "BOOKING_REQUIRED", error: "join this scheduled room with your confirmed booking reference and private code" };
+        booking = await store.reservationForRoomJoin({ roomId, reservationId, bookingToken });
+        if (!booking) return { ok: false, code: "RESERVATION_NOT_FOUND", error: "that confirmed booking is not available for this room" };
+        name = booking.displayName;
+      } else if (reservationId || bookingToken) {
+        return { ok: false, code: "RESERVATION_NOT_FOUND", error: "that confirmed booking is not available for this room" };
+      }
+    } else {
+      if (instanceSlug !== null) return { ok: false, code: "INSTANCE_UNAVAILABLE", error: "public instance joining requires durable storage" };
+      if (reservationId || bookingToken) return { ok: false, code: "INSTANCE_UNAVAILABLE", error: "scheduled bookings require durable storage" };
+    }
     const blocked = refuseFrozen(roomId);
     if (blocked) return blocked;
     const room = registry.get(roomId);
@@ -449,11 +510,54 @@ export function createGameController({ store, sessions, registry: initialRegistr
         return joined;
       }
       createdPlayerId = joined.playerId;
-      await store.addParticipant({ roomId, playerId: joined.playerId, name: joined.name, connected: true });
+      if (booking) {
+        const locked = room.lockTicketCount({ playerId: joined.playerId, count: booking.ticketCount });
+        if (!locked.ok) {
+          room.dropPlayer(joined.playerId, "booking ticket allocation failed");
+          gate.discard();
+          return locked;
+        }
+        if (booking.inventoryMode === "numbered") {
+          const assigned = room.assignInventoryTickets({
+            playerId: joined.playerId,
+            socketId,
+            playerToken: room.playerCredential(joined.playerId),
+            tickets: (booking.tickets || []).map((ticket) => ({
+              ...ticket,
+              inventorySessionId: booking.sessionId,
+              inventoryReservationId: booking.reservationId,
+            })),
+          });
+          if (!assigned.ok) {
+            room.dropPlayer(joined.playerId, "booking ticket inventory could not be restored");
+            gate.discard();
+            return assigned;
+          }
+        } else {
+          const selection = room.selectTickets({ playerId: joined.playerId, count: booking.ticketCount, socketId, playerToken: room.playerCredential(joined.playerId) });
+          if (!selection.ok) {
+            room.dropPlayer(joined.playerId, "booking ticket allocation failed");
+            gate.discard();
+            return selection;
+          }
+        }
+        const registered = await store.addParticipantFromBooking({
+          roomId, playerId: joined.playerId, name: joined.name, connected: true,
+          reservationId, bookingToken, expectedTicketIds: (booking.tickets || []).map((ticket) => ticket.inventoryTicketId),
+        });
+        if (!registered.ok) {
+          room.dropPlayer(joined.playerId, "booking could not be assigned");
+          gate.discard();
+          return registered;
+        }
+      } else {
+        await store.addParticipant({ roomId, playerId: joined.playerId, name: joined.name, connected: true });
+      }
       const issued = await sessions.issue({ roomId, playerId: joined.playerId, role: "player" });
       gate.flush();
       return {
         ...joined,
+        ...(booking ? { name: joined.name, ticketCount: booking.ticketCount, snapshot: room.playerSnapshot(joined.playerId) } : {}),
         sessionToken: issued.sessionToken,
         role: "player",
         state: room.state,
@@ -617,6 +721,10 @@ export function createGameController({ store, sessions, registry: initialRegistr
       });
     }
     return runExclusive(room.roomId, async () => {
+      const bookedCount = await store.bookedTicketCount({ roomId: room.roomId, playerId });
+      if (bookedCount !== null && count !== bookedCount) {
+        return { ok: false, code: "BOOKING_TICKET_COUNT_LOCKED", error: "ticket count is fixed by the confirmed reservation", ticketCount: bookedCount, maxTickets: bookedCount };
+      }
       const result = room.selectTickets({
         playerId,
         count,
@@ -625,7 +733,11 @@ export function createGameController({ store, sessions, registry: initialRegistr
       });
       if (!result.ok) return result;
       try {
-        await store.setTicketCount({ roomId: room.roomId, playerId, count: result.ticketCount });
+        const saved = await store.setTicketCount({ roomId: room.roomId, playerId, count: result.ticketCount });
+        if (!saved.ok) {
+          if (bookedCount !== null) room.selectTickets({ playerId, count: bookedCount, socketId, playerToken: room.playerCredential(playerId) });
+          return saved;
+        }
         return result;
       } catch (error) {
         return degrade(room.roomId, error, null);
@@ -657,7 +769,12 @@ export function createGameController({ store, sessions, registry: initialRegistr
           drawSequence: room.draw,
           config: publicConfig(room.config),
           tickets: [...room.players.values()].flatMap((player) =>
-            player.tickets.map((t) => ({ playerId: player.id, ticketNo: t.no, grid: t.grid }))
+            player.tickets.map((t) => ({
+              playerId: player.id, ticketNo: t.no, grid: t.grid,
+              inventoryTicketId: t.inventoryTicketId || null,
+              inventorySessionId: t.inventorySessionId || null,
+              inventoryReservationId: t.inventoryReservationId || null,
+            }))
           ),
           ticketCounts: [...room.players.values()].map((player) => ({
             playerId: player.id,
@@ -885,6 +1002,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
     });
   }
 
+
   /**
    * Opt the room into additional winning patterns.
    *
@@ -1063,6 +1181,41 @@ export function createGameController({ store, sessions, registry: initialRegistr
     return { ok: false, code: "ROOM_NOT_LIVE", error: "this room is closed; its history is still available" };
   }
 
+  /** Retry a frozen room only after an operator has inspected its durable rows. */
+  async function retryRecovery({ roomId } = {}) {
+    if (!durable) return { ok: false, code: "ADMIN_UNAVAILABLE", error: "room recovery requires durable storage" };
+    if (typeof roomId !== "string" || !roomId) return { ok: false, code: "BAD_PAYLOAD", error: "a room id is required" };
+    return runExclusive(roomId, async () => {
+      const bundle = await store.loadRoomBundle({ roomId });
+      if (!bundle.room) return { ok: false, code: "ROOM_NOT_FOUND", error: "no such room" };
+      if (bundle.room.closed_at) return { ok: false, code: "INVALID_STATE", error: "a closed room cannot be recovered" };
+      const priorReason = frozenReason(roomId) || bundle.room.recovery_error;
+      if (!priorReason) return { ok: false, code: "INVALID_STATE", error: "this room is not marked for recovery" };
+
+      try {
+        if (scheduler) scheduler.cancel(roomId);
+        const stale = registry.get(roomId);
+        if (stale) {
+          registry.rooms.delete(roomId);
+          stale.destroy();
+        }
+        // The prior note prevents rehydrate() from loading the room. Clear it
+        // under the same room queue, then immediately rerun every integrity
+        // check. Any failure below writes a fresh note and keeps the room frozen.
+        await store.setRecoveryError({ roomId, error: null });
+        const room = await rehydrate(roomId);
+        if (!room) throw new IntegrityError("the room could not be rebuilt from its durable state", { roomId });
+        frozen.delete(roomId);
+        return { ok: true, room, recovered: true };
+      } catch (error) {
+        const reason = (error && error.message) || "unknown recovery failure";
+        freeze(roomId, reason);
+        await store.setRecoveryError({ roomId, error: reason }).catch(() => {});
+        return { ok: false, code: "RECOVERY_REQUIRED", error: "recovery checks failed; the room remains frozen: " + reason };
+      }
+    });
+  }
+
   function summary() {
     return {
       durable,
@@ -1097,6 +1250,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
     detachSocket,
     rehydrate,
     ensureRoom,
+    retryRecovery,
     freeze,
     frozenReason,
     refuseFrozen,

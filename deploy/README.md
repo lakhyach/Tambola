@@ -89,15 +89,19 @@ The safest supported configuration - and Supabase's own recommendation - is to
   (6543): the lease uses a session-scoped advisory lock and pins `search_path` per
   connection, both of which break under transaction pooling.
 
-### Owner account + MFA initialization (do this AFTER DB + env are confirmed)
+### Owner account + MFA initialization (only after DB + env are confirmed)
 
-1. The production Supabase DB is currently empty (no `owner_accounts`). Do **not**
-   reset anything. Verify state first with a one-off run using the provider secret:
-   `node scripts/owner.js status`.
-2. If no owner exists, create it WITHOUT putting the password in source or logs:
-   pass `OWNER_USERNAME`/`OWNER_PASSWORD` (or the hidden prompt) to a one-off
-   command (`render run` / `fly ssh console` / Railway's `railway run`) that calls
-   `node scripts/owner.js create`, then remove those transient env vars.
+1. The state of any production database is unverified here. Do **not** assume it
+   is empty or run owner commands against an unconfirmed target. First confirm
+   the exact database and schema are approved for this deployment, and review
+   the pending migrations described below. `node scripts/owner.js list` is
+   read-only and never applies migrations; on a schema without the owner table it
+   reports that no owner schema is initialized. All other owner CLI commands run
+   pending migrations before their operation, so they are not read-only.
+2. If the confirmed database has no owner, create one WITHOUT putting the
+   password in source or logs: use the hidden prompt for
+   `node scripts/owner.js create` from the approved deployment context. The
+   command applies pending migrations before creating the owner.
 3. Ensure `OWNER_MFA_KEY` is already set as a secret BEFORE enrolling: enrolling
    seals the TOTP secret with it, and a later key change makes existing enrollments
    unreadable. Back `OWNER_MFA_KEY` up separately from the DB.
@@ -114,10 +118,15 @@ The safest supported configuration - and Supabase's own recommendation - is to
   dir. Rely on Supabase's own daily backup as the primary safety net, and/or run
   `npm run db:backup` on a schedule writing to object storage. `db:restore-check`
   needs host `pg_dump`/`pg_restore` and a role that can `CREATE/DROP DATABASE`.
-- **Migrations** 001/002/003/004 apply automatically on first boot (004 is additive:
-  multi-ticket — `tickets.ticket_no`, `room_members.ticket_count`, and swapping the
-  tickets UNIQUE key) - **wait for plan approval before any deploy that would run
-  them against Supabase.**
+- **Migrations.** There are currently 27 ordered SQL migrations. Pending
+  migrations apply automatically at app startup; the owner create/reset/remove
+  commands also migrate before changing accounts. The latest migration,
+  `027_remove_per_player_ticket_cap.sql`, removes historical upper bounds from
+  player/reservation ticket counts while retaining the required positive count.
+  Review every pending migration against the exact approved target before any
+  deployment or mutating CLI command. The configured Supabase target is not
+  confirmed as staging and its current state is unverified; do not connect to or
+  mutate it until explicitly confirmed safe.
 - No payments, entry fees, wagering, or prize payouts - free-to-play only.
 
 ## Per-provider quick steps

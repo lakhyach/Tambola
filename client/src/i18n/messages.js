@@ -65,6 +65,8 @@ export const CELEBRATION = {
     soundOff: "Sound off",
     motionOn: "Motion on",
     motionOff: "Motion off",
+    hostEnded: "The host ended the game.",
+    allNumbersCalled: "All 90 numbers were called.",
   },
   hi: {
     patternWin: "{name} ने {label} जीता! 🎉",
@@ -79,6 +81,8 @@ export const CELEBRATION = {
     soundOff: "आवाज़ बंद",
     motionOn: "एनिमेशन चालू",
     motionOff: "एनिमेशन बंद",
+    hostEnded: "होस्ट ने गेम समाप्त किया।",
+    allNumbersCalled: "सभी ९० नंबर बुलाए जा चुके हैं।",
   },
 };
 

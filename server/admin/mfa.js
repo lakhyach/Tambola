@@ -28,6 +28,7 @@ import { createCipheriv, createDecipheriv, randomBytes, timingSafeEqual } from "
 import { TOTP, Secret } from "otpauth";
 
 export const MFA_KEY_ENV = "OWNER_MFA_KEY";
+export const DEFAULT_MFA_ISSUER = "Ninety Club";
 export const MFA_DIGITS = 6;
 export const MFA_PERIOD_SECONDS = 30;
 export const MFA_WINDOW = 1;
@@ -125,14 +126,14 @@ function totpFor({ secret, issuer, label }) {
 }
 
 /** otpauth:// URI for the enrollment QR. Never logged, shown once. */
-export function provisioningUri({ secret, username, issuer = "Tambola" } = {}) {
+export function provisioningUri({ secret, username, issuer = DEFAULT_MFA_ISSUER } = {}) {
   if (!secret || !username) throw new Error("provisioningUri() needs a secret and a username");
   return totpFor({ secret, issuer, label: username }).toString();
 }
 
 /** Code for the current step - used by tests and the enrollment self-check. */
 export function currentCode({ secret, now = Date.now() } = {}) {
-  return totpFor({ secret, issuer: "Tambola", label: "self" }).generate({ timestamp: now });
+  return totpFor({ secret, issuer: DEFAULT_MFA_ISSUER, label: "self" }).generate({ timestamp: now });
 }
 
 /**
@@ -148,7 +149,7 @@ export function verifyCode({ secret, code, lastStep = null, now = Date.now(), wi
   if (typeof secret !== "string" || !secret) return { ok: false, reason: "MISMATCH" };
   let delta = null;
   try {
-    delta = totpFor({ secret, issuer: "Tambola", label: "verify" }).validate({ token, timestamp: now, window });
+    delta = totpFor({ secret, issuer: DEFAULT_MFA_ISSUER, label: "verify" }).validate({ token, timestamp: now, window });
   } catch {
     return { ok: false, reason: "MISMATCH" };
   }

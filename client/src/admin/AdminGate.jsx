@@ -17,7 +17,8 @@ export default function AdminGate({ children }) {
 
   if (status === "loading") return <Boot />;
   if (status !== "authenticated") {
-    return <Navigate to="/admin/signin" replace state={{ from: location.pathname }} />;
+    const base = location.pathname.startsWith("/super-admin") ? "/super-admin" : "/admin";
+    return <Navigate to={`${base}/signin`} replace state={{ from: location.pathname }} />;
   }
   return children;
 }

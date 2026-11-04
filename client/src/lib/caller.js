@@ -179,14 +179,15 @@ export function voiceStatus({
   speaking = null,
   lang = "en",
   voices = null,
+  providerAvailable = false,
   state = "RUNNING",
 } = {}) {
-  const language = lang === "hi" ? "Hindi" : "English";
+  const language = lang === "hi" ? "Hindi" : lang === "hinglish" ? "Hinglish" : "English";
   if (!engine) {
     return {
       tone: "off",
-      label: "No voice engine",
-      detail: "This browser cannot speak. The board, chime and every player's own device keep working.",
+      label: "Voice unavailable",
+      detail: "No configured caller voice is available. The board and game continue working.",
     };
   }
   if (dead) {
@@ -205,11 +206,11 @@ export function voiceStatus({
   if (pending > 0) {
     return { tone: "warn", label: "Reading " + pending + " behind", detail: "The voice is catching up with the board." };
   }
-  if (voices === 0) {
+  if (voices === 0 && !providerAvailable) {
     return {
       tone: "warn",
-      label: "No " + language + " voice listed",
-      detail: "The browser will use its default voice for " + language + ".",
+      label: "No " + language + " voice available",
+      detail: "Configure the matching Sarvam voice or a same-language system voice.",
     };
   }
   return { tone: "ok", label: "Voice ready", detail: "The next call is read once, in " + language + "." };

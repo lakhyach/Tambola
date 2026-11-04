@@ -5,12 +5,16 @@
 #
 # Secrets (DATABASE_URL, OWNER_MFA_KEY, ...) are read from a local .env that
 # Compose picks up automatically. Never commit that .env.
+# Generate POSTGRES_PASSWORD with URL-safe characters because it is embedded in
+# the app's postgres:// URL below; for example: openssl rand -hex 32.
 #
 #   docker compose up -d --build
 #   docker compose logs -f app
 #
-# Put TLS/HTTPS in front of this with a reverse proxy (Caddy/Traefik/nginx) or a
-# managed load balancer; set TRUST_PROXY=1 and TAMBOLA_COOKIE_SECURE=1 there.
+# Put TLS/HTTPS in front of this with a same-host reverse proxy (Caddy/Traefik/
+# nginx). The host port is loopback-only so clients cannot bypass that proxy and
+# spoof trusted forwarding headers. A proxy container can reach app:4000 on the
+# tambola network. For managed platforms, use their service integration instead.
 
 services:
   db:
@@ -61,7 +65,7 @@ services:
       # Backups land on a volume separate from the live DB data directory.
       - tambola-backups:/app/backups
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     networks: [tambola]
 
 volumes:

@@ -224,8 +224,8 @@ export function validateEnv(env = {}, options = {}) {
     add("OWNER_MFA_KEY", "ok", "32-byte key");
   }
 
-  if (!env.MFA_ISSUER || env.MFA_ISSUER === "Tambola") {
-    add("MFA_ISSUER", "warn", "still the default label shown in authenticator apps");
+  if (env.MFA_ISSUER === "Tambola") {
+    add("MFA_ISSUER", "warn", "uses the legacy label shown in authenticator apps; new enrollments default to Ninety Club");
   }
 
   // ------------------------------------------------------------------- database load
