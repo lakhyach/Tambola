@@ -529,6 +529,8 @@ export async function createApp(options = {}) {
       ownerSessions: admin.ownerSessions,
       ownerStore: admin.ownerStore,
       throttle: admin.throttle,
+      audit: admin.audit,
+      requireMfa: production,
     }));
   } else {
     app.use("/api/public", (_req, res) => res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "scheduled bookings require PostgreSQL" }));

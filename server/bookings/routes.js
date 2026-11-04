@@ -148,7 +148,7 @@ export function createPublicRequestBudget({ windowMs = 60_000, maxRequests = 40,
   };
 }
 
-export function createAdminBookingRouter({ db, ownerSessions, ownerStore, throttle, now } = {}) {
+export function createAdminBookingRouter({ db, ownerSessions, ownerStore, throttle, audit = null, requireMfa = false, now } = {}) {
   const router = express.Router();
   const service = createBookingService({ db, now });
   bodyDeadline(router); addNoStore(router); router.use(express.json({ limit: "8kb" }));
@@ -158,7 +158,12 @@ export function createAdminBookingRouter({ db, ownerSessions, ownerStore, thrott
     if (!verified?.ok) return res.status(401).json({ ok: false, code: "UNAUTHENTICATED", error: "owner sign-in required" });
     const owner = await ownerStore.getById(verified.ownerId);
     if (!owner) return res.status(401).json({ ok: false, code: "UNAUTHENTICATED", error: "owner sign-in required" });
-    req.owner = { ownerId: owner.ownerId, username: owner.username, sessionId: verified.sessionId };
+    if (owner.role !== "super_admin") {
+      await audit?.record({ actor: owner.username, action: "authorization.denied", targetType: "platform_api", targetId: req.path, metadata: { method: req.method, actorRole: owner.role, requiredRole: "super_admin" } }).catch(() => {});
+      return res.status(403).json({ ok: false, code: "FORBIDDEN", error: "Super Admin permission is required" });
+    }
+    if (requireMfa && !owner.mfaEnrolled) return res.status(403).json({ ok: false, code: "MFA_REQUIRED", error: "enroll a second factor before using platform operations" });
+    req.owner = { ownerId: owner.ownerId, username: owner.username, role: owner.role, sessionId: verified.sessionId };
     if (req.method !== "GET" && req.method !== "HEAD" && req.method !== "OPTIONS") {
       if (!verifyCsrf(req)) return res.status(403).json({ ok: false, code: "CSRF_FAILED", error: "missing or invalid CSRF token" });
       try {

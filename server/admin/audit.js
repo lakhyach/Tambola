@@ -40,6 +40,8 @@ export const ADMIN_ACTIONS = Object.freeze({
   ROOM_RECOVER: "admin.room.recover",
   PLAYER_REMOVE: "admin.player.remove",
   PASSWORD_ROTATE: "admin.password.rotate",
+  SUPER_ADMIN_BOOTSTRAP: "super_admin.bootstrap",
+  SUPER_ADMIN_PROMOTE: "super_admin.promote",
 });
 
 function trim(value, max) {

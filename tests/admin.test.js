@@ -125,6 +125,56 @@ describe("owner password hashing", () => {
   });
 });
 
+test("platform roles default to Owner and elevation requires an explicit operator action", async () => {
+  const store = createMemoryOwnerStore();
+  const passwordHash = await hashPassword("role-test-password");
+  const account = await store.create({ username: "role.test", passwordHash });
+  assert.equal(account.role, "owner");
+  assert.equal((await store.verifyLogin({ username: account.username, password: "role-test-password" })).role, "owner");
+  await assert.rejects(store.create({ username: "role.invalid", passwordHash, role: "admin" }), /role must be owner or super_admin/);
+  assert.equal((await store.setRole({ ownerId: account.ownerId, role: "super_admin" })).ok, true);
+  assert.equal((await store.getById(account.ownerId)).role, "super_admin");
+  assert.deepEqual(await store.setRole({ ownerId: account.ownerId, role: "owner" }), { ok: false, code: "LAST_SUPER_ADMIN" });
+  const second = await store.create({ username: "role.second", passwordHash, role: "super_admin" });
+  assert.equal((await store.setRole({ ownerId: account.ownerId, role: "owner" })).ok, true);
+  assert.equal((await store.getById(second.ownerId)).role, "super_admin", "revoking one role cannot demote the last remaining Super Admin");
+  assert.deepEqual(await store.remove({ ownerId: second.ownerId }), { ok: false, code: "LAST_SUPER_ADMIN" });
+});
+
+test("a production Super Admin must enroll MFA before reading global settings", async () => {
+  const ownerStore = createMemoryOwnerStore();
+  const ownerSessions = createMemoryOwnerSessions();
+  const password = "pre-mfa-platform-test-password";
+  const passwordHash = await hashPassword(password);
+  const superAdmin = await ownerStore.create({ username: "pre.mfa.admin", passwordHash, role: "super_admin" });
+  await ownerStore.create({ username: "other.owner", passwordHash });
+  const app = await createApp({
+    memoryOnly: true,
+    production: true,
+    origins: [],
+    ownerStore,
+    ownerSessions,
+    audit: createMemoryAdminAudit(),
+    mfaKey: { configured: true, key: Buffer.alloc(32, 7) },
+    log: () => {},
+  });
+  const client = new AdminClient(`http://127.0.0.1:${await app.listen(0)}`);
+  try {
+    const login = await client.signIn(superAdmin.username, password);
+    assert.equal(login.status, 200);
+    const settings = await client.get("/api/admin/settings");
+    assert.equal(settings.status, 200);
+    assert.deepEqual(settings.body.owners.map((account) => account.username), [superAdmin.username]);
+    assert.equal(settings.body.invitation.origin, null);
+    assert.equal(settings.body.defaults, null);
+    assert.equal(settings.body.runtime, null);
+    assert.equal(settings.body.health.database, "restricted");
+    assert.equal((await client.get("/api/admin/overview")).body.code, "MFA_REQUIRED");
+  } finally {
+    await app.closeServer();
+  }
+});
+
 describe("login rate limiter", () => {
   test("locks out after repeated failures and reports a retry window", () => {
     const limiter = createLoginRateLimiter({ maxFailures: 3, windowMs: 60_000, baseLockoutMs: 10_000 });
@@ -213,7 +263,7 @@ describe("owner control centre over HTTP (in-memory backends)", () => {
 
   before(async () => {
     backends = seededMemoryStore();
-    await backends.store.create({ username: OWNER.username, passwordHash: await hashPassword(OWNER.password) });
+    await backends.store.create({ username: OWNER.username, passwordHash: await hashPassword(OWNER.password), role: "super_admin" });
     instance = await createApp({
       memoryOnly: true,
       origins: [],
@@ -358,7 +408,7 @@ describe("owner control centre over HTTP (in-memory backends)", () => {
 
   test("owner health dashboard exposes bounded readiness signals and strips internals", async () => {
     const seeded = seededMemoryStore();
-    await seeded.store.create({ username: OWNER.username, passwordHash: await hashPassword(OWNER.password) });
+    await seeded.store.create({ username: OWNER.username, passwordHash: await hashPassword(OWNER.password), role: "super_admin" });
     const probe = {
       report: async () => ({
         ready: false,
@@ -579,7 +629,7 @@ describe("admin API surfaces database failure honestly", () => {
 
   before(async () => {
     const backends = seededMemoryStore();
-    await backends.store.create({ username: OWNER.username, passwordHash: await hashPassword(OWNER.password) });
+    await backends.store.create({ username: OWNER.username, passwordHash: await hashPassword(OWNER.password), role: "super_admin" });
     // Every method of the read layer rejects as if the database connection died.
     const failingQueries = new Proxy(
       {},
@@ -734,6 +784,7 @@ describe("durable owner layer and admin queries", { skip }, () => {
 
   test("owner accounts, hashed sessions and audit round-trip in Postgres", async () => {
     const created = await ownerStore.create({ username: "DbOwner", passwordHash: await hashPassword("db-owner-secret") });
+    assert.equal(created.role, "owner");
     assert.equal(await ownerStore.count(), 1);
     assert.equal((await ownerStore.verifyLogin({ username: "dbowner", password: "db-owner-secret" })).ok, true);
     assert.equal((await ownerStore.verifyLogin({ username: "dbowner", password: "nope-nope" })).ok, false);
@@ -754,6 +805,22 @@ describe("durable owner layer and admin queries", { skip }, () => {
     const revoked = await ownerSessions.revokeAllForOwner({ ownerId: created.ownerId, reason: "test" });
     assert.ok(revoked.revoked >= 1);
     assert.equal((await ownerSessions.verify({ token: other.token })).ok, false);
+
+    const roleSession = await ownerSessions.issue({ ownerId: created.ownerId });
+    const promoted = await ownerStore.setRole({ ownerId: created.ownerId, role: "super_admin", actor: "test:role-change" });
+    assert.equal(promoted.ok, true);
+    assert.equal(promoted.revoked, 1);
+    assert.equal((await ownerSessions.verify({ token: roleSession.token })).ok, false, "role promotion invalidates the existing authenticated session");
+    assert.deepEqual(await ownerStore.setRole({ ownerId: created.ownerId, role: "owner" }), { ok: false, code: "LAST_SUPER_ADMIN" });
+    const secondAdmin = await ownerStore.create({ username: "dbadmin2", passwordHash: await hashPassword("db-admin-password"), role: "super_admin" });
+    const demoted = await ownerStore.setRole({ ownerId: created.ownerId, role: "owner", actor: "test:role-change" });
+    assert.equal(demoted.ok, true);
+    assert.equal((await ownerStore.getById(created.ownerId)).role, "owner");
+    assert.equal((await ownerStore.getById(secondAdmin.ownerId)).role, "super_admin");
+    const roleAudit = await db.query("SELECT action,metadata FROM admin_audit WHERE target_id=$1 ORDER BY occurred_at", [created.ownerId]);
+    assert.ok(roleAudit.rows.some((row) => row.action === "super_admin.promote"));
+    assert.ok(roleAudit.rows.some((row) => row.action === "super_admin.demote"));
+    assert.deepEqual(await ownerStore.remove({ ownerId: secondAdmin.ownerId }), { ok: false, code: "LAST_SUPER_ADMIN" });
 
     await audit.record({ actor: "dbowner", action: "admin.test", targetType: "room", targetId: "ROOMAAA1", roomCode: "ROOMAAA1", metadata: { note: "safe" } });
     const recent = await audit.recent({ limit: 5 });

@@ -78,3 +78,47 @@ Authorized operator should establish project reference and environment first, th
 The local owner and moderator authentication blockers are closed for disposable acceptance: the owner was provisioned without loading `.env`, and actual Chrome completed owner MFA sign-in and the moderator invitation/MFA flow against the isolated `chromeacceptance` database. Actual Chrome rendered all 46 route templates, including authenticated owner-protected pages. Selected Owner and Moderator actions and denial cases are recorded in the role/action matrix. Full role/action acceptance is still incomplete; `/admin` and `/super-admin` use the same owner model, and there is no evidence for distinct Admin or Super Admin roles. Socket ticket issuance was checked, but an actual moderator socket operation and session revocation lifecycle were not.
 
 Full Node regression passed 759/759; client lint/build, 51 security probes, 675-file secret scan, root/client dependency audits (zero vulnerabilities), and an isolated production image startup/readiness check passed. Production deployment remains blocked by missing deployment-specific settings, unverified HTTPS/WSS/provider behavior, the unresolved earlier `owner:list` target ambiguity, and remaining accessibility/audio/browser action coverage. Do not contact the unconfirmed Supabase target; operator investigation must be read-only first.
+
+## Role-model correction (5 November)
+
+The Owner and Super Admin UI alias has been removed. `/super-admin/*` now fails closed pending an approved distinct role model; Owner API calls continue to require verified Owner sessions. New Owner activity is attributed as `owner` after migration 028, while legacy audit rows remain unchanged. A separate Admin role, Super Admin provisioning/revocation, instance-scoped Admin policy and complete action matrix remain product/security blockers. This local correction does not close production readiness.
+
+## Post-correction verification (5 November)
+
+Migration 028 ran successfully in disposable schema `roleauditfinal`; production-mode container readiness passed. Full suite passed **759/759**, client lint/build passed, security probes **51/51**, secret scan passed (679 files), and root/client npm audits showed zero vulnerabilities. Actual Chrome confirmed `/super-admin/settings` is fail-closed and `/admin/signin` remains accessible. This reduces the risk of accidental Owner/Super Admin equivalence but does not implement a new Super Admin identity or an instance-scoped Admin role. The readiness decision remains FAIL.
+
+### Operator handoff for the earlier `owner:list` ambiguity
+
+Do not reconnect to the unconfirmed Supabase endpoint from this development session. An authorized operator must, in an approved read-only workflow:
+
+1. Confirm the provider project reference and whether it is staging or production using the console/account owner.
+2. Preserve provider logs/audit logs for the command time; establish whether a connection and DDL transaction occurred.
+3. Read the migration ledger, checksums, actual schema objects, ownership/grants, and database logs; compare with repository migrations 001–028.
+4. Capture/export a provider snapshot before any repair. Record exact evidence and timeline.
+5. If changes are present, assess app writes and compatibility and plan a forward repair or verified restore with change control. Never delete migration rows, reverse DDL, or perform a blind rollback.
+
+## Latest local role-security verification — 5 November 2026
+
+The previous PR-01 wording is superseded for local Owner/Super Admin separation: separate persisted roles, server-side authorization, CLI-only promotion/revocation, audit recording, session revocation, and last-Super-Admin protection are now implemented and tested. A separate Admin role remains unavailable because its instance capabilities and grant policy are not defined. Local role separation is not equivalent to full role/action acceptance or production readiness.
+
+Actual Google Chrome on a fresh production-mode container (loopback-only port 4004, PostgreSQL schema `rolebrowser`) confirmed Owner settings/reload, Owner 403s for global overview/instances, Super Admin MFA, authorized overview/instances reads, and 401 after sign-out. Schema migrations reached 029. The browser run had zero page errors and zero unexpected console errors; expected denial responses produced three console entries. The machine-readable record and screenshots are listed in `NINETY-CLUB-CHROME-ACCEPTANCE-EVIDENCE.md`.
+
+Current local checks: Node **761/761** (20 suites); client lint/build pass; security probes **51/51**; secret scan **681 files** pass; root and client dependency audit report zero vulnerabilities; fresh Docker build and production-mode readiness pass. These local checks do not close incomplete Chrome action coverage, Moderator live socket UI acceptance, browser-submitted adversarial claims, or manual accessibility/device/provider testing.
+
+### Remaining blockers and operator handoff
+
+| Blocker | State | Required evidence to close |
+|---|---|---|
+| Admin role policy | Not implemented by design | Product owner defines instance capability list, assignment, provisioning, revocation, MFA, audit and recovery before implementation |
+| Full role/action browser acceptance | Partial | Exercise every meaningful Owner/Super Admin/Moderator/Host/Player action, positive/negative path, persistence, audit and recovery in browser |
+| Moderator live Socket.IO lifecycle | Server integration tests pass; Chrome action untested | Actual Chrome socket action, invalid/cross-room/cross-instance events, expiry, revocation disconnect, reconnect denial, and MFA/session lifecycle |
+| Claim attack acceptance | Automated tests cover core rejections; adversarial Chrome actions untested | Controlled invalid, duplicate, forged, cross-room, unauthorized and concurrent claims with DB evidence and no duplicate award |
+| Accessibility and media | Partial/untested | Keyboard pass, screen reader, contrast combinations, reduced motion, mobile devices, audio controls and voice-provider playback |
+| Supabase earlier `owner:list` ambiguity | Unresolved; remote access prohibited | Authorized operator confirms project/environment and inspects provider logs, migration ledger, checksums and schema read-only; compare migrations 001–029; preserve snapshot before any corrective work |
+| Production host/configuration | Not supplied or tested | Authorized staging values and evidence for DB URL/provider behavior, HTTPS origin/TLS, proxy, MFA secret injection, WSS, cookies, CORS, limits and readiness |
+
+Do not deploy or contact the unconfirmed Supabase target. Any external operator handoff remains read-only until the project identity is confirmed and an approved change plan exists.
+
+## Final local verification checkpoint — 5 November 2026
+
+Local verification after the role/MFA boundary fix: Node **761/761** (20 suites, zero skips) against the disposable loopback PostgreSQL container; client lint/build; security probes **51/51**; post-build secret scan **685 files**; full root/client dependency audits with zero vulnerabilities; production-mode Docker acceptance app healthy with `/readyz` ready and schema at migration 029. This does not alter the readiness decision because the application/browser gaps and external prerequisites in the table above remain unresolved.

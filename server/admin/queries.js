@@ -70,7 +70,7 @@ export function createAdminQueries({ db } = {}) {
       `SELECT source, event_id, actor, actor_role, action, result, target_type, target_id,
               instance_id, room_code, occurred_at
          FROM (
-           SELECT 'owner'::text AS source, event_id, actor, 'super_admin'::text AS actor_role,
+           SELECT 'owner'::text AS source, event_id, actor, 'owner'::text AS actor_role,
                   action, 'recorded'::text AS result, target_type, target_id,
                   NULL::text AS instance_id, room_code, occurred_at
              FROM admin_audit
@@ -506,7 +506,7 @@ export function createAdminQueries({ db } = {}) {
         SELECT event_id::text AS event_id,actor,actor_role AS role,action,result,metadata,room_code,occurred_at,'platform'::text AS source
           FROM platform_audit WHERE instance_id=$1 OR room_code IN (SELECT room_code FROM scoped_rooms)
         UNION ALL
-        SELECT event_id::text,actor,'super_admin'::text,action,'success'::text,metadata,room_code,occurred_at,'owner'::text
+        SELECT event_id::text,actor,'owner'::text,action,'success'::text,metadata,room_code,occurred_at,'owner'::text
           FROM admin_audit WHERE (target_type='instance' AND target_id=$1) OR room_code IN (SELECT room_code FROM scoped_rooms)
       ) SELECT * FROM events ORDER BY occurred_at DESC,event_id DESC LIMIT 50`, [instanceId]),
       health(),

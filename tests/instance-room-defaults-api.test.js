@@ -25,7 +25,7 @@ test("owner-managed room defaults are validated, audited, tenant-scoped, and app
     await new Promise((resolve) => server.close(resolve));
     await env.close();
   });
-  await admin.ownerStore.create({ username: "defaults-owner", passwordHash: await hashPassword("RoomDefaultsOwnerPass9!") });
+  await admin.ownerStore.create({ username: "defaults-owner", passwordHash: await hashPassword("RoomDefaultsOwnerPass9!"), role: "super_admin" });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
   const cookies = new Map();

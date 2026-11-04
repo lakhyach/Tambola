@@ -53,3 +53,47 @@ Owner was provisioned through the supported CLI in the dedicated loopback-only `
 A synthetic moderator invite with only Regular `instance.read`, `room.read`, `bookings.read`, and `bookings.assign` grants was accepted in actual Chrome. The moderator enrolled MFA and saw its assigned instance/tabs. The Regular rooms read succeeded; foreign-instance read and ungranted room creation were denied with 404/NOT_FOUND. The one-time Socket.IO ticket endpoint returned success. An actual socket event, moderator session rotation/revocation, and comprehensive action coverage remain untested.
 
 Route template page rendering: 46/46. This is not full acceptance of every action or error state. The source shares the same Owner component/session for `/admin` and `/super-admin`; separate Admin/Super Admin policy remains undefined. See the role/action matrix for route-level evidence and limits.
+
+## Role alias remediation (5 November)
+
+After the prior 46-route Owner acceptance, the `/super-admin/*` alias was removed from the Owner route tree and replaced with a fail-closed page explaining that no separately provisioned Super Admin identity exists. This remediation has not yet been counted as a Chrome acceptance until the updated build is checked in Chrome. Existing authenticated Owner route evidence remains valid for `/admin/*` only.
+
+The actual Chrome smoke rendered /super-admin/settings after the alias removal; it showed the accessible fail-closed message with no page errors. Other Super Admin URLs were not individually rechecked after the shared wildcard was installed. Earlier screenshots of Super Admin pages record the old shared Owner UI and are historical only, not acceptance evidence for the current build.
+
+## Final role correction evidence (5 November)
+
+Updated actual Chrome route sample: `/super-admin/settings` now shows “Super Admin access is unavailable”; the owner route tree is not mounted under that path. Chrome also loaded `/admin/signin` after navigation. No page exceptions were observed. Screenshot: `chrome-evidence/mission-2026-11-05-super-admin-unavailable.png`. Other Super Admin routes were not individually revisited after replacing the shared wildcard, so do not count them as individually accepted.
+
+Production image `ninety-club-audit:2026-11-05-roles` rebuilt and ran with `NODE_ENV=production` against isolated schema `roleauditfinal` on the loopback-only PostgreSQL container. `/readyz` became ready; schema migration version 028 was confirmed; the temporary app container was stopped and removed. This verifies local container/migration behavior only.
+
+## Latest role-separated Chrome evidence — 5 November 2026
+
+A fresh production-mode Docker image was started on loopback port 4004 with isolated PostgreSQL schema `rolebrowser`, migrated through 029. Disposable Owner and Super Admin accounts were provisioned through the supported CLI. Generated passwords and the MFA key/seed remained process-local and are not included in reports or screenshots.
+
+Using installed Google Chrome with separate browser contexts:
+
+- Owner signed in at `/admin/signin`, saw its `/admin/settings` page and recovered the session on reload. Its own settings API returned 200; platform overview and instance APIs returned 403. `/super-admin/settings` displayed the role denial.
+- Super Admin signed in at `/super-admin/signin`, completed the required TOTP challenge, and accessed overview/instances APIs (200). Session payload reported `role=super_admin`, `mfa.required=true`, and `mfa.state=enrolled`. Sign-out redirected to sign-in; a subsequent overview request returned 401.
+- No uncaught page errors or unexpected console errors occurred. Three console entries were expected 401/403 denial responses.
+
+This verifies role separation, MFA challenge, representative protected reads, reload and sign-out revocation on the isolated local profile. It does not verify all platform mutations, the Admin role (not implemented), every one of the 46 route templates under the corrected policy, or full role/action coverage.
+
+### Final mission re-verification — 5 November 2026
+
+The role-separation Chrome run above remains the latest authenticated browser evidence. A full automated regression rerun then passed **761/761** tests (20 suites, zero skips) against the same dedicated loopback-only PostgreSQL container. The database-backed backup/restore test was run with PostgreSQL tooling explicitly directed into that container. Client lint/build, **51/51** security probes, a post-build secret scan over **685 files**, and full root/client dependency audits (zero vulnerabilities) passed. The production-mode browser container is healthy and its `/readyz` endpoint reports ready; schema migration 029 was verified.
+
+This checkpoint did not exercise live Moderator Socket.IO actions or revocation/reconnect in Chrome, open-browser invalidation after an Owner role change, negative/forged/concurrent claim submissions through game UI, all Super Admin mutation forms, or manual screen-reader/physical-device/voice-provider acceptance. These remain partial or untested, not passed by the automated suite.
+
+Evidence files:
+
+- `chrome-evidence/mission-2026-11-05-role-split-acceptance.json`
+- `chrome-evidence/mission-2026-11-05-owner-role-denial.png`
+- `chrome-evidence/mission-2026-11-05-super-admin-role-accepted.png`
+
+The original screenshots that show Owner pages beneath `/super-admin/*` are historical and do not demonstrate the current role gate. Previous game, moderator and public-page evidence remains scoped to the roles and actions stated at capture time.
+
+### MFA-before-data boundary check — 5 November 2026
+
+After the initial production Chrome run exposed that an un-enrolled Super Admin could receive platform settings while opening the MFA enrollment screen, the settings endpoint and UI were tightened. A fresh build now limits that session to its own account row, MFA enrollment, password/session controls and sign-out; origin, other accounts, runtime, health, defaults and backups stay hidden until enrollment. A fresh Google Chrome session verified the self-only settings response, no Platform origin/Health sections in the page, and `403 MFA_REQUIRED` for global overview. The enrolled Super Admin then completed the TOTP challenge and received platform overview/instance reads (200); sign-out returned 401. Machine-readable evidence: `chrome-evidence/mission-2026-11-05-role-split-acceptance.json`; pending-enrollment screenshot: `chrome-evidence/mission-2026-11-05-super-admin-awaiting-mfa.png`.
+
+The final local suite after this correction passed **761/761** across 20 suites. This closes the specific pre-enrollment settings disclosure; full platform action acceptance, moderator live socket UI flows, adversarial browser claim submissions, and manual assistive-technology/device checks remain open.

@@ -328,11 +328,15 @@ tables, sessions, audit, totals, room detail without the draw plan, history).
 # Moderator management
 
 Super Admin-only moderator provisioning and access management is mounted at
-`/api/admin/moderators`, behind the same owner session, MFA policy, CSRF check,
-and mutation throttle as other admin writes. See
+`/api/admin/moderators`, behind a verified Super Admin session, the production
+MFA policy, CSRF check, and mutation throttle as other platform writes. See
 [`MODERATOR-SECURITY.md`](MODERATOR-SECURITY.md) for the permissions, invitation
 procedure, lifecycle, and moderator API/socket contracts.
 
 ## Instance reports
 
-`GET /api/admin/reports/instances?instanceId=regular&from=2026-11-01&to=2026-11-30` returns date-bounded counts and daily activity. Omit `instanceId` to report all instances. Dates are UTC, inclusive, and limited to a maximum 366-day span. The owner-only page is available at `/admin/reports` and `/super-admin/reports`; CSV exports contain aggregate counts only.
+`GET /api/admin/reports/instances?instanceId=regular&from=2026-11-01&to=2026-11-30` returns date-bounded counts and daily activity. Omit `instanceId` to report all instances. Dates are UTC, inclusive, and limited to a maximum 366-day span. The Super Admin page is available at `/super-admin/reports`; `/admin/reports` does not grant Owner access and routes Super Admins to the platform console. CSV exports contain aggregate counts only.
+
+## Platform role separation (5 November)
+
+Owner accounts now default to `role=owner`; only an explicit CLI-created or promoted `super_admin` account can enter platform-wide APIs, and confirmed MFA is required for those requests. Until MFA enrollment, a Super Admin can access only its own account security settings; global account lists, origin, runtime, health, defaults and backups remain hidden. Owner account settings remain available for self-service credentials/MFA, but global data/settings and backup APIs deny Owner access. There is no instance-scoped Admin role yet; see `docs/NINETY-CLUB-ROLE-ARCHITECTURE.md`.

@@ -263,7 +263,7 @@ export function createAdminRouter({
       await ownerSessions.revoke({ sessionId: verified.sessionId }).catch(() => {});
       return { ok: false, clear: true };
     }
-    return { ok: true, owner: { ownerId: owner.ownerId, username: owner.username, sessionId: verified.sessionId } };
+    return { ok: true, owner: { ownerId: owner.ownerId, username: owner.username, role: owner.role, mfaEnrolled: owner.mfaEnrolled, sessionId: verified.sessionId } };
   }
 
   const requireOwner = wrap(async (req, res, next) => {
@@ -271,6 +271,33 @@ export function createAdminRouter({
     if (!resolved.ok) {
       clearOwnerCookie(res);
       return res.status(401).json({ ok: false, code: "UNAUTHENTICATED", error: "owner sign-in required" });
+    }
+    req.owner = resolved.owner;
+    next();
+  });
+
+  const requireSuperAdmin = wrap(async (req, res, next) => {
+    const resolved = await resolveOwner(req);
+    if (!resolved.ok) {
+      clearOwnerCookie(res);
+      return res.status(401).json({ ok: false, code: "UNAUTHENTICATED", error: "sign-in required" });
+    }
+    if (resolved.owner.role !== "super_admin") {
+      await audit.record({
+        actor: resolved.owner.username,
+        action: "authorization.denied",
+        targetType: "platform_api",
+        targetId: req.path,
+        metadata: { method: req.method, actorRole: resolved.owner.role, requiredRole: "super_admin" },
+      }).catch((error) => log("authorization denial audit failed", error && error.message));
+      return res.status(403).json({ ok: false, code: "FORBIDDEN", error: "Super Admin permission is required" });
+    }
+    if (production && !mfa.configured) {
+      return res.status(503).json({ ok: false, code: "MFA_UNAVAILABLE", error: "Super Admin operations require configured MFA" });
+    }
+    if (production && !resolved.owner.mfaEnrolled) {
+      await audit.record({ actor: resolved.owner.username, action: "authorization.denied", targetType: "platform_api", targetId: req.path, metadata: { method: req.method, actorRole: resolved.owner.role, reason: "mfa-required" } }).catch((error) => log("MFA denial audit failed", error && error.message));
+      return res.status(403).json({ ok: false, code: "MFA_REQUIRED", error: "enroll a second factor before using platform operations" });
     }
     req.owner = resolved.owner;
     next();
@@ -372,12 +399,12 @@ export function createAdminRouter({
     return true;
   }
 
-  router.get("/branding", requireOwner, wrap(async (_req, res) => {
+  router.get("/branding", requireSuperAdmin, wrap(async (_req, res) => {
     const result = await platformBrandingService.get();
     res.json({ ok: true, ...result });
   }));
 
-  router.put("/branding", requireOwner, wrap(async (req, res) => {
+  router.put("/branding", requireSuperAdmin, wrap(async (req, res) => {
     if (!(await spendMutationBudget(req, res))) return;
     const result = await platformBrandingService.save(req.body?.branding, req.owner.username);
     if (result.error) return res.status(400).json({ ok: false, code: result.error, error: "platform branding is invalid" });
@@ -391,9 +418,9 @@ export function createAdminRouter({
     res.json({ ok: true, ...result });
   }));
 
-  if (db) router.use("/moderators", requireOwner, createModeratorAdminRouter({ db, audit, spendMutationBudget }));
-  if (db && themeService) router.use("/themes", requireOwner, createAdminThemeRouter({ service: themeService, spendMutationBudget }));
-  if (db && posterService) router.use("/posters", requireOwner, createAdminPosterRouter({ service: posterService, spendMutationBudget }));
+  if (db) router.use("/moderators", requireSuperAdmin, createModeratorAdminRouter({ db, audit, spendMutationBudget }));
+  if (db && themeService) router.use("/themes", requireSuperAdmin, createAdminThemeRouter({ service: themeService, spendMutationBudget }));
+  if (db && posterService) router.use("/posters", requireSuperAdmin, createAdminPosterRouter({ service: posterService, spendMutationBudget }));
 
   // ------------------------------------------------------ second factor
 
@@ -541,12 +568,12 @@ export function createAdminRouter({
       let mfaInfo = { state: mfa.configured ? "not-enrolled" : "unavailable", available: Boolean(mfa.configured) };
       if (resolved.ok) {
         const account = await ownerStore.getByUsername(resolved.owner.username).catch(() => null);
-        mfaInfo = { ...mfaState(account), available: Boolean(mfa.configured) };
+        mfaInfo = { ...mfaState(account), available: Boolean(mfa.configured), required: production && resolved.owner.role === "super_admin" };
       }
       res.json({
         ok: true,
         authenticated: resolved.ok,
-        owner: resolved.ok ? { username: resolved.owner.username } : null,
+        owner: resolved.ok ? { username: resolved.owner.username, role: resolved.owner.role } : null,
         setupRequired,
         csrfToken,
         durable,
@@ -643,7 +670,7 @@ export function createAdminRouter({
       res.json({
         ok: true,
         authenticated: true,
-        owner: { username: result.username },
+        owner: { username: result.username, role: result.role },
         csrfToken: ensureCsrfToken(req, res),
         mfa: describeMfa({ pending: Boolean(result.mfaPending), keyConfigured: mfa.configured }),
       });
@@ -706,7 +733,7 @@ export function createAdminRouter({
       res.json({
         ok: true,
         authenticated: true,
-        owner: { username: account.username },
+        owner: { username: account.username, role: account.role },
         csrfToken: ensureCsrfToken(req, res),
         mfa: describeMfa({ keyConfigured: true, confirmedAt: account.totpConfirmedAt }),
       });
@@ -728,7 +755,7 @@ export function createAdminRouter({
 
   // Platform domain. These endpoints use the existing owner session + CSRF
   // boundary; instance IDs are resolved from the database, never from UI state.
-  router.get("/instances", requireOwner, wrap(async (_req, res) => {
+  router.get("/instances", requireSuperAdmin, wrap(async (_req, res) => {
     if (!db) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "game instances require PostgreSQL" });
     const result = await db.query(`SELECT i.instance_id, i.slug, i.display_name, i.description, i.status,
       i.public_visible, i.config, i.branding, i.created_at, i.updated_at,
@@ -740,7 +767,7 @@ export function createAdminRouter({
     res.json({ ok: true, instances: result.rows });
   }));
 
-  router.get("/instances/:instanceId/overview", requireOwner, wrap(async (req, res) => {
+  router.get("/instances/:instanceId/overview", requireSuperAdmin, wrap(async (req, res) => {
     if (!durable) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "instance overview requires PostgreSQL" });
     const overview = await queries.instanceOverview(req.params.instanceId);
     if (!overview) return res.status(404).json({ ok: false, code: "INSTANCE_NOT_FOUND", error: "no such instance" });
@@ -748,7 +775,7 @@ export function createAdminRouter({
     res.json({ ok: true, source: "durable", ...overview });
   }));
 
-  router.post("/instances", requireOwner, wrap(async (req, res) => {
+  router.post("/instances", requireSuperAdmin, wrap(async (req, res) => {
     if (!db) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "game instances require PostgreSQL" });
     if (!(await spendMutationBudget(req, res))) return;
     const body = req.body || {};
@@ -771,7 +798,7 @@ export function createAdminRouter({
     }
   }));
 
-  router.patch("/instances/:instanceId", requireOwner, wrap(async (req, res) => {
+  router.patch("/instances/:instanceId", requireSuperAdmin, wrap(async (req, res) => {
     if (!db) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "game instances require PostgreSQL" });
     if (!(await spendMutationBudget(req, res))) return;
     const { instanceId } = req.params;
@@ -808,7 +835,7 @@ export function createAdminRouter({
     res.json({ ok: true, instance: result.rows[0] });
   }));
 
-  router.get("/reports/instances", requireOwner, wrap(async (req, res) => {
+  router.get("/reports/instances", requireSuperAdmin, wrap(async (req, res) => {
     if (!durable) return res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "instance reports require PostgreSQL" });
     const date = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
     const today = new Date().toISOString().slice(0, 10);
@@ -843,7 +870,7 @@ export function createAdminRouter({
 
   router.get(
     "/overview",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const rooms = liveRooms();
       const liveById = new Map(rooms.map((room) => [room.roomId, room]));
@@ -937,7 +964,7 @@ export function createAdminRouter({
 
   router.get(
     "/games",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const state = typeof req.query.state === "string" ? req.query.state.toLowerCase() : null;
       const q = typeof req.query.q === "string" ? req.query.q : null;
@@ -958,7 +985,7 @@ export function createAdminRouter({
 
   router.post(
     "/games",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const body = req.body || {};
       const overrides = {};
@@ -1025,7 +1052,7 @@ export function createAdminRouter({
 
   router.get(
     "/games/:roomId",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const { roomId } = req.params;
       if (!isRoomId(roomId)) return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "invalid room id" });
@@ -1059,7 +1086,7 @@ export function createAdminRouter({
 
   router.get(
     "/games/:roomId/invitation",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const { roomId } = req.params;
       if (!isRoomId(roomId)) return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "invalid room id" });
@@ -1083,7 +1110,7 @@ export function createAdminRouter({
 
   router.post(
     "/games/:roomId/recover",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const { roomId } = req.params;
       if (!isRoomId(roomId)) return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "invalid room id" });
@@ -1151,7 +1178,7 @@ export function createAdminRouter({
 
   router.post(
     "/games/:roomId/start",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const room = await loadRoomForMutation(req, res);
       if (!room) return undefined;
@@ -1165,7 +1192,7 @@ export function createAdminRouter({
 
   router.post(
     "/games/:roomId/call",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const room = await loadRoomForMutation(req, res);
       if (!room) return undefined;
@@ -1180,7 +1207,7 @@ export function createAdminRouter({
   for (const action of ["pause", "resume", "end", "reset"]) {
     router.post(
       `/games/:roomId/${action}`,
-      requireOwner,
+      requireSuperAdmin,
       wrap(async (req, res) => {
         const room = await loadRoomForMutation(req, res);
         if (!room) return undefined;
@@ -1196,7 +1223,7 @@ export function createAdminRouter({
 
   router.post(
     "/games/:roomId/autocall",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const body = req.body || {};
       if (typeof body.enabled !== "boolean") return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "enabled must be a boolean" });
@@ -1219,7 +1246,7 @@ export function createAdminRouter({
 
   router.post(
     "/games/:roomId/close",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const { roomId } = req.params;
       if (!isRoomId(roomId)) return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "invalid room id" });
@@ -1236,7 +1263,7 @@ export function createAdminRouter({
 
   router.delete(
     "/games/:roomId/members/:playerId",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const playerId = req.params.playerId;
       if (typeof playerId !== "string" || playerId.length < 1 || playerId.length > 80) {
@@ -1256,7 +1283,7 @@ export function createAdminRouter({
 
   router.get(
     "/players",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const q = typeof req.query.q === "string" ? req.query.q : null;
       const limit = Number(req.query.limit) || 25;
@@ -1283,7 +1310,7 @@ export function createAdminRouter({
 
   router.get(
     "/players/:playerId",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const { playerId } = req.params;
       if (!durable) {
@@ -1306,7 +1333,7 @@ export function createAdminRouter({
 
   router.get(
     "/history",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const state = typeof req.query.state === "string" ? req.query.state.toLowerCase() : null;
       const q = typeof req.query.q === "string" ? req.query.q : null;
@@ -1338,7 +1365,7 @@ export function createAdminRouter({
 
   router.get(
     "/audit",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const roomCode = typeof req.query.roomCode === "string" ? req.query.roomCode : null;
       const limit = Number(req.query.limit) || 50;
@@ -1354,19 +1381,23 @@ export function createAdminRouter({
     "/settings",
     requireOwner,
     wrap(async (req, res) => {
+      const platformAccess = req.owner.role === "super_admin" && (!production || req.owner.mfaEnrolled);
       let owners = [];
       let sessions = 0;
-      let health = { ok: true, mode: "memory" };
+      let health = platformAccess ? { ok: true, mode: "memory" } : { ok: false, mode: "restricted" };
       let account = null;
       try {
-        owners = await ownerStore.list();
-        sessions = await ownerSessions.activeCount();
+        const allOwners = await ownerStore.list();
+        owners = platformAccess ? allOwners : allOwners.filter((item) => item.ownerId === req.owner.ownerId);
+        sessions = await ownerSessions.activeCount(platformAccess ? {} : { ownerId: req.owner.ownerId });
         account = await ownerStore.getByUsername(req.owner.username);
-        if (durable) health = await queries.health().catch(() => ({ ok: false }));
+        if (durable && platformAccess) health = await queries.health().catch(() => ({ ok: false }));
       } catch {
         health = { ok: false };
       }
-      const resolved = resolvePublicOrigin({ configured: publicOrigin, requestOrigin: requestOrigin(req), production });
+      const resolved = platformAccess
+        ? resolvePublicOrigin({ configured: publicOrigin, requestOrigin: requestOrigin(req), production })
+        : { origin: null, configured: false, warning: null };
       res.json({
         ok: true,
         durable,
@@ -1388,20 +1419,23 @@ export function createAdminRouter({
           recoveryCommand: "npm run owner:mfa-reset -- <username>",
         },
         throttle: {
-          backend: throttle.backend,
-          signin: { windowMs: throttle.signin.config.windowMs, maxFailures: throttle.signin.config.maxFailures },
-          address: { windowMs: throttle.signinIp.config.windowMs, maxFailures: throttle.signinIp.config.maxFailures },
-          mfa: { windowMs: throttle.mfa.config.windowMs, maxFailures: throttle.mfa.config.maxFailures },
+          ...(platformAccess ? {
+            backend: throttle.backend,
+            signin: { windowMs: throttle.signin.config.windowMs, maxFailures: throttle.signin.config.maxFailures },
+            address: { windowMs: throttle.signinIp.config.windowMs, maxFailures: throttle.signinIp.config.maxFailures },
+            mfa: { windowMs: throttle.mfa.config.windowMs, maxFailures: throttle.mfa.config.maxFailures },
+          } : {}),
         },
         invitation: { origin: resolved.origin, originConfigured: resolved.configured, warning: resolved.warning },
-        health: { database: durable ? (health && health.ok ? "ok" : "down") : "not-configured", app: "ok" },
-        runtime: {
+        health: { database: !platformAccess ? "restricted" : durable ? (health && health.ok ? "ok" : "down") : "not-configured", app: platformAccess ? "ok" : "restricted" },
+        runtime: platformAccess ? {
           node: process.version,
           persistence: durable ? "durable" : "memory",
           production: Boolean(production),
           uptimeSeconds: Math.round(process.uptime()),
-        },
-        defaults: { callIntervalMs: Number(config.callIntervalMs) || 8000, maxPlayers: Number(config.maxPlayers) || 100 },
+        } : null,
+        defaults: platformAccess ? { callIntervalMs: Number(config.callIntervalMs) || 8000, maxPlayers: Number(config.maxPlayers) || 100 } : null,
+        role: req.owner.role,
       });
     })
   );
@@ -1548,7 +1582,7 @@ export function createAdminRouter({
 
   router.get(
     "/health",
-    requireOwner,
+    requireSuperAdmin,
     wrap(async (req, res) => {
       const [database, report] = await Promise.all([
         durable && !healthProbe ? queries.health().catch(() => ({ ok: false })) : Promise.resolve(null),
@@ -1568,7 +1602,7 @@ export function createAdminRouter({
     })
   );
 
-  router.get("/backups/status", requireOwner, wrap(async (_req, res) => {
+  router.get("/backups/status", requireSuperAdmin, wrap(async (_req, res) => {
     res.setHeader("Cache-Control", "no-store");
     res.json({ ok: true, ...await readBackupStatus() });
   }));

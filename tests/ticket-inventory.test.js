@@ -296,7 +296,7 @@ test("admin and player booking APIs generate, page, reserve, retry, confirm, and
   app.use("/api/admin", createAdminBookingRouter({
     db: env.db,
     ownerSessions: { async verify() { return { ok: true, ownerId: "inventory-owner", sessionId: "inventory-owner-session" }; } },
-    ownerStore: { async getById() { return { ownerId: "inventory-owner", username: "inventory-owner" }; } },
+    ownerStore: { async getById() { return { ownerId: "inventory-owner", username: "inventory-owner", role: "super_admin" }; } },
     throttle: { adminMutation: { async check() { return { allowed: true }; }, async recordFailure() { return {}; } } },
   }));
   const server = http.createServer(app);

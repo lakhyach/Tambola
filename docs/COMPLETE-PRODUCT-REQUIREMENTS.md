@@ -14,13 +14,13 @@ Status: evolving product specification. It combines the current codebase, the ow
 
 ### Super Admin platform
 
-**Existing/partial:** owner authentication/MFA, global overview and history, health/settings, instance list/create/lifecycle operations, moderator account/grant backend, instance detail, aggregate reports, platform counts, and owner-only local backup/restore status. `db:restore-check` validates the manifest SHA-256 before creating an isolated scratch database and writes a credential-free result sidecar. The overview now includes live readiness, migration state, lease, scheduler, frozen-room, pool and uptime signals from a bounded owner-only health projection. **Remaining:** target-host monitoring and alert configuration, complete review of broader operational workflows, and authenticated production-environment review.
+**Existing/partial:** separate role-aware Owner/Super Admin authentication using the hardened account, MFA and session machinery. Super Admin-only global overview/history, health/settings, instance lifecycle, moderator account/grants, aggregate reports, platform counts, and backup status. Owner access is restricted to its own account security until an instance-scoped Owner/Admin grant model exists. `db:restore-check` validates the manifest SHA-256 before creating an isolated scratch database and writes a credential-free result sidecar. The overview now includes live readiness, migration state, lease, scheduler, frozen-room, pool and uptime signals from a bounded owner-only health projection. **Remaining:** target-host monitoring and alert configuration, complete review of broader operational workflows, and authenticated production-environment review.
 
 Global platform operations must be visibly separate from instance operations. Only Super Admin can create/archive/restore instances, change identity/slug, configure security/platform settings, provision/recover moderators, or grant permissions. Instance detail must show lifecycle, rooms, games, players, moderators, reports, audit and health. Mutations are validated and audited. Backup controls never expose credentials or MFA keys.
 
 ### Regular and Bumper instances
 
-**Existing:** Regular, Bumper and hidden Legacy records; room ownership persisted; same game engine. **Partial:** owner can manage instance records/lifecycle. **Proposed:** instance-specific public URL, branding/configuration, defaults, schedule/rooms, players, history, moderator assignments, reports, operational settings and audit context.
+**Existing:** Regular, Bumper and hidden Legacy records; room ownership persisted; same game engine. **Partial:** Super Admin can manage instance records/lifecycle. Owner/Admin instance assignments and the capability list remain unimplemented and require explicit persisted grants. **Proposed:** instance-specific public URL, branding/configuration, defaults, schedule/rooms, players, history, moderator assignments, reports, operational settings and audit context.
 
 Paused/archived instances accept no new rooms or joins; already-running games can finish under the lifecycle policy. Legacy rooms remain mapped to Legacy and must not be silently reassigned. Cross-instance routes resolve instance and verify every related room/player identifier.
 
@@ -263,3 +263,12 @@ Durable recovery now reads current-game claim decisions in the same room snapsho
 ### Current-worktree verification note (2 November 2026)
 
 The latest full serial PostgreSQL suite passed **694/694** across 20 suites through migration 021 with no skips or failures; the disposable database was removed. The encoded-NUL moderator path fix and safe path identifier validation are included. The latest two-hour durable heartbeat test did not pass (250 clients disconnected); its follow-up was interrupted after about 90 seconds and has no accepted result. Do not treat the long-soak gate as closed. Full assistive-technology/device, independent security and target-host gates remain open.
+
+
+## 5 November 2026 — role separation status
+
+The earlier shared Owner/Super Admin alias is superseded. Migration 029 stores an explicit account role; existing accounts default to Owner. Global platform endpoints require a separately provisioned Super Admin role plus confirmed MFA. owner:create never elevates. super-admin:create and the typed-confirmation super-admin:promote CLI paths are offline, transactional, session-revoking and audited. Owner can manage only its own credentials until instance-scoped Owner/Admin permissions are specified. See [NINETY-CLUB-ROLE-ARCHITECTURE.md](NINETY-CLUB-ROLE-ARCHITECTURE.md).
+
+### Super Admin MFA enrollment gate (5 November 2026)
+
+In production, a Super Admin that has not enrolled MFA can access only its own account security settings to finish enrollment. The same endpoint no longer discloses other account rows or platform origin/runtime/health/default/backup state during that limited session. A regression test and fresh installed-Chrome acceptance verify 403 `MFA_REQUIRED` for global APIs before enrollment, global access after an MFA challenge, and session denial after sign-out. The final local test suite passed **761/761**. This does not close full action-level acceptance or production deployment prerequisites.

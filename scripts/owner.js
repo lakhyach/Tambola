@@ -6,7 +6,10 @@
  * registration and no request-path route can mint one, so opening /admin never
  * makes anyone the owner.
  *
- *   npm run owner:create                    create the single owner account
+ *   npm run owner:create                    create a non-elevated owner account
+ *   node scripts/owner.js super-admin:create create a platform Super Admin
+ *   node scripts/owner.js super-admin:promote <username> explicitly elevate an account
+ *   node scripts/owner.js super-admin:demote <username> revoke global authority
  *   npm run owner:list                      read-only list of owner usernames (no secrets)
  *   npm run owner:reset   -- <username>     rotate a password + revoke sessions
  *   npm run owner:mfa-reset -- <username>   destroy a lost second factor
@@ -48,7 +51,10 @@ function usage(code = 0) {
   const text = [
     "Owner bootstrap CLI",
     "",
-    "  create                 create the single owner account",
+    "  create                 create a non-elevated owner account",
+    "  super-admin:create     create a separately authenticated platform Super Admin",
+    "  super-admin:promote    promote an Owner after explicit typed confirmation",
+    "  super-admin:demote     demote a Super Admin after explicit typed confirmation",
     "  list                   list owner usernames (never passwords)",
     "  reset   <username>     rotate a password and revoke its sessions",
     "  mfa-reset <username>   destroy a lost second factor and revoke its sessions",
@@ -60,6 +66,7 @@ function usage(code = 0) {
     "  OWNER_PASSWORD         optional for create",
     "  OWNER_NEW_PASSWORD     optional for reset",
     "  OWNER_MFA_KEY          required for mfa-reset (must match the running server)",
+    "  SUPER_ADMIN_USERNAME / SUPER_ADMIN_PASSWORD  optional for super-admin:create",
     "  OWNER_CONFIRM=1        skip the interactive confirmation",
   ].join("\n");
   console.log(text);
@@ -106,7 +113,7 @@ async function readPassword(label, envValue) {
 async function main() {
   const command = process.argv[2];
   const argUser = process.argv[3];
-  if (!["create", "list", "reset", "mfa-reset", "remove"].includes(command)) return usage(command ? 1 : 0);
+  if (!["create", "super-admin:create", "super-admin:promote", "super-admin:demote", "list", "reset", "mfa-reset", "remove"].includes(command)) return usage(command ? 1 : 0);
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
@@ -132,7 +139,7 @@ async function main() {
       console.log("Owner accounts:");
       for (const owner of owners) {
         const factor = owner.mfaEnrolled ? "mfa: on" : owner.mfaPending ? "mfa: pending (not required)" : "mfa: off";
-        console.log(`  ${owner.username}  (created ${new Date(owner.createdAt).toISOString()}, last login ${owner.lastLoginAt ? new Date(owner.lastLoginAt).toISOString() : "never"}, ${factor})`);
+        console.log(`  ${owner.username}  [${owner.role}] (created ${new Date(owner.createdAt).toISOString()}, last login ${owner.lastLoginAt ? new Date(owner.lastLoginAt).toISOString() : "never"}, ${factor})`);
       }
       return;
     }
@@ -143,18 +150,50 @@ async function main() {
     const challenges = createMfaChallengeStore({ db });
     const audit = createAdminAudit({ db });
 
-    if (command === "create") {
+    if (command === "create" || command === "super-admin:create") {
       const existing = await store.count();
-      if (existing > 0) {
+      if (command === "create" && existing > 0) {
         console.error("An owner account already exists. Use 'reset <username>' to rotate its password, or 'remove <username>' first. There is deliberately no second-owner shortcut.");
         process.exitCode = 1;
         return;
       }
-      const username = normalizeUsername(process.env.OWNER_USERNAME || argUser || (await ask("Owner username: ")));
-      const password = await readPassword("Owner password: ", process.env.OWNER_PASSWORD);
+      const elevated = command === "super-admin:create";
+      const username = normalizeUsername((elevated ? process.env.SUPER_ADMIN_USERNAME : process.env.OWNER_USERNAME) || argUser || (await ask(elevated ? "Super Admin username: " : "Owner username: ")));
+      const password = await readPassword(elevated ? "Super Admin password: " : "Owner password: ", elevated ? process.env.SUPER_ADMIN_PASSWORD : process.env.OWNER_PASSWORD);
       const passwordHash = await hashPassword(password);
-      const created = await store.create({ username, passwordHash });
-      console.log(`Owner '${created.username}' created. Sign in at /admin/signin.`);
+      const role = elevated ? "super_admin" : "owner";
+      const created = await store.create({ username, passwordHash, role });
+      console.log(`${elevated ? "Super Admin" : "Owner"} '${created.username}' created. Sign in at ${elevated ? "/super-admin/signin" : "/admin/signin"}.`);
+      return;
+    }
+
+    if (command === "super-admin:promote") {
+      const username = normalizeUsername(process.env.OWNER_USERNAME || argUser || (await ask("Owner username to promote: ")));
+      const account = await store.getByUsername(username);
+      if (!account) { console.error("No such owner account: " + username); process.exitCode = 1; return; }
+      if (account.role === "super_admin") { console.log(`'${account.username}' is already a Super Admin.`); return; }
+      const answer = await ask(`This grants global platform authority to '${account.username}' and revokes every current session. Type 'promote ${account.username} to super-admin' to confirm: `);
+      if (answer !== `promote ${account.username} to super-admin`) { console.log("aborted - role is unchanged"); return; }
+      const promoted = await store.setRole({ ownerId: account.ownerId, role: "super_admin", actor: `cli:${account.username}` });
+      console.log(`'${promoted.username}' promoted to Super Admin. ${promoted.revoked} active session(s) revoked.`);
+      return;
+    }
+
+    if (command === "super-admin:demote") {
+      const username = normalizeUsername(process.env.OWNER_USERNAME || argUser || (await ask("Super Admin username to demote: ")));
+      const account = await store.getByUsername(username);
+      if (!account) { console.error("No such owner account: " + username); process.exitCode = 1; return; }
+      if (account.role !== "super_admin") { console.log(`'${account.username}' is not a Super Admin; role is unchanged.`); return; }
+      const answer = await ask(`This revokes global platform authority and every current session for '${account.username}'. Type 'demote ${account.username} from super-admin' to confirm: `);
+      if (answer !== `demote ${account.username} from super-admin`) { console.log("aborted - role is unchanged"); return; }
+      const demoted = await store.setRole({ ownerId: account.ownerId, role: "owner", actor: `cli:${account.username}` });
+      if (!demoted.ok) {
+        if (demoted.code === "LAST_SUPER_ADMIN") console.error("Cannot demote the last Super Admin; create another Super Admin first.");
+        else console.error("Super Admin role could not be changed: " + demoted.code);
+        process.exitCode = 1;
+        return;
+      }
+      console.log(`'${demoted.username}' demoted to Owner. ${demoted.revoked} active session(s) revoked.`);
       return;
     }
 
@@ -250,7 +289,13 @@ async function main() {
           return;
         }
       }
-      await store.remove({ ownerId: account.ownerId });
+      const removed = await store.remove({ ownerId: account.ownerId, actor: `cli:${account.username}` });
+      if (!removed.ok) {
+        if (removed.code === "LAST_SUPER_ADMIN") console.error("Cannot remove the last Super Admin; create another Super Admin first.");
+        else console.error("Owner account could not be removed: " + removed.code);
+        process.exitCode = 1;
+        return;
+      }
       // The cascade in migration 003 already drops the owner's challenges and
       // sessions; this is belt-and-braces so a memory-backend or a pre-003
       // database cannot leave a live token behind either.

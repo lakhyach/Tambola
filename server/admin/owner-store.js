@@ -20,6 +20,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { verifyPassword, hashPassword, PASSWORD_ALGO } from "./password.js";
 
 const USERNAME_RE = /^[a-z0-9._-]{3,40}$/;
+const OWNER_ROLES = new Set(["owner", "super_admin"]);
 
 export function normalizeUsername(raw) {
   return String(raw ?? "").trim().toLowerCase();
@@ -33,24 +34,29 @@ async function checkDigest(password, passwordHash) {
 export function createOwnerStore({ db, log = () => {} } = {}) {
   if (!db) throw new Error("createOwnerStore needs a database handle");
 
-  async function create({ username, passwordHash }) {
+  async function create({ username, passwordHash, role = "owner" }) {
     const name = normalizeUsername(username);
     if (!USERNAME_RE.test(name)) throw new Error("username must match [a-z0-9._-] and be 3-40 characters");
     if (typeof passwordHash !== "string" || passwordHash.length < 16) throw new Error("a password hash is required");
+    if (!OWNER_ROLES.has(role)) throw new Error("role must be owner or super_admin");
     const ownerId = randomUUID();
-    await db.query(
-      `INSERT INTO owner_accounts (owner_id, username, password_hash, password_algo)
-       VALUES ($1, $2, $3, $4)`,
-      [ownerId, name, passwordHash, PASSWORD_ALGO]
-    );
+    await db.withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO owner_accounts (owner_id, username, password_hash, password_algo, role)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [ownerId, name, passwordHash, PASSWORD_ALGO, role]
+      );
+      await client.query(`INSERT INTO admin_audit(actor,action,target_type,target_id,metadata)
+        VALUES('cli:bootstrap',$1,'owner',$2,$3::jsonb)`, [role === "super_admin" ? "super_admin.bootstrap" : "owner.bootstrap", ownerId, JSON.stringify({ role })]);
+    });
     log("owner account created", name);
-    return { ownerId, username: name };
+    return { ownerId, username: name, role };
   }
 
   async function getByUsername(username) {
     const name = normalizeUsername(username);
     const result = await db.query(
-      `SELECT owner_id, username, password_hash, password_algo, created_at, last_login_at, password_updated_at,
+      `SELECT owner_id, username, password_hash, password_algo, role, created_at, last_login_at, password_updated_at,
               totp_secret_enc, totp_confirmed_at, totp_last_step
          FROM owner_accounts WHERE username = $1`,
       [name]
@@ -62,6 +68,7 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
       username: row.username,
       passwordHash: row.password_hash,
       passwordAlgo: row.password_algo,
+      role: row.role,
       createdAt: row.created_at,
       lastLoginAt: row.last_login_at,
       passwordUpdatedAt: row.password_updated_at,
@@ -74,13 +81,13 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
 
   async function getById(ownerId) {
     const result = await db.query(
-      `SELECT owner_id, username, created_at, last_login_at, password_updated_at
+      `SELECT owner_id, username, role, totp_confirmed_at, created_at, last_login_at, password_updated_at
          FROM owner_accounts WHERE owner_id = $1`,
       [ownerId]
     );
     const row = result.rows[0];
     if (!row) return null;
-    return { ownerId: row.owner_id, username: row.username, createdAt: row.created_at, lastLoginAt: row.last_login_at, passwordUpdatedAt: row.password_updated_at };
+    return { ownerId: row.owner_id, username: row.username, role: row.role, mfaEnrolled: Boolean(row.totp_confirmed_at), createdAt: row.created_at, lastLoginAt: row.last_login_at, passwordUpdatedAt: row.password_updated_at };
   }
 
   /**
@@ -103,6 +110,7 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
       ok: true,
       ownerId: account.ownerId,
       username: account.username,
+      role: account.role,
       mfaEnrolled: account.mfaEnrolled,
       mfaPending: Boolean(account.totpSecretEnc) && !account.totpConfirmedAt,
     };
@@ -133,7 +141,7 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
    */
   async function getForMfa({ ownerId } = {}) {
     const result = await db.query(
-      `SELECT owner_id, username, totp_secret_enc, totp_confirmed_at, totp_last_step
+      `SELECT owner_id, username, role, totp_secret_enc, totp_confirmed_at, totp_last_step
          FROM owner_accounts WHERE owner_id = $1`,
       [ownerId]
     );
@@ -142,6 +150,7 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
     return {
       ownerId: row.owner_id,
       username: row.username,
+      role: row.role,
       totpSecretEnc: row.totp_secret_enc,
       totpConfirmedAt: row.totp_confirmed_at,
       totpLastStep: row.totp_last_step,
@@ -213,13 +222,14 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
 
   async function list() {
     const result = await db.query(
-      `SELECT owner_id, username, created_at, last_login_at, password_updated_at,
+      `SELECT owner_id, username, role, created_at, last_login_at, password_updated_at,
               totp_confirmed_at, totp_secret_enc
          FROM owner_accounts ORDER BY created_at`
     );
     return result.rows.map((row) => ({
       ownerId: row.owner_id,
       username: row.username,
+      role: row.role,
       createdAt: row.created_at,
       lastLoginAt: row.last_login_at,
       passwordUpdatedAt: row.password_updated_at,
@@ -234,11 +244,38 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
     return result.rows[0].n;
   }
 
-  async function remove({ ownerId }) {
-    const result = await db.query("DELETE FROM owner_accounts WHERE owner_id = $1 RETURNING username", [ownerId]);
-    if (!result.rows.length) return { ok: false, code: "OWNER_NOT_FOUND" };
-    log("owner account removed", result.rows[0].username);
-    return { ok: true, username: result.rows[0].username };
+  async function setRole({ ownerId, role, actor = "cli:role-change" }) {
+    if (!OWNER_ROLES.has(role)) throw new Error("role must be owner or super_admin");
+    return db.withTransaction(async (client) => {
+      const locked = await client.query("SELECT owner_id,username,role FROM owner_accounts ORDER BY owner_id FOR UPDATE");
+      const previous = locked.rows.find((row) => row.owner_id === ownerId);
+      if (!previous) return { ok: false, code: "OWNER_NOT_FOUND" };
+      if (previous.role === "super_admin" && role !== "super_admin" && locked.rows.filter((row) => row.role === "super_admin").length <= 1) {
+        return { ok: false, code: "LAST_SUPER_ADMIN" };
+      }
+      const updated = await client.query("UPDATE owner_accounts SET role=$2 WHERE owner_id=$1 RETURNING username,role", [ownerId, role]);
+      const revoked = await client.query("UPDATE owner_sessions SET revoked_at=now(),revoke_reason='role-changed' WHERE owner_id=$1 AND revoked_at IS NULL RETURNING session_id", [ownerId]);
+      const action = role === "super_admin" ? "super_admin.promote" : "super_admin.demote";
+      await client.query(`INSERT INTO admin_audit(actor,action,target_type,target_id,metadata)
+        VALUES($1,$2,'owner',$3,$4::jsonb)`, [actor, action, ownerId, JSON.stringify({ from: previous.role, to: role, sessionsRevoked: revoked.rowCount })]);
+      log("owner role changed", updated.rows[0].username, role, "sessions revoked", revoked.rowCount);
+      return { ok: true, username: updated.rows[0].username, role, previousRole: previous.role, revoked: revoked.rowCount };
+    });
+  }
+
+  async function remove({ ownerId, actor = "cli:owner-remove" }) {
+    return db.withTransaction(async (client) => {
+      const locked = await client.query("SELECT owner_id,username,role FROM owner_accounts ORDER BY owner_id FOR UPDATE");
+      const target = locked.rows.find((row) => row.owner_id === ownerId);
+      if (!target) return { ok: false, code: "OWNER_NOT_FOUND" };
+      if (target.role === "super_admin" && locked.rows.filter((row) => row.role === "super_admin").length <= 1) return { ok: false, code: "LAST_SUPER_ADMIN" };
+      await client.query("UPDATE owner_sessions SET revoked_at=now(),revoke_reason='owner-removed' WHERE owner_id=$1 AND revoked_at IS NULL", [ownerId]);
+      const result = await client.query("DELETE FROM owner_accounts WHERE owner_id = $1 RETURNING username,role", [ownerId]);
+      await client.query(`INSERT INTO admin_audit(actor,action,target_type,target_id,metadata)
+        VALUES($1,'owner.remove','owner',$2,$3::jsonb)`, [actor, ownerId, JSON.stringify({ username: result.rows[0].username, role: result.rows[0].role })]);
+      log("owner account removed", result.rows[0].username);
+      return { ok: true, username: result.rows[0].username, role: result.rows[0].role };
+    });
   }
 
   return {
@@ -256,6 +293,7 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
     clearMfa,
     list,
     count,
+    setRole,
     remove,
   };
 }
@@ -265,15 +303,17 @@ export function createMemoryOwnerStore({ log = () => {} } = {}) {
   const byId = new Map();
   const byName = new Map();
 
-  async function create({ username, passwordHash }) {
+  async function create({ username, passwordHash, role = "owner" }) {
     const name = normalizeUsername(username);
     if (!USERNAME_RE.test(name)) throw new Error("username must match [a-z0-9._-] and be 3-40 characters");
     if (typeof passwordHash !== "string" || passwordHash.length < 16) throw new Error("a password hash is required");
+    if (!OWNER_ROLES.has(role)) throw new Error("role must be owner or super_admin");
     if (byName.has(name)) throw new Error("that username is already taken");
     const ownerId = randomUUID();
     const account = {
       ownerId,
       username: name,
+      role,
       passwordHash,
       passwordAlgo: PASSWORD_ALGO,
       createdAt: new Date(),
@@ -286,7 +326,7 @@ export function createMemoryOwnerStore({ log = () => {} } = {}) {
     byId.set(ownerId, account);
     byName.set(name, account);
     log("owner account created (memory)", name);
-    return { ownerId, username: name };
+    return { ownerId, username: name, role };
   }
 
   async function getByUsername(username) {
@@ -299,7 +339,7 @@ export function createMemoryOwnerStore({ log = () => {} } = {}) {
     const account = byId.get(ownerId);
     if (!account) return null;
     const { passwordHash, ...safe } = account;
-    return safe;
+    return { ...safe, mfaEnrolled: Boolean(account.totpConfirmedAt) };
   }
 
   async function verifyLogin({ username, password } = {}) {
@@ -314,6 +354,7 @@ export function createMemoryOwnerStore({ log = () => {} } = {}) {
       ok: true,
       ownerId: account.ownerId,
       username: account.username,
+      role: account.role,
       mfaEnrolled: Boolean(account.totpConfirmedAt),
       mfaPending: Boolean(account.totpSecretEnc) && !account.totpConfirmedAt,
     };
@@ -341,6 +382,7 @@ export function createMemoryOwnerStore({ log = () => {} } = {}) {
     return {
       ownerId: account.ownerId,
       username: account.username,
+      role: account.role,
       totpSecretEnc: account.totpSecretEnc || null,
       totpConfirmedAt: account.totpConfirmedAt || null,
       totpLastStep: account.totpLastStep ?? null,
@@ -397,9 +439,23 @@ export function createMemoryOwnerStore({ log = () => {} } = {}) {
     return byId.size;
   }
 
+  async function setRole({ ownerId, role }) {
+    if (!OWNER_ROLES.has(role)) throw new Error("role must be owner or super_admin");
+    const account = byId.get(ownerId);
+    if (!account) return { ok: false, code: "OWNER_NOT_FOUND" };
+    if (account.role === "super_admin" && role !== "super_admin" && [...byId.values()].filter((entry) => entry.role === "super_admin").length <= 1) {
+      return { ok: false, code: "LAST_SUPER_ADMIN" };
+    }
+    const previousRole = account.role;
+    account.role = role;
+    log("owner role changed (memory)", account.username, role);
+    return { ok: true, username: account.username, role, previousRole, revoked: 0 };
+  }
+
   async function remove({ ownerId }) {
     const account = byId.get(ownerId);
     if (!account) return { ok: false, code: "OWNER_NOT_FOUND" };
+    if (account.role === "super_admin" && [...byId.values()].filter((entry) => entry.role === "super_admin").length <= 1) return { ok: false, code: "LAST_SUPER_ADMIN" };
     byId.delete(ownerId);
     byName.delete(account.username);
     log("owner account removed (memory)", account.username);
@@ -421,6 +477,7 @@ export function createMemoryOwnerStore({ log = () => {} } = {}) {
     clearMfa,
     list,
     count,
+    setRole,
     remove,
   };
 }

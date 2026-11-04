@@ -1,5 +1,5 @@
 /**
- * The control-centre shell: persistent section navigation, the signed-in owner
+ * The control-centre shell: persistent section navigation, the signed-in operator
  * and sign-out. Everything inside the protected area renders through the
  * outlet, so each page owns only its own content.
  */
@@ -32,7 +32,8 @@ function NavIcon({ name }) {
 }
 
 export default function AdminLayout() {
-  const { owner, durable, signOut, toast } = useAdmin();
+  const { owner, durable, mfa, signOut, toast } = useAdmin();
+  const superAdmin = owner?.role === "super_admin";
   const platformBrand = usePlatformBranding();
   const navigate = useNavigate();
   const base = window.location.pathname.startsWith("/super-admin") ? "/super-admin" : "/admin";
@@ -50,7 +51,7 @@ export default function AdminLayout() {
     { to: `${base}/history`, label: "History", icon: "history" },
     { to: `${base}/settings`, label: "Settings", icon: "settings" },
     { to: `${base}/branding`, label: "Branding", icon: "branding" },
-  ];
+  ].filter((item) => superAdmin && (!mfa?.required || mfa?.state === "enrolled") || item.icon === "settings");
   const [signingOut, setSigningOut] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 
@@ -118,7 +119,8 @@ export default function AdminLayout() {
         <div className="adm-sidebar__foot">
           <div className="adm-session">
             <span className="oh-eyebrow">Signed in</span>
-            <span className="adm-session__name">{owner ? owner.username : "owner"}</span>
+            <span className="oh-eyebrow">{superAdmin ? "Super Admin" : "Owner"}</span>
+            <span className="adm-session__name">{owner ? owner.username : "account"}</span>
           </div>
           <Button variant="ghost" size="sm" block onClick={handleSignOut} disabled={signingOut}>
             {signingOut ? "Signing out…" : "Sign out"}
@@ -127,7 +129,7 @@ export default function AdminLayout() {
       </aside>
 
       <main className="adm-main" id="adm-content" tabIndex="-1">
-        {durable ? <AdminNotifications base={base} /> : null}
+        {durable && superAdmin && (!mfa?.required || mfa?.state === "enrolled") ? <AdminNotifications base={base} /> : null}
         <Outlet />
       </main>
     </div>

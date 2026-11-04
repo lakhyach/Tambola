@@ -7,7 +7,7 @@ import { hashPassword } from "../server/admin/password.js";
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 
 class OwnerClient {
-  constructor(base) { this.base = base; this.cookies = new Map(); this.csrf = null; }
+  constructor(base, username = "owner.test", password = "owner-test-password") { this.base = base; this.username = username; this.password = password; this.cookies = new Map(); this.csrf = null; }
   async request(method, path, body) {
     const headers = {};
     if (this.cookies.size) headers.cookie = [...this.cookies].map(([key, value]) => `${key}=${value}`).join("; ");
@@ -29,7 +29,7 @@ class OwnerClient {
   post(path, body = {}) { return this.request("POST", path, body); }
   put(path, body = {}) { return this.request("PUT", path, body); }
   delete(path) { return this.request("DELETE", path); }
-  async signIn() { await this.get("/api/admin/session"); return this.post("/api/admin/signin", { username: "owner.test", password: "owner-test-password" }); }
+  async signIn() { await this.get("/api/admin/session"); return this.post("/api/admin/signin", { username: this.username, password: this.password }); }
 }
 
 describe("Super Admin moderator management HTTP API", { skip: !hasDatabase }, () => {
@@ -56,7 +56,7 @@ describe("Super Admin moderator management HTTP API", { skip: !hasDatabase }, ()
     const sessions = createSessionStore({ db });
     const controller = createGameController({ store, sessions });
     const ownerStore = createOwnerStore({ db });
-    await ownerStore.create({ username: "owner.test", passwordHash: await hashPassword("owner-test-password") });
+    await ownerStore.create({ username: "owner.test", passwordHash: await hashPassword("owner-test-password"), role: "super_admin" });
     const ownerSessions = createOwnerSessionStore({ db });
     const audit = createAdminAudit({ db });
     auth = moderatorAuth.createModeratorAuth({ db, mfaKey: null });
@@ -78,6 +78,20 @@ describe("Super Admin moderator management HTTP API", { skip: !hasDatabase }, ()
     assert.equal((await anonymous.get("/api/admin/moderators")).status, 401);
     const owner = new OwnerClient(base);
     assert.equal((await owner.signIn()).status, 200);
+
+    const limitedPassword = "owner-limited-test-password";
+    const limited = await app.admin.ownerStore.create({ username: `owner.${randomBytes(3).toString("hex")}`, passwordHash: await hashPassword(limitedPassword), role: "owner" });
+    const ownerOnly = new OwnerClient(base, limited.username, limitedPassword);
+    const ownerSignIn = await ownerOnly.signIn();
+    assert.equal(ownerSignIn.status, 200);
+    assert.equal(ownerSignIn.body.owner.role, "owner");
+    for (const path of ["/api/admin/overview", "/api/admin/instances", "/api/admin/moderators", "/api/admin/reports/instances"]) {
+      assert.equal((await ownerOnly.get(path)).status, 403, `Owner is denied platform-wide endpoint ${path}`);
+    }
+    const ownerSettings = await ownerOnly.get("/api/admin/settings");
+    assert.equal(ownerSettings.status, 200);
+    assert.deepEqual(ownerSettings.body.owners.map((account) => account.username), [limited.username], "Owner settings disclose only its own account");
+    assert.equal((await ownerOnly.post("/api/admin/instances", { slug: "owner-forged" })).status, 403, "CSRF-valid Owner still cannot create a platform instance");
 
     const malformedModeratorId = "a".repeat(36);
     const auditBeforeMalformedIds = Number((await db.query("SELECT count(*) AS n FROM platform_audit")).rows[0].n);
@@ -108,6 +122,11 @@ describe("Super Admin moderator management HTTP API", { skip: !hasDatabase }, ()
     assert.equal(created.status, 201, JSON.stringify(created.body));
     assert.match(created.body.inviteToken, /^[0-9a-f]{64}$/);
     const moderatorId = created.body.moderator.moderatorId;
+    const ownerActor = await db.query(
+      "SELECT actor_role FROM platform_audit WHERE action='moderator.provision' AND metadata->>'moderatorId'=$1 ORDER BY event_id DESC LIMIT 1",
+      [moderatorId],
+    );
+    assert.equal(ownerActor.rows[0]?.actor_role, "super_admin", "platform moderator changes are attributed to the separately authenticated Super Admin");
     const storedInvite = await db.query("SELECT token_hash FROM moderator_invites WHERE moderator_id=$1", [moderatorId]);
     assert.notEqual(storedInvite.rows[0].token_hash, created.body.inviteToken, "only a hash of the one-time invitation token is stored");
 

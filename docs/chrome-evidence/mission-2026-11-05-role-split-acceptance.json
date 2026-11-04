@@ -1,0 +1,42 @@
+{
+  "browser": "Google Chrome",
+  "mode": "isolated production container",
+  "checks": [
+    {
+      "name": "Owner session settings, reload recovery, platform API denial and Super Admin UI denial",
+      "ownerRole": "owner",
+      "settings": 200,
+      "overview": 403,
+      "instances": 403,
+      "ownerRouteDenied": true,
+      "reloadRecovered": true
+    },
+    {
+      "name": "Unenrolled Super Admin sees self-only account security and is denied global settings/data",
+      "ownersVisible": 1,
+      "platformOrigin": null,
+      "overview": 403,
+      "code": "MFA_REQUIRED"
+    },
+    {
+      "name": "Super Admin password plus required MFA challenge and platform API access",
+      "role": "super_admin",
+      "mfaRequired": true,
+      "mfaState": "enrolled",
+      "overview": 200,
+      "instances": 200
+    },
+    {
+      "name": "Super Admin sign-out revokes browser API session",
+      "overviewAfterSignOut": 401
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "Failed to load resource: the server responded with a status of 403 (Forbidden)",
+    "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+  ],
+  "pageErrors": [],
+  "expectedAuthorizationConsoleErrors": 4
+}

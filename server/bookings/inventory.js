@@ -4,7 +4,7 @@ import { generateTickets, validateTicket } from "../game/ticket.js";
 const MAX_INVENTORY = 10_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const KEY_RE = /^[A-Za-z0-9._:-]{8,128}$/;
-const ACTOR_TYPES = new Set(["admin", "super_admin", "host", "player", "moderator", "system"]);
+const ACTOR_TYPES = new Set(["owner", "admin", "super_admin", "host", "player", "moderator", "system"]);
 const STATUS_VALUES = new Set(["available", "reserved", "booked", "assigned"]);
 
 const ticketFingerprint = (grid) => grid.flat().filter(Number.isInteger).sort((a, b) => a - b).join(",");

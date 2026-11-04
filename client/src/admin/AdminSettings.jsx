@@ -61,7 +61,9 @@ function formatBytes(value) {
 }
 
 export default function AdminSettings() {
-  const { owner, toast, reloadSession } = useAdmin();
+  const { owner, mfa, toast, reloadSession } = useAdmin();
+  const roleLabel = owner?.role === "super_admin" ? "Super Admin" : "Owner";
+  const platformAccess = owner?.role === "super_admin" && (!mfa?.required || mfa?.state === "enrolled");
   const navigate = useNavigate();
 
   const [state, setState] = useState({ loading: true, error: null, data: null });
@@ -78,12 +80,12 @@ export default function AdminSettings() {
     try {
       const data = await api.settings();
       setState({ loading: false, error: null, data });
-      if (data.durable) loadBackupStatus();
+      if (data.durable && owner?.role === "super_admin" && (!mfa?.required || mfa?.state === "enrolled")) loadBackupStatus();
       else setBackupState({ loading: false, error: null, data: null });
     } catch (error) {
       setState((prev) => ({ loading: false, error, data: prev.data }));
     }
-  }, [loadBackupStatus]);
+  }, [loadBackupStatus, owner?.role, mfa?.required, mfa?.state]);
 
   useEffect(() => {
     load();
@@ -152,6 +154,7 @@ export default function AdminSettings() {
       setEnrollment(null);
       setEnrollCode("");
       toast("Second factor enabled. You will need a code at every sign-in now.", "success");
+      await reloadSession();
       await load();
     } catch (error) {
       setEnrollError(error);
@@ -178,6 +181,7 @@ export default function AdminSettings() {
       setDisableOpen(false);
       setDisableCode("");
       toast("Second factor turned off.", "success");
+      await reloadSession();
       await load();
     } catch (error) {
       setDisableError(error);
@@ -202,11 +206,11 @@ export default function AdminSettings() {
       <header className="adm-page-head">
         <div>
           <p className="oh-eyebrow">Settings</p>
-          <h1 className="oh-display adm-page-title">Owner and runtime</h1>
+          <h1 className="oh-display adm-page-title">{platformAccess ? `${roleLabel} and runtime` : `${roleLabel} account security`}</h1>
           <p className="adm-sub">Account recovery is server-side only. There is no public registration.</p>
         </div>
         <div className="adm-actions">
-          {data ? <Badge tone={data.durable ? "gold" : "muted"}>{data.durable ? "Durable records" : "Memory only"}</Badge> : null}
+          {data && platformAccess ? <Badge tone={data.durable ? "gold" : "muted"}>{data.durable ? "Durable records" : "Memory only"}</Badge> : null}
           <Button variant="ghost" size="sm" onClick={() => load()} disabled={state.loading}>
             {state.loading ? "Refreshing…" : "Refresh"}
           </Button>
@@ -219,21 +223,23 @@ export default function AdminSettings() {
 
       {data ? (
         <>
-          {invitation.warning ? (
+          {platformAccess && invitation.warning ? (
             <Banner tone="warn" title="Invitation links need a public origin">
               {invitation.warning}
             </Banner>
           ) : null}
 
           <div className="adm-columns">
-            <Section eyebrow="Identity" title="Signed-in owner">
+            <Section eyebrow="Identity" title={`Signed-in ${roleLabel.toLowerCase()}`}>
               <KeyValue
                 items={[
                   ["Username", owner ? owner.username : data.owner && data.owner.username],
                   ["Active owner sessions", formatNumber(data.activeSessions)],
-                  ["Persistence", runtime.persistence === "durable" ? "Durable (Postgres)" : "Memory only"],
-                  ["Environment", runtime.production ? "production" : "development"],
-                  ["Node runtime", runtime.node],
+                  ...(platformAccess ? [
+                    ["Persistence", runtime.persistence === "durable" ? "Durable (Postgres)" : "Memory only"],
+                    ["Environment", runtime.production ? "production" : "development"],
+                    ["Node runtime", runtime.node],
+                  ] : []),
                 ]}
               />
               <p className="adm-note">
@@ -242,7 +248,7 @@ export default function AdminSettings() {
               </p>
             </Section>
 
-            <Section eyebrow="Invitations" title="Public origin">
+            {platformAccess ? <Section eyebrow="Invitations" title="Public origin">
               <KeyValue
                 items={[
                   ["Configured origin", invitation.originConfigured ? invitation.origin : "not configured"],
@@ -256,11 +262,11 @@ export default function AdminSettings() {
                 URL, and <code className="adm-code adm-code--inline">TRUST_PROXY=1</code> when a reverse proxy terminates
                 TLS. Without it the invite link falls back to the request host.
               </p>
-            </Section>
+            </Section> : null}
           </div>
 
           <div className="adm-columns">
-            <Section eyebrow="Accounts" title="Owner accounts" actions={<Badge tone="muted">{owners.length}</Badge>}>
+            <Section eyebrow="Accounts" title={platformAccess ? "Owner accounts" : "Account identity"} actions={<Badge tone="muted">{owners.length}</Badge>}>
               {owners.length ? (
                 <Table>
                   <thead>
@@ -303,7 +309,7 @@ export default function AdminSettings() {
               </p>
             </Section>
 
-            <Section eyebrow="Runtime" title="Health">
+            {platformAccess ? <Section eyebrow="Runtime" title="Health">
               <KeyValue
                 items={[
                   ["Database", <Badge key="db" tone={healthTone(health.database)}>{healthLabel(health.database)}</Badge>],
@@ -318,10 +324,10 @@ export default function AdminSettings() {
                   on live process state.
                 </Banner>
               ) : null}
-            </Section>
+            </Section> : null}
           </div>
 
-          <Section eyebrow="Operations" title="Backup and restore status" description="Read-only status from local backup manifests and isolated restore-check reports." actions={<Button variant="ghost" size="sm" onClick={loadBackupStatus} disabled={!data.durable || backupState.loading}>Refresh backup status</Button>}>
+          {platformAccess ? <Section eyebrow="Operations" title="Backup and restore status" description="Read-only status from local backup manifests and isolated restore-check reports." actions={<Button variant="ghost" size="sm" onClick={loadBackupStatus} disabled={!data.durable || backupState.loading}>Refresh backup status</Button>}>
             {!data.durable ? <Banner tone="warn" title="Durable database required">Backups are not available while this process is using memory-only storage.</Banner> : null}
             {data.durable && backupState.loading && !backupState.data ? <Loading label="Reading local backup status…" /> : null}
             {data.durable && backupState.error && !backupState.data ? <ErrorNote title="Backup status could not be read" error={backupState.error} onRetry={loadBackupStatus} /> : null}
@@ -342,7 +348,7 @@ export default function AdminSettings() {
               ) : <Empty title="No backup archives found">Create an archive with <code>npm run db:backup</code>; verify it with <code>npm run db:restore-check</code>. Credentials and MFA keys are never returned here.</Empty>
             ) : null}
             {data.durable && backupState.data?.directoryStatus === "available" ? <p className="adm-note">Showing the latest {backupState.data.backups.length} of {backupState.data.backupCount} archive(s). Restore verification runs in an isolated temporary database and leaves the source untouched.</p> : null}
-          </Section>
+          </Section> : null}
 
           <Section eyebrow="Security" title="Two-factor sign-in" actions={<Badge tone={mfaView.tone}>{mfaView.label}</Badge>}>
             <p className="adm-note">{mfaView.detail}</p>
@@ -420,7 +426,7 @@ export default function AdminSettings() {
             )}
           </Section>
 
-          <Section eyebrow="Security" title="Rotate the owner password">
+          <Section eyebrow="Security" title={`Rotate the ${roleLabel} password`}>
             <form className="adm-form" onSubmit={handlePasswordChange}>
               <div className="adm-form-row">
                 <Field label="Current password" htmlFor="adm-current-password">

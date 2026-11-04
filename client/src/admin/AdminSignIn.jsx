@@ -50,9 +50,10 @@ function refusalMessage(error) {
 
 export default function AdminSignIn() {
   const platformBrand = usePlatformBranding();
-  const { status, setupRequired, mfa, error: bootError, signIn, reloadSession } = useAdmin();
+  const { status, owner, setupRequired, mfa, error: bootError, signIn, reloadSession } = useAdmin();
   const navigate = useNavigate();
   const location = useLocation();
+  const requestedSuperAdmin = location.pathname.startsWith("/super-admin");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -63,11 +64,15 @@ export default function AdminSignIn() {
   const codeRef = useRef(null);
 
   const remembered = location.state && typeof location.state.from === "string" ? location.state.from : null;
-  const base = location.pathname.startsWith("/super-admin") ? "/super-admin" : "/admin";
-  const destination = remembered && (remembered.startsWith("/admin") || remembered.startsWith("/super-admin")) && remembered !== "/admin/signin" && remembered !== "/super-admin/signin" ? remembered : base;
+  const destination = (role) => {
+    if (role !== "super_admin") return "/admin/settings";
+    if (remembered?.startsWith("/super-admin/") && remembered !== "/super-admin/signin") return remembered;
+    if (remembered?.startsWith("/admin/") && remembered !== "/admin/signin") return remembered.replace(/^\/admin/, "/super-admin");
+    return "/super-admin";
+  };
 
   if (status === "loading") return <Boot label="Checking the session…" />;
-  if (status === "authenticated") return <Navigate to={destination} replace />;
+  if (status === "authenticated") return <Navigate to={destination(owner?.role)} replace />;
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -83,7 +88,7 @@ export default function AdminSignIn() {
         window.setTimeout(() => codeRef.current && codeRef.current.focus(), 0);
         return;
       }
-      navigate(destination, { replace: true });
+      navigate(destination(result?.owner?.role), { replace: true });
     } catch (error) {
       setFailure(error);
     } finally {
@@ -100,8 +105,8 @@ export default function AdminSignIn() {
       await api.signInMfa(challenge.token, code.trim());
       // The cookie is set by the step above; re-read the session so the provider
       // picks up the owner and the storage mode together.
-      await reloadSession();
-      navigate(destination, { replace: true });
+      const session = await reloadSession();
+      navigate(destination(session?.owner?.role), { replace: true });
     } catch (error) {
       // The challenge is consumed by any answer, so step one starts over.
       setChallenge(null);
@@ -132,7 +137,7 @@ export default function AdminSignIn() {
           <img className="adm-brand__mark" src={assetUrl(platformBrand.logo)} alt="" width="42" height="42" />
           <span>
             <span className="oh-display adm-brand__name">{platformBrand.name}</span>
-            <span className="oh-eyebrow adm-signin__eyebrow">Owner control centre</span>
+            <span className="oh-eyebrow adm-signin__eyebrow">{requestedSuperAdmin ? "Super Admin platform console" : "Owner account settings"}</span>
           </span>
         </div>
 
@@ -140,7 +145,9 @@ export default function AdminSignIn() {
 
         <h1 className="oh-display adm-signin__title">{challenge ? "Confirm it is you" : "Sign in"}</h1>
         <p className="adm-signin__lede">
-          This area is restricted to the owner of this game server. Host and player sessions cannot open it.
+          {requestedSuperAdmin
+            ? "Platform-wide operations require a separately provisioned Super Admin account and a confirmed second factor."
+            : "Owner access is limited to this account’s credentials and security settings. Host and player sessions cannot open it."}
         </p>
 
         {setupRequired && !challenge ? (

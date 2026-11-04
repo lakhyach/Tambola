@@ -119,3 +119,41 @@ This section supersedes earlier checkpoint statements that owner creation requir
 - Strict workstation environment validation remains NOT READY for actual deployment because deployment-specific database URL, HTTPS origin, trusted proxy and MFA key must be supplied by the operator. The earlier unconfirmed Supabase `owner:list` ambiguity remains unresolved and must be investigated read-only by an authorized operator.
 
 The detailed role ledger and project hygiene findings are in `NINETY-CLUB-ROLE-ACTION-ACCEPTANCE-MATRIX.md` and `NINETY-CLUB-PROJECT-CLEANUP-REPORT.md`. Production decision remains FAIL pending the external and action-coverage blockers above.
+
+## Role architecture and audit attribution hardening (5 November)
+
+The formerly shared `/super-admin` alias is now fail-closed in the client; it no longer mounts the Owner route tree. Existing `/admin` routes remain protected by server-side verified Owner sessions. No Super Admin or Admin identity is provisioned, and no existing Owner was elevated. New Owner-originated platform and booking audit rows use role `owner`; additive migration 028 permits that value while preserving historical `super_admin` entries. Updated Chrome smoke, migration and regression checks are pending in this continuation, so this source change is not yet represented as tested.
+
+## Final verification after role correction (5 November)
+
+Role architecture and audit attribution are documented in `NINETY-CLUB-ROLE-ARCHITECTURE.md`. The frontend no longer exposes Owner pages under `/super-admin/*`; actual Chrome verified the fail-closed page at `/super-admin/settings` and Owner sign-in at `/admin/signin`. New Owner platform/booking audit events are labeled `owner`; old `super_admin` entries remain untouched. The new migration 028 was applied in a fresh disposable schema.
+
+Post-change checks: full Node suite **759/759 passed** across 20 suites (including Owner audit attribution and all existing Moderator socket/session tests); client lint passed; Vite production build passed; security probes **51/51**; secret scan passed (679 files); root/client npm audits reported zero vulnerabilities. The rebuilt production-mode image became ready with schema migration 028. Chrome page sample had no page exceptions.
+
+Not completed: all individual Admin actions, a separately provisioned Super Admin, actual browser UI for all moderator socket/session adversarial scenarios, real-Chrome duplicate/forged claim submissions, full accessibility/screen-reader, physical devices and voice-provider playback. Automated socket/game/session tests are supporting evidence, not browser acceptance. Production decision remains FAIL pending the role-policy/external deployment blockers recorded in the readiness report.
+
+## Latest role/security continuation — 5 November 2026
+
+**Decision remains: FAIL — CONFIRMED PRODUCTION BLOCKERS REMAIN.** Role separation is now implemented locally and representative Owner/Super Admin behavior was accepted in installed Chrome against an isolated production-mode container.
+
+Current evidence:
+
+- Migration 029 gives existing owner accounts the non-elevated `owner` role by default. Super Admin is a separate persisted role. No existing account is implicitly promoted.
+- `/api/admin/*` platform-wide reads/mutations require the persisted Super Admin role; production privileged APIs require configured and enrolled MFA. Owner can read/manage only its own account/security settings. Owner platform calls return 403 and record authorization denials.
+- `super-admin:create`, `super-admin:promote`, and `super-admin:demote` are offline CLI workflows. Promotion/demotion revokes every existing Owner session and writes an audit event in the same transaction. The last Super Admin cannot be demoted or removed.
+- Actual installed Chrome validated Owner settings/reload and platform denials; Super Admin required MFA, authorized overview/instance reads, and sign-out revocation. Evidence is linked in the role matrix and Chrome evidence report.
+- Post-change regression: **761/761** Node tests, 20 suites; client lint and production build pass; security probes **51/51**; secret scan **681 files** pass; root/client `npm audit` show zero vulnerabilities. Fresh Docker image build and production-mode readiness passed on isolated schema `rolebrowser`, migration 029.
+
+Remaining local/application acceptance gaps: no defined instance-scoped Admin policy; not every privileged form/action was exercised in Chrome; Moderator Socket.IO operations and revoke/reconnect lifecycle were not exercised through Chrome (server integration tests cover key controls); invalid/duplicate/forged/concurrent claims remain automated rather than browser-submitted adversarial cases; complete assistive-technology, contrast, responsive physical-device and external voice playback checks remain open. Prior 46/46 route rendering belongs to the earlier shared role model and is not full current role/action acceptance.
+
+External release blockers remain unchanged: the earlier `owner:list` may have targeted the unconfirmed Supabase endpoint, production project/database identity and migration history are unverified, and no authorized production origin, proxy topology, TLS/WSS/CORS/cookie behavior or deployed readiness was supplied. Do not reconnect to Supabase or deploy. Use the read-only operator handoff below, updated to compare migrations 001–029.
+
+### Pre-enrollment settings boundary correction — 5 November 2026
+
+A focused security review found that the MFA-enrollment session of a newly created Super Admin could read the shared settings payload before enrollment. The endpoint/UI now return/show only that account's identity, own sessions, password and MFA enrollment controls until confirmed MFA is present. Global owners, origin, runtime, health, defaults and backup data remain inaccessible; every privileged endpoint continues to require role and MFA. The fix is covered by a production-mode API regression test and fresh installed-Chrome acceptance. Full suite after the fix: **761/761**; production Docker readiness was rechecked on migration 029. Other action-level and external blockers in the readiness report remain open.
+
+### Final local verification checkpoint — 5 November 2026
+
+The complete suite was rerun against the dedicated role-acceptance PostgreSQL container using loopback only: **761/761 tests passed across 20 suites, zero skips**. The database backup/restore fixture directed `pg_dump`/`pg_restore` into that same disposable container and cleaned its temporary database. Client lint and production build passed; security probes were **51/51**; the post-build secret scan inspected **685 files**; full root and client dependency audits reported zero vulnerabilities. The production-mode acceptance app is healthy and `/readyz` reports ready; the isolated browser schema is at migration 029. Actual Chrome evidence remains the Owner denial/settings and Super Admin MFA/read/sign-out flows listed in the Chrome report.
+
+No further action-level browser coverage was added during this final regression pass. Moderator live socket/revocation UI, browser-adversarial claims, every privileged mutation, complete assistive-technology/device/media checks and the unimplemented Admin role remain blockers to a complete acceptance claim. Production readiness remains **FAIL**.

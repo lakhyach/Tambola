@@ -67,7 +67,7 @@ test("public branding is readable while updates require owner auth and CSRF", as
     log: () => {},
   });
   t.after(async () => app.closeServer({ closeRoomsDurably: false }));
-  await app.admin.ownerStore.create({ username: "brand-owner", passwordHash: await hashPassword("BrandOwnerPassword9!") });
+  await app.admin.ownerStore.create({ username: "brand-owner", passwordHash: await hashPassword("BrandOwnerPassword9!"), role: "super_admin" });
   const port = await app.listen(0);
   const base = `http://127.0.0.1:${port}`;
   const cookies = new Map();

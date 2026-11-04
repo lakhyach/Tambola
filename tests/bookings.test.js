@@ -22,7 +22,7 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
   app.use("/api/admin", createAdminBookingRouter({
     db: env.db,
     ownerSessions: { async verify() { return { ok: true, ownerId: "owner-test", sessionId: "session-test" }; } },
-    ownerStore: { async getById() { return { ownerId: "owner-test", username: "owner" }; } },
+    ownerStore: { async getById() { return { ownerId: "owner-test", username: "owner", role: "super_admin" }; } },
     throttle: { adminMutation: { async check() { return { allowed: true }; }, async recordFailure() { return {}; } } },
   }));
   const server = http.createServer(app);
