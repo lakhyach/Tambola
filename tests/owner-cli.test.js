@@ -34,8 +34,11 @@ test("owner:list does not apply migrations to an uninitialized schema", { skip: 
     const uninitialized = await runList();
     assert.equal(uninitialized.code, 0, uninitialized.stderr);
     assert.match(uninitialized.stdout, /Owner schema is not initialized; no migrations were run\./);
+    // Ask about the pinned schema by name. Unqualified lookups resolve through
+    // search_path and would find the root database's tables instead, which is the
+    // exact trap this test exists to catch.
     const state = await db.query(
-      "SELECT to_regclass('owner_accounts') AS owner_table, to_regclass('schema_migrations') AS migration_table"
+      "SELECT to_regclass($1) AS owner_table, to_regclass($2) AS migration_table", [schema + ".owner_accounts", schema + ".schema_migrations"]
     );
     assert.equal(state.rows[0].owner_table, null);
     assert.equal(state.rows[0].migration_table, null);

@@ -4,6 +4,7 @@ import { randomBytes } from "node:crypto";
 import { fork } from "node:child_process";
 import { io as connectClient } from "socket.io-client";
 import { createPool } from "../server/db/pool.js";
+import { migrate } from "../server/db/migrate.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 const skip = databaseUrl ? false : "no DATABASE_URL - process restart test needs PostgreSQL";
@@ -60,12 +61,19 @@ function exited(child) {
 
 test("an abrupt server process restart recovers a live game and its sessions", { skip, timeout: 45000 }, async () => {
   const admin = createPool({ connectionString: databaseUrl, schema: "public", log: () => {} });
+  // The fixture server boots through the production gate: a schema with no
+  // migration ledger refuses traffic. Prepare this run's throwaway schema the
+  // way an operator prepares a real one, otherwise the test only passes on a
+  // machine whose ambient AUTO_MIGRATE setting would let the server self-migrate
+  // - a setting production deliberately does not have.
+  const setup = createPool({ connectionString: databaseUrl, schema, log: () => {} });
   let first;
   let second;
   let host;
   let player;
   try {
-    await admin.query(`CREATE SCHEMA "${schema}"`);
+    await admin.query(`CREATE SCHEMA IF NOT EXISTS "${schema}"`);
+    await migrate({ db: setup, log: () => {} });
     first = boot();
     const firstReady = await first.ready;
     host = connect(firstReady.port);
@@ -121,6 +129,7 @@ test("an abrupt server process restart recovers a live game and its sessions", {
         if (instance.child.exitCode === null) instance.child.kill();
       }
     }
+    await setup.end().catch(() => {});
     await admin.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`).catch(() => {});
     await admin.end();
   }

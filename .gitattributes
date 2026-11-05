@@ -1,0 +1,14 @@
+# Migration files are identity-critical, not ordinary text.
+#
+# server/db/migrate.js stores a sha256 of each migration file's bytes in
+# schema_migrations, and the production boot gate compares that number on every
+# start: a recorded checksum that differs from the file on disk is reported as
+# MIGRATION_DRIFT and the server refuses to serve traffic. That is the correct
+# fail-closed behaviour, but it means a purely cosmetic change - Git applying a
+# text conversion, an editor's line endings, another operator's core.autocrlf
+# setting, or a `git add --renormalize` - can turn into a refused boot in
+# production.
+#
+# Marking these files non-text makes the repository bytes and the working bytes
+# agree on every machine, so a checksum only changes when the SQL really does.
+server/db/migrations/*.sql -text

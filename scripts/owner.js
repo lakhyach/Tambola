@@ -36,7 +36,7 @@
  */
 
 import readline from "node:readline";
-import { createPool } from "../server/db/pool.js";
+import { createPool, assertSchemaName } from "../server/db/pool.js";
 import { migrate } from "../server/db/migrate.js";
 import { createOwnerStore, normalizeUsername } from "../server/admin/owner-store.js";
 import { createOwnerSessionStore } from "../server/admin/owner-sessions.js";
@@ -122,10 +122,19 @@ async function main() {
     return;
   }
 
-  const db = createPool({ connectionString, schema: process.env.DB_SCHEMA || "public" });
+  const schema = process.env.DB_SCHEMA || "public";
+  const db = createPool({ connectionString, schema });
   try {
     if (command === "list") {
-      const initialized = await db.query("SELECT to_regclass('owner_accounts') IS NOT NULL AS present");
+      // Name the schema in the lookup. An unqualified to_regclass() resolves
+      // through the pool's search_path ("<schema>,public"), so a pinned
+      // non-public schema would claim to be initialized merely because
+      // `public` has the tables - and then list owners out of a database this
+      // command was never pointed at. `list` is the one read-only path that
+      // promises to touch nothing, so it has to answer about the right schema.
+      const initialized = await db.query("SELECT to_regclass($1) IS NOT NULL AS present", [
+        `${assertSchemaName(schema)}.owner_accounts`,
+      ]);
       if (!initialized.rows[0]?.present) {
         console.log("Owner schema is not initialized; no migrations were run.");
         return;
