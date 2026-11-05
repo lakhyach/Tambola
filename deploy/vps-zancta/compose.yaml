@@ -1,0 +1,136 @@
+# Ninety Club - production stack on the SHARED ZANCTA VPS (srv1858183, KVM 2).
+#
+# DESIGN - coexistence, not modification.
+# This project is deliberately structured the same way ZANCTA's own
+# `zancta-prod` project already runs on this box: it joins the pre-existing
+# edge Traefik's `proxy` network and is routed purely by its OWN
+# `traefik.http.*` labels. Traefik has `exposedByDefault: false` and watches
+# docker.sock, so a new labelled container is picked up by a dynamic reload.
+#
+# That means this deployment requires:
+#   NO edit to ZANCTA's compose files, traefik.yaml, or acme.json
+#   NO second process binding :80/:443 (Traefik stays the only listener)
+#   NO host port published at all (routing is container-network only)
+#   NO shared volume, network, container name, or router/service name
+#
+# Every Traefik object below is namespaced `nc-*` so it can never collide with
+# ZANCTA's `zancta-prod`, `zancta-prod-www`, `zancta-staging`, `prod-headers`
+# or `staging-headers`.
+#
+# Resource caps exist because this host has NO swap: without a hard mem_limit a
+# memory leak here could push the kernel OOM killer into ZANCTA's containers.
+# The cap keeps the blast radius inside this project.
+#
+# Rollback = `docker compose -p ninetyclub down`. That removes the labels from
+# Traefik's view immediately. ZANCTA never depends on anything in this file.
+#
+# Secrets live in ./ninetyclub.env (mode 600), never in this file.
+
+name: ninetyclub
+
+services:
+  app:
+    image: ninetyclub:rc1
+    container_name: ninetyclub-app
+    restart: unless-stopped
+    init: true
+    # The app drains sockets on SIGTERM; give it room to finish cleanly.
+    stop_grace_period: 60s
+
+    # ---- caps: cannot starve ZANCTA ----
+    mem_limit: 1g
+    mem_reservation: 256m
+    cpus: "1"
+
+    # ---- hardening, mirrors the audited production image assumptions ----
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+    env_file:
+      - /home/zancta-admin/ninetyclub/ninetyclub.env
+
+    networks:
+      - proxy
+      - ninetyclub
+
+    # The root filesystem is read_only, so the one directory the backup CLI
+    # writes to has to be a real volume or `npm run db:backup` fails on write.
+    volumes:
+      - ninetyclub-backups:/app/backups
+
+    # No `ports:` block. Traefik reaches this container over the `proxy`
+    # network; nothing is exposed on the host interface.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 45s
+      retries: 3
+
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+
+      # Apex: the game itself.
+      - traefik.http.routers.nc-app.rule=Host(`ninetyclub.cloud`)
+      - traefik.http.routers.nc-app.entrypoints=websecure
+      - traefik.http.routers.nc-app.tls=true
+      - traefik.http.routers.nc-app.tls.certresolver=le
+      - traefik.http.routers.nc-app.middlewares=nc-secure
+      - traefik.http.services.nc-app.loadbalancer.server.port=4000
+
+      # www -> apex, so a mistyped invite still lands on the game.
+      - traefik.http.routers.nc-www.rule=Host(`www.ninetyclub.cloud`)
+      - traefik.http.routers.nc-www.entrypoints=websecure
+      - traefik.http.routers.nc-www.tls=true
+      - traefik.http.routers.nc-www.tls.certresolver=le
+      - traefik.http.routers.nc-www.middlewares=nc-www-to-apex
+
+      # Deliberately no CSP: the SPA is served by this same origin and an
+      # untested policy would break it. Headers here are the safe subset.
+      - traefik.http.middlewares.nc-secure.headers.stsSeconds=31536000
+      - traefik.http.middlewares.nc-secure.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.nc-secure.headers.referrerPolicy=strict-origin-when-cross-origin
+      - traefik.http.middlewares.nc-www-to-apex.redirectregex.regex=^https://www\.(.+)$
+      - traefik.http.middlewares.nc-www-to-apex.redirectregex.replacement=https://$${1}
+      - traefik.http.middlewares.nc-www-to-apex.redirectregex.permanent=true
+
+  # One-shot schema migrator. NOT started by `up -d`; run explicitly with
+  #   docker compose -p ninetyclub --profile ops run --rm migrate
+  # The app itself refuses to serve traffic while the ledger is behind its code
+  # (verifyMigrationStatus in server/db/migrate.js), so this is the only path
+  # that changes schema, and it is always an operator decision.
+  migrate:
+    profiles: ["ops"]
+    image: ninetyclub:rc1
+    container_name: ninetyclub-migrate
+    restart: "no"
+    env_file:
+      - /home/zancta-admin/ninetyclub/ninetyclub.env
+    networks:
+      - ninetyclub
+    entrypoint: ["npm", "run", "migrate"]
+
+networks:
+  # Pre-existing edge network owned by the ZANCTA staging project's Traefik.
+  # Joined as `external` - this project can neither create nor remove it.
+  proxy:
+    external: true
+    name: proxy
+  # Private backend for this app only. Nothing else attaches here.
+  ninetyclub:
+    name: ninetyclub
+    driver: bridge
+
+volumes:
+  ninetyclub-backups:
+    name: ninetyclub-backups

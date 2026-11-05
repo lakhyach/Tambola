@@ -71,6 +71,11 @@ jobs:
         if: steps.gate.outputs.configured == 'true' && steps.probe.outputs.state == 'down'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # This job never checks out the repository, so `gh` has no git context to
+          # infer it from. Without GH_REPO every gh call exits with "not a git
+          # repository" and the alerting layer silently does nothing - a monitor
+          # that cannot ever page is not a monitor.
+          GH_REPO: ${{ github.repository }}
           READY: ${{ steps.probe.outputs.ready_status }}
           HEALTH: ${{ steps.probe.outputs.health_status }}
         run: |
@@ -87,7 +92,11 @@ jobs:
         if: steps.gate.outputs.configured == 'true' && steps.probe.outputs.state == 'up'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          for number in $(gh issue list --state open --search "Deployment not ready in:title" --json number --jq '.[].number'); do
+          # Assign first, so a `gh` failure stops the step instead of disappearing
+          # into a `for` list and leaving a down-deployment issue open forever.
+          OPEN_ISSUES=$(gh issue list --state open --search "Deployment not ready in:title" --json number --jq '.[].number')
+          for number in $OPEN_ISSUES; do
             gh issue close "$number" --comment "Recovered: /readyz and /healthz answer 200 again."
           done
