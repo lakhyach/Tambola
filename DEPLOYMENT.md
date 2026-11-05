@@ -21,7 +21,10 @@ non-existent root `index.js` and could not work; it has been removed.
 **Use a host that runs one warm, continuously running container/process with
 WebSocket support** — Fly.io, Google Cloud Run (min-instances=1 + sessions),
 AWS ECS/App Runner, Railway, Render, a container service, or a plain VM with
-Docker. The repo ships a `Dockerfile` and a single-host `docker-compose.yml`.
+Docker. The repo ships a `Dockerfile`, a local/single-host `docker-compose.yml`,
+and a prepared Hostinger VPS stack at [`deploy/hostinger/compose.yml`](deploy/hostinger/compose.yml).
+Follow [`deploy/hostinger/README.md`](deploy/hostinger/README.md) for the VPS
+networking, TLS, persistence, backup and recovery procedure.
 
 ## Build & run
 
@@ -65,8 +68,8 @@ Full list with safe defaults is in `.env.example`.
 
 ## First boot: migrations, owner, data safety
 
-- Migrations `001_init`, `002_owner`, `003_hardening` apply **automatically** on
-  startup and are checksummed + ledgered in `schema_migrations`. Do not run them
+- Ordered SQL migrations apply **automatically** on startup and are checksummed
+  and ledgered in `schema_migrations`. Do not run them
   by hand unless `AUTO_MIGRATE=0`. Never drop or recreate a database that has
   data.
 - The owner account is created only if it does not exist. Verify state first with

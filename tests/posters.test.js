@@ -12,6 +12,16 @@ const posterData = (overrides = {}) => ({ title: "Friday Tambola Night", schedul
 
 test("poster validation bounds text, colors, themes and supported export sizes", () => {
   assert.ok(validatePosterData(posterData()).data);
+  const eventCopy = posterData({ venue: "Community Hall", organizerName: "Ninety Club", contactInfo: "+91 98765 43210", bookingUrl: "/sessions/123?instance=regular" });
+  assert.deepEqual(
+    (({ venue, organizerName, contactInfo, bookingUrl }) => ({ venue, organizerName, contactInfo, bookingUrl }))(validatePosterData(eventCopy).data),
+    { venue: "Community Hall", organizerName: "Ninety Club", contactInfo: "+91 98765 43210", bookingUrl: "/sessions/123?instance=regular" },
+  );
+  assert.ok(validatePosterData(posterData({ bookingUrl: "https://tickets.example.test/event/1" })).data);
+  assert.equal(validatePosterData(posterData({ bookingUrl: "javascript:alert(1)" })).error, "POSTER_DATA_INVALID");
+  assert.equal(validatePosterData(posterData({ bookingUrl: "//attacker.example.test/" })).error, "POSTER_DATA_INVALID");
+  assert.equal(validatePosterData(posterData({ venue: "V".repeat(141) })).error, "POSTER_DATA_INVALID");
+  assert.equal(validatePosterData(posterData({ contactInfo: "C".repeat(121) })).error, "POSTER_DATA_INVALID");
   assert.equal(validatePosterData(posterData({ accent: "url(javascript:alert(1))" })).error, "POSTER_DATA_INVALID");
   assert.equal(validatePosterData(posterData({ layoutSize: "giant" })).error, "POSTER_DATA_INVALID");
   assert.equal(validatePosterData(posterData({ title: "x" })).error, "POSTER_DATA_INVALID");
@@ -31,24 +41,25 @@ test("poster templates require review and publication; poster publications retai
   const origin = `http://127.0.0.1:${server.address().port}`;
   try {
     const initial = await admin.posterService.listTemplates();
-    assert.equal(initial.length, 4);
+    assert.equal(initial.length, 7);
+    assert.deepEqual(new Set(initial.map((item) => item.templateId)), new Set(["classic-ticket", "festival-lanterns", "spotlight-bumper", "quiet-modern", "bollywood-masala", "royal-festive", "desi-street-food"]));
     const templateDraft = await admin.posterService.createTemplateDraft({
       templateId: "garden-gala", name: "Garden Gala", description: "Layered botanical shapes with crisp time and event details.", category: "seasonal", layout: "festival",
       palette: { background: "#07110f", panel: "#153027", accent: "#9cf0c5", ink: "#e8f1eb", detail: "#f3f6ef" }, actor: "owner-test",
     });
     assert.equal(templateDraft.status, "draft");
-    assert.equal((await admin.posterService.listTemplates()).length, 4, "unreviewed templates stay private");
+    assert.equal((await admin.posterService.listTemplates()).length, 7, "unreviewed templates stay private");
     assert.equal((await admin.posterService.approveTemplate({ templateId: templateDraft.templateId, actor: "owner-test" })).status, "approved");
-    assert.equal((await admin.posterService.listTemplates()).length, 4, "approval alone does not publish a template");
+    assert.equal((await admin.posterService.listTemplates()).length, 7, "approval alone does not publish a template");
     await admin.posterService.publishTemplate({ templateVersionId: templateDraft.templateVersionId, actor: "owner-test" });
-    assert.equal((await admin.posterService.listTemplates()).length, 5);
+    assert.equal((await admin.posterService.listTemplates()).length, 8);
     const templateVersion = await admin.posterService.createTemplateVersion({ templateId: templateDraft.templateId, layout: "spotlight", palette: { background: "#07110f", panel: "#153027", accent: "#9cf0c5", ink: "#e8f1eb", detail: "#f3f6ef" }, actor: "owner-test" });
     assert.equal(templateVersion.status, "draft");
     assert.equal((await admin.posterService.publishTemplate({ templateVersionId: templateVersion.templateVersionId, actor: "owner-test" })).error, "POSTER_TEMPLATE_UNAPPROVED");
     assert.equal((await admin.posterService.updateSchedule({ enabled: true, timeZone: "Asia/Kolkata", releaseTime: "09:00", rotationVersionIds: [templateVersion.templateVersionId], actor: "owner-test" })).error, "POSTER_SCHEDULE_UNAPPROVED");
     assert.equal((await admin.posterService.approveTemplateVersion({ templateId: templateDraft.templateId, templateVersionId: templateVersion.templateVersionId, actor: "owner-test" })).status, "approved");
     await admin.posterService.publishTemplate({ templateVersionId: templateVersion.templateVersionId, actor: "owner-test" });
-    assert.equal((await admin.posterService.listTemplates()).length, 6);
+    assert.equal((await admin.posterService.listTemplates()).length, 9);
     const restored = await admin.posterService.rollbackTemplate({ templateId: templateDraft.templateId, templateVersionId: templateDraft.templateVersionId, actor: "owner-test" });
     assert.equal(restored.source, "rollback");
     assert.equal(restored.restoredFromVersionId, templateDraft.templateVersionId);
@@ -79,7 +90,7 @@ test("poster templates require review and publication; poster publications retai
     assert.equal((await admin.posterService.savePoster({ posterId: created.posterId, templateVersionId: initial[1].templateVersionId, data: posterData(), actor: "owner-test" })).error, "POSTER_LOCKED");
 
     const publicTemplates = await fetch(`${origin}/api/public/poster-templates`).then((response) => response.json());
-    assert.equal(publicTemplates.templates.length, 7);
+    assert.equal(publicTemplates.templates.length, 10);
     const publicPosterResponse = await fetch(`${origin}/api/public/posters/${created.posterId}`);
     assert.equal(publicPosterResponse.status, 200);
     const publicPoster = (await publicPosterResponse.json()).poster;
@@ -130,9 +141,9 @@ test("prompt artwork stays instance-scoped and published data uses real session 
     const stored = await service.getArtwork({ assetId: artwork.assetId, actor: "synthetic-owner" });
     assert.deepEqual(stored.image_bytes, generatedPng);
 
-    const draft = await service.createPoster({ instanceId: "regular", templateVersionId: "festival-lanterns-v1", actor: "synthetic-owner", data: posterData({ title: "incorrect client title", sessionId: created.session.sessionId, prompt: "Premium Diwali festival light and plum gold art", artworkAssetId: artwork.assetId, cta: "Join this event", eventDetails: "Bring your family" }) });
+    const draft = await service.createPoster({ instanceId: "regular", templateVersionId: "festival-lanterns-v1", actor: "synthetic-owner", data: posterData({ title: "incorrect client title", sessionId: created.session.sessionId, prompt: "Premium Diwali festival light and plum gold art", artworkAssetId: artwork.assetId, cta: "Join this event", eventDetails: "Bring your family", venue: "Community Hall", organizerName: "Ninety Club", contactInfo: "+91 98765 43210" }) });
     assert.ok(draft.posterId);
-    assert.equal((await service.savePoster({ posterId: draft.posterId, templateVersionId: "festival-lanterns-v1", actor: "synthetic-owner", data: posterData({ title: "changed by browser", sessionId: created.session.sessionId, prompt: "Premium Diwali festival light and plum gold art", artworkAssetId: artwork.assetId, cta: "Join this event" }) })).status, "draft");
+    assert.equal((await service.savePoster({ posterId: draft.posterId, templateVersionId: "festival-lanterns-v1", actor: "synthetic-owner", data: posterData({ title: "changed by browser", sessionId: created.session.sessionId, prompt: "Premium Diwali festival light and plum gold art", artworkAssetId: artwork.assetId, cta: "Join this event", venue: "Community Hall", organizerName: "Ninety Club", contactInfo: "+91 98765 43210" }) })).status, "draft");
     const revisions = await env.db.query("SELECT revision,data->>'title' AS title FROM poster_revisions WHERE poster_id=$1", [draft.posterId]);
     assert.equal(revisions.rows.length, 1);
     assert.equal(revisions.rows[0].title, "Synthetic Festival Night");
@@ -141,6 +152,10 @@ test("prompt artwork stays instance-scoped and published data uses real session 
     assert.equal((await service.publishPoster({ posterId: draft.posterId, actor: "synthetic-owner" })).status, "published");
     const publicPoster = await service.getPublicPoster(draft.posterId);
     assert.equal(publicPoster.data.title, "Synthetic Festival Night");
+    assert.equal(publicPoster.data.venue, "Community Hall");
+    assert.equal(publicPoster.data.organizerName, "Ninety Club");
+    assert.equal(publicPoster.data.contactInfo, "+91 98765 43210");
+    assert.equal(publicPoster.data.bookingUrl, context.publicJoinUrl, "session-linked posters default their booking link to the live public session route");
     assert.equal(publicPoster.data.eventFacts.winningPatterns.find((item) => item.label === "Early Five").points, 20);
     assert.equal((await service.getArtwork({ posterId: draft.posterId, published: true })).content_type, "image/png");
     assert.equal(providerCalls, 1, "saving, revising and publishing do not implicitly regenerate artwork");

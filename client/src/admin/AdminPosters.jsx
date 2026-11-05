@@ -6,8 +6,22 @@ import PosterArt from "./PosterArt.jsx";
 import { exportPoster } from "./poster-export.js";
 import "./posters.css";
 
-const freshPoster = () => ({ title: "", schedule: "", details: "", patterns: "", themeVersionId: null, accent: null, layoutSize: "portrait", cta: "Join the game", eventDetails: "" });
+const freshPoster = () => ({ title: "", schedule: "", details: "", patterns: "", themeVersionId: null, accent: null, layoutSize: "portrait", cta: "Join the game", eventDetails: "", venue: "", organizerName: "", contactInfo: "", bookingUrl: null });
 const emptyTemplate = () => ({ templateId: "", name: "", description: "", category: "classic", layout: "classic" });
+const POSTER_DIRECTIONS = [
+  {
+    id: "bollywood-masala", name: "Bollywood Masala", templateVersionId: "bollywood-masala-v1", accent: "#f6da37",
+    prompt: "Bollywood Masala Tambola night, dramatic near-black stage, glowing green and saffron spotlights, fanned paper Tambola tickets and glossy numbered bingo balls, energetic Indian cinema marquee atmosphere, rich gold trim, premium print-art direction, keep the center and lower third calm for crisp editable event copy. Background art only; no letters, words, numbers, logos or QR codes.",
+  },
+  {
+    id: "royal-festive", name: "Royal Festive", templateVersionId: "royal-festive-v1", accent: "#f1c83c",
+    prompt: "Royal Festive Indian Tambola celebration, deep cobalt and royal blue with luminous gold, elegant palace arches, diya glow, fine rangoli and marigold accents, refined festive editorial poster art, generous quiet center and lower third for crisp editable event copy. Background art only; no letters, words, numbers, logos or QR codes.",
+  },
+  {
+    id: "desi-street-food", name: "Desi Street Food", templateVersionId: "desi-street-food-v1", accent: "#ffdf32",
+    prompt: "Desi Street Food Tambola night bazaar, vivid fuchsia and plum with warm haldi yellow, charming Indian street-food cart details, chai steam, festive bulbs, glossy numbered Tambola balls and a ticket motif, playful premium poster illustration, clear quiet center and lower third for crisp editable event copy. Background art only; no letters, words, numbers, logos or QR codes.",
+  },
+];
 
 export default function AdminPosters() {
   const [templates, setTemplates] = useState([]);
@@ -69,7 +83,13 @@ export default function AdminPosters() {
   }, [instanceId, sessionId]);
 
   function resetEditor() {
-    setPosterId(""); setPosterStatus("draft"); setPoster(freshPoster()); setMessage("");
+    setPosterId(""); setPosterStatus("draft"); setPoster(freshPoster()); setPrompt(""); setMessage("");
+  }
+
+  function chooseDirection(direction) {
+    setPrompt(direction.prompt);
+    setTemplateVersionId(direction.templateVersionId);
+    setPoster((current) => ({ ...current, accent: direction.accent, layoutSize: "portrait" }));
   }
 
   async function perform(action, success) {
@@ -117,7 +137,7 @@ export default function AdminPosters() {
       const imageBlob = await response.blob();
       const dataUrl = await new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => reject(new Error("Generated background could not be read.")); reader.readAsDataURL(imageBlob); });
       const context = result.artwork.context;
-      const nextPoster = { ...poster, title: context.title, schedule: context.schedule, details: `${context.gameType} · ${context.ticketAvailability}`, patterns: context.prizesDescription || context.missingFields.join(" "), sessionId: context.sessionId, artworkAssetId: result.artwork.assetId, artworkUrl: result.artwork.imageUrl, artworkDataUrl: dataUrl, prompt };
+      const nextPoster = { ...poster, title: context.title, schedule: context.schedule, details: `${context.gameType} · ${context.ticketAvailability}`, patterns: context.prizesDescription || context.missingFields.join(" "), sessionId: context.sessionId, bookingUrl: poster.bookingUrl || context.publicJoinUrl, artworkAssetId: result.artwork.assetId, artworkUrl: result.artwork.imageUrl, artworkDataUrl: dataUrl, prompt };
       setPoster(nextPoster); setEventContext(context); setMessage(`Original background generated with ${result.artwork.provider} (${result.artwork.model}). Event facts were loaded from the selected session.`);
     } catch (failure) { setError(failure); }
     finally { setGenerating(false); }
@@ -165,6 +185,10 @@ export default function AdminPosters() {
       <div className="adm-poster-form">
         <label>Event / session<select value={sessionId} onChange={(event) => setSessionId(event.target.value)} disabled={!eventSessions.length}><option value="">Choose a scheduled session</option>{eventSessions.map((item) => <option key={item.sessionId} value={item.sessionId}>{item.title} · {new Date(item.startsAt).toLocaleString()} · {item.status}</option>)}</select></label>
         <label className="poster-form-wide">Visual direction<textarea value={prompt} maxLength={1200} rows={4} placeholder="Premium Diwali night, deep plum and luminous gold, elegant palace arches, warm diya light, sophisticated editorial art…" onChange={(event) => setPrompt(event.target.value)} /><small>{prompt.length}/1200 · no factual copy is placed inside generated artwork</small></label>
+        <div className="poster-form-wide adm-poster-directions" role="group" aria-label="Poster art direction presets">
+          <span className="oh-eyebrow">Choose a visual direction</span>
+          {POSTER_DIRECTIONS.map((direction) => <button key={direction.id} type="button" aria-pressed={prompt === direction.prompt} onClick={() => chooseDirection(direction)}>{direction.name}</button>)}
+        </div>
       </div>
       {providerStatus?.configured ? <p className="adm-poster-message" role="status">Image provider ready: {providerStatus.provider} · {providerStatus.model}</p> : <p className="adm-poster-empty" role="status">Image generation is not configured on this server. Set OPENAI_API_KEY server-side to enable it; no generated art or mock result will be shown.</p>}
       {eventContext ? <div className="adm-poster-event-facts"><strong>{eventContext.title}</strong><span>{eventContext.gameType} · {eventContext.schedule}</span><span>Room: {eventContext.roomCode || "Not assigned"} · {eventContext.ticketAvailability}</span><span>{eventContext.prizesDescription || "No room prize configuration is available yet."}</span><span>Join URL: {eventContext.publicJoinUrl}</span>{eventContext.missingFields.map((item) => <small key={item}>{item}</small>)}</div> : <p className="adm-sub">Choose a session in this instance to load its real schedule, availability, room, and configured game-point awards.</p>}
@@ -182,7 +206,11 @@ export default function AdminPosters() {
         <div className="adm-poster-form">
           <label>Instance<select value={instanceId} onChange={(event) => setInstanceId(event.target.value)}>{instances.map((item) => <option key={item.instance_id} value={item.instance_id}>{item.display_name}</option>)}</select></label>
           <label>Game title<input value={poster.title} maxLength={90} onChange={(event) => setPoster({ ...poster, title: event.target.value })} /></label>
-          <label>Schedule / date<input value={poster.schedule} maxLength={120} onChange={(event) => setPoster({ ...poster, schedule: event.target.value })} /></label>
+          <label>Schedule / date<input value={poster.schedule} maxLength={120} onChange={(event) => setPoster({ ...poster, schedule: event.target.value })} /><small>When this poster is linked to a scheduled session, its date and time are kept in sync with that session.</small></label>
+          <label>Venue<input value={poster.venue || ""} maxLength={140} onChange={(event) => setPoster({ ...poster, venue: event.target.value })} placeholder="Venue or online" /></label>
+          <label>Organizer name<input value={poster.organizerName || ""} maxLength={100} onChange={(event) => setPoster({ ...poster, organizerName: event.target.value })} /></label>
+          <label>Contact information<input value={poster.contactInfo || ""} maxLength={120} onChange={(event) => setPoster({ ...poster, contactInfo: event.target.value })} placeholder="Phone, email, or WhatsApp" /></label>
+          <label className="poster-form-wide">Booking URL<input value={poster.bookingUrl ?? eventContext?.publicJoinUrl ?? ""} maxLength={500} onChange={(event) => setPoster({ ...poster, bookingUrl: event.target.value })} placeholder="Session booking link or https://…" /><small>Defaults to the selected session&apos;s public booking page. Custom links must use HTTPS or a same-site path.</small></label>
           <label>Game details<input value={poster.details} maxLength={240} onChange={(event) => setPoster({ ...poster, details: event.target.value })} /></label>
           <label>Event details<textarea value={poster.eventDetails || ""} maxLength={500} rows={2} onChange={(event) => setPoster({ ...poster, eventDetails: event.target.value })} /></label>
           <label>Call to action<input value={poster.cta || "Join the game"} maxLength={48} onChange={(event) => setPoster({ ...poster, cta: event.target.value })} /></label>

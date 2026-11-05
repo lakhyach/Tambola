@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "server": "node --watch --env-file-if-exists=.env server/index.js",
-    "start": "node --env-file-if-exists=.env server/index.js",
+    "start": "node --env-file-if-exists=.env scripts/start.js",
     "test": "node --env-file-if-exists=.env --test \"tests/*.test.js\"",
     "test:watch": "node --env-file-if-exists=.env --test --watch \"tests/*.test.js\"",
     "migrate": "node --env-file-if-exists=.env server/db/migrate.js",

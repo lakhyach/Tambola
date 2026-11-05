@@ -74,6 +74,8 @@ export default function PosterArt({ template, poster, instance, preview = false,
   const rowHeight = Math.min(31, Math.max(18, (height * .2) / Math.max(eventPatterns.length, 1)));
   const patternBoxHeight = Math.max(156, Math.min(height * .24, eventPatterns.length * rowHeight + 76));
   const joinTop = patternsY + patternBoxHeight + 36;
+  const eventMeta = [poster.organizerName && `Hosted by ${poster.organizerName}`, poster.venue && `Venue: ${poster.venue}`, poster.contactInfo && `Contact: ${poster.contactInfo}`].filter(Boolean).join(" · ");
+  const bookingUrl = poster.bookingUrl || poster.eventFacts?.publicJoinUrl;
   return <svg ref={svgRef} className={`poster-art poster-art--${template.layout}${preview ? " is-preview" : ""}`} xmlns="http://www.w3.org/2000/svg" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${poster.title} poster preview`}>
     <defs>
       <linearGradient id={`poster-ground-${svgId}`} x1="0" y1="0" x2="1" y2="1"><stop stopColor={palette.background} /><stop offset="1" stopColor={palette.panel} /></linearGradient>
@@ -116,7 +118,8 @@ export default function PosterArt({ template, poster, instance, preview = false,
     <text x={cx} y={joinTop} textAnchor="middle" fill={palette.ink} fontFamily="system-ui, sans-serif" fontSize={long ? 24 : 21}>{poster.eventFacts?.roomCode ? `Room ${poster.eventFacts.roomCode}` : "Free to play"} · {text(poster.eventFacts?.ticketAvailability || "Join the game hall")}</text>
     <rect x={width * .2} y={joinTop + 16} width={width * .6} height="62" rx="31" fill={`url(#poster-accent-${svgId})`} />
     <text x={cx} y={joinTop + 56} textAnchor="middle" fill={palette.background} fontFamily="system-ui, sans-serif" fontWeight="800" fontSize="27">{text(poster.cta || "Join the game")}</text>
-    {poster.eventFacts?.publicJoinUrl ? <text x={cx} y={joinTop + 108} textAnchor="middle" fill={palette.ink} fontFamily="system-ui, sans-serif" fontSize={long ? 20 : 17}>{text(poster.eventFacts.publicJoinUrl).slice(0, 80)}</text> : null}
+    {eventMeta ? <text x={cx} y={joinTop + 100} textAnchor="middle" fill={palette.ink} fontFamily="system-ui, sans-serif" fontSize={long ? 19 : 16}>{truncatePosterText(eventMeta, 90)}</text> : null}
+    {bookingUrl ? <text x={cx} y={joinTop + 128} textAnchor="middle" fill={palette.ink} fontFamily="system-ui, sans-serif" fontSize={long ? 20 : 17}>{text(bookingUrl).slice(0, 80)}</text> : null}
     {template.layout === "classic" ? <g transform={`translate(${width * .3},${height * .75})`} fill="none" stroke={palette.accent} strokeWidth="7">{Array.from({ length: 9 }, (_, i) => <rect key={i} x={(i % 3) * 68} y={Math.floor(i / 3) * 54} width="48" height="38" rx="8" opacity={i % 2 ? ".45" : ".9"} />)}</g> : null}
     {isFestival ? <g fill={palette.detail} opacity=".85"><path d={`M${width * .2} ${height * .79} q-50 70 0 135 q50-65 0-135`} /><path d={`M${width * .8} ${height * .77} q-55 80 0 150 q55-70 0-150`} /></g> : null}
     <text x={cx} y={height * .975} textAnchor="middle" fill={palette.accent} fontFamily="system-ui, sans-serif" fontWeight="700" fontSize={long ? 26 : 21} letterSpacing="3">FREE TO PLAY · NO CASH PRIZES</text>

@@ -58,6 +58,21 @@ test("a remote database must be TLS-verified", () => {
   assert.equal(verified.ok, true);
 });
 
+test("a same-host Docker database is accepted only with the explicit private-network flag", () => {
+  const database = `postgresql://tambola:${FAKE_DB_PASSWORD}@db:5432/tambola`;
+  const unmarked = validateEnv({ ...GOOD, DATABASE_URL: database });
+  assert.equal(unmarked.ok, false);
+  assert.ok(ids(unmarked, "error").includes("DATABASE_URL.tls"));
+
+  const marked = validateEnv({ ...GOOD, DATABASE_URL: database, DATABASE_PRIVATE_NETWORK: "1" });
+  assert.equal(marked.ok, true, JSON.stringify(marked.checks.filter((check) => check.level === "error")));
+  assert.ok(ids(marked, "warn").includes("DATABASE_URL.tls"), "private-network transport is explicitly reported");
+
+  const remote = validateEnv({ ...GOOD, DATABASE_URL: `${database.replace("@db:", "@db.example.net:")}`, DATABASE_PRIVATE_NETWORK: "1" });
+  assert.equal(remote.ok, false);
+  assert.ok(ids(remote, "error").includes("DATABASE_PRIVATE_NETWORK"));
+});
+
 test("default credentials and the transaction pooler are caught", () => {
   const weak = validateEnv({
     ...GOOD,
@@ -87,6 +102,29 @@ test("a public origin must be a bare https origin", () => {
   }
   const missing = validateEnv({ ...GOOD, PUBLIC_ORIGIN: "" });
   assert.ok(ids(missing, "error").includes("PUBLIC_ORIGIN"));
+});
+
+test("PUBLIC_DOMAIN is a bare host and must match the HTTPS origin", () => {
+  const good = validateEnv({ ...GOOD, PUBLIC_DOMAIN: "games.example.com" });
+  assert.equal(good.ok, true);
+  assert.ok(ids(good, "ok").includes("PUBLIC_DOMAIN.origin"));
+  const mismatch = validateEnv({ ...GOOD, PUBLIC_DOMAIN: "other.example.com" });
+  assert.equal(mismatch.ok, false);
+  assert.ok(ids(mismatch, "error").includes("PUBLIC_DOMAIN.origin"));
+  for (const bad of ["https://games.example.com", "games.example.com:443", "*.example.com", "games.example.com/path"]) {
+    assert.equal(validateEnv({ ...GOOD, PUBLIC_DOMAIN: bad }).ok, false, bad);
+  }
+});
+
+test("poster provider model IDs are checked without exposing optional API credentials", () => {
+  const badModel = validateEnv({ ...GOOD, POSTER_IMAGE_MODEL: "https://api.example.test/model" });
+  assert.equal(badModel.ok, false);
+  assert.ok(ids(badModel, "error").includes("POSTER_IMAGE_MODEL"));
+  const clientKey = validateEnv({ ...GOOD, VITE_OPENAI_API_KEY: "not-a-real-key" });
+  assert.equal(clientKey.ok, false);
+  assert.ok(ids(clientKey, "error").includes("VITE_OPENAI_API_KEY"));
+  const report = formatReport(validateEnv({ ...GOOD, OPENAI_API_KEY: "do-not-print-this-value" }));
+  assert.equal(report.includes("do-not-print-this-value"), false);
 });
 
 test("proxy awareness and cookie hardening are required in production", () => {

@@ -25,6 +25,7 @@ RUN npm run build
 FROM node:22-alpine AS runner
 ENV NODE_ENV=production
 WORKDIR /app
+RUN apk add --no-cache postgresql16-client
 # Only production dependencies are needed to run the server (express, socket.io,
 # pg, cors, dotenv). The test runner and Playwright are dev-only.
 COPY package.json package-lock.json ./
@@ -46,13 +47,14 @@ COPY scripts/ ./scripts/
 # a public certificate, not a secret. Re-download from the Supabase dashboard if
 # Supabase ever rotates it.
 COPY deploy/supabase-root-ca.pem ./deploy/supabase-root-ca.pem
+RUN mkdir -p /app/backups && chown -R node:node /app
+USER node
 EXPOSE 4000
 # Container-level liveness/readiness probe. /readyz fails closed if the DB, a
 # migration, or the single-instance lease is unavailable, which is exactly the
 # signal an orchestrator should act on.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-# `npm start` runs `node --env-file-if-exists=.env server/index.js`; in a
-# container the env comes from the platform, and the if-exists flag makes the
-# missing .env a no-op rather than a failure.
+# `npm start` validates production env before starting the server. Container
+# settings are injected by Compose/platform; no .env file is baked into the image.
 CMD ["npm", "start"]

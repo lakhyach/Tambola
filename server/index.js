@@ -545,10 +545,16 @@ export async function createApp(options = {}) {
       if (!/^[a-z0-9.-]+(?::[0-9]{1,5})?$/i.test(host)) return res.status(400).type("text/plain").send("Invalid host");
       const origin = String(options.publicOrigin || process.env.PUBLIC_ORIGIN || `${req.protocol}://${host}`).replace(/\/$/, "");
       const absoluteUrl = `${origin}/poster/${encodeURIComponent(poster.posterId)}`;
-      const absoluteImage = `${origin}/api/public/posters/${encodeURIComponent(poster.posterId)}/artwork`;
+      const imagePath = poster.data.artworkAssetId
+        ? `/api/public/posters/${encodeURIComponent(poster.posterId)}/artwork`
+        : "/brand/tambola-house-social-card.svg";
+      const absoluteImage = `${origin}${imagePath}`;
       const facts = poster.data.eventFacts;
       const patterns = Array.isArray(facts?.winningPatterns) ? facts.winningPatterns.map((item) => `${item.label}: ${item.points} game points`).join(" · ") : "";
-      const description = [poster.data.details, poster.data.schedule, patterns, facts?.publicJoinUrl ? `Join: ${origin}${facts.publicJoinUrl}` : "Free to play"].filter(Boolean).join(" · ").slice(0, 500);
+      const bookingLink = poster.data.bookingUrl
+        ? new URL(poster.data.bookingUrl, origin).href
+        : facts?.publicJoinUrl ? `${origin}${facts.publicJoinUrl}` : null;
+      const description = [poster.data.details, poster.data.eventDetails, poster.data.schedule, poster.data.venue, poster.data.organizerName && `Hosted by ${poster.data.organizerName}`, poster.data.contactInfo, patterns, bookingLink ? `Join: ${bookingLink}` : "Free to play"].filter(Boolean).join(" · ").slice(0, 500);
       const escape = (value) => String(value).replaceAll("&", "&amp;").replaceAll("\"", "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
       let html = fs.readFileSync(path.join(clientDist, "index.html"), "utf8");
       html = html.replace(/<title>.*?<\/title>/i, `<title>${escape(poster.data.title)}</title>`)

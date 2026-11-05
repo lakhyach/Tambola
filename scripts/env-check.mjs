@@ -33,6 +33,7 @@ const MANAGED_HOSTS =
   /(^|\.)(supabase\.(co|com|in)|neon\.tech|neon\.build|render\.com|railway\.app|fly\.dev|koyeb\.app|aivencloud\.com|timescale\.com|amazonaws\.com|azure\.com|digitalocean\.com|ondigitalocean\.com|db\.ondigitalocean\.com)$/i;
 
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1|::1|\[::1\]|0\.0\.0\.0|host\.docker\.internal)$/i;
+const DOCKER_DATABASE_HOST = "db";
 
 function isManagedHost(hostname) {
   return Boolean(hostname) && MANAGED_HOSTS.test(hostname);
@@ -130,7 +131,16 @@ export function validateEnv(env = {}, options = {}) {
     const password = dbUrl.password;
     const sslmode = (dbUrl.searchParams.get("sslmode") || "").toLowerCase();
     const managed = isManagedHost(host);
-    const local = isLocalHost(host);
+    const privateDockerDatabase = env.DATABASE_PRIVATE_NETWORK === "1" && host.toLowerCase() === DOCKER_DATABASE_HOST;
+    const local = isLocalHost(host) || privateDockerDatabase;
+
+    if (env.DATABASE_PRIVATE_NETWORK && !["0", "1"].includes(env.DATABASE_PRIVATE_NETWORK)) {
+      wrong("DATABASE_PRIVATE_NETWORK", false, "must be 1 only for the isolated same-host Docker database network");
+    } else if (env.DATABASE_PRIVATE_NETWORK === "1" && !privateDockerDatabase) {
+      wrong("DATABASE_PRIVATE_NETWORK", false, "is only valid when DATABASE_URL uses the private Docker service host 'db'");
+    } else if (privateDockerDatabase) {
+      add("DATABASE_PRIVATE_NETWORK", "ok", "database uses the isolated, unpublished Docker network");
+    }
 
     wrong("DATABASE_URL.protocol", proto === "postgres" || proto === "postgresql", "must be postgres:// or postgresql://");
     requirement("DATABASE_URL.host", Boolean(host), "has no host");
@@ -142,7 +152,9 @@ export function validateEnv(env = {}, options = {}) {
       "uses a default or empty password; set a generated one before exposing this server"
     );
 
-    if (local) {
+    if (privateDockerDatabase) {
+      add("DATABASE_URL.tls", "warn", "TLS is not used on the isolated same-host Docker network; the database has no published port");
+    } else if (local) {
       add(
         "DATABASE_URL.tls",
         "warn",
@@ -186,6 +198,18 @@ export function validateEnv(env = {}, options = {}) {
     add("PUBLIC_ORIGIN", "ok", "https origin");
   }
 
+  if (env.PUBLIC_DOMAIN) {
+    const domain = String(env.PUBLIC_DOMAIN).trim().toLowerCase();
+    const validDomain = domain.length <= 253
+      && /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain);
+    wrong("PUBLIC_DOMAIN", validDomain, "must be a bare DNS hostname without a scheme, path, port, or wildcard");
+    if (validDomain && origin && origin.hostname.toLowerCase() !== domain) {
+      wrong("PUBLIC_DOMAIN.origin", false, "does not match the hostname in PUBLIC_ORIGIN");
+    } else if (validDomain && origin) {
+      add("PUBLIC_DOMAIN.origin", "ok", "matches PUBLIC_ORIGIN");
+    }
+  }
+
   if (env.ALLOWED_ORIGINS && env.ALLOWED_ORIGINS.trim()) {
     const entries = env.ALLOWED_ORIGINS.split(",").map((value) => value.trim()).filter(Boolean);
     const bad = entries.filter((value) => {
@@ -226,6 +250,27 @@ export function validateEnv(env = {}, options = {}) {
 
   if (env.MFA_ISSUER === "Tambola") {
     add("MFA_ISSUER", "warn", "uses the legacy label shown in authenticator apps; new enrollments default to Ninety Club");
+  }
+
+  for (const key of ["VITE_OPENAI_API_KEY", "VITE_SARVAM_API_KEY"]) {
+    if (env[key]) wrong(key, false, "must not be exposed in the public client bundle; configure provider keys server-side");
+  }
+  if (env.POSTER_IMAGE_MODEL && !/^[a-z0-9][a-z0-9._-]{0,99}$/i.test(env.POSTER_IMAGE_MODEL.trim())) {
+    wrong("POSTER_IMAGE_MODEL", false, "must be a model identifier, not a URL or free-form value");
+  }
+  if (env.OPENAI_API_KEY && !env.OPENAI_API_KEY.trim()) {
+    wrong("OPENAI_API_KEY", false, "is empty; omit it to keep image generation disabled");
+  } else if (env.OPENAI_API_KEY?.trim()) {
+    add("OPENAI_API_KEY", "ok", "configured server-side; value suppressed");
+  } else {
+    add("OPENAI_API_KEY", strict ? "warn" : "ok", "poster generation remains disabled until a key is configured");
+  }
+  if (env.SARVAM_API_KEY && !env.SARVAM_API_KEY.trim()) {
+    wrong("SARVAM_API_KEY", false, "is empty; omit it to disable provider-backed caller audio");
+  } else if (env.SARVAM_API_KEY?.trim()) {
+    add("SARVAM_API_KEY", "ok", "configured server-side; value suppressed");
+  } else {
+    add("SARVAM_API_KEY", strict ? "warn" : "ok", "provider-backed Hindi caller audio is not configured");
   }
 
   // ------------------------------------------------------------------- database load

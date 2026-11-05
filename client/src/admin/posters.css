@@ -20,6 +20,11 @@
 .adm-poster-form input[type=color] { padding: 4px; }
 .adm-poster-form textarea,.adm-poster-template-form textarea { resize: vertical; }
 .poster-form-wide { grid-column: 1/-1; }
+.adm-poster-directions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.adm-poster-directions .oh-eyebrow { flex-basis: 100%; }
+.adm-poster-directions button { min-height: 40px; padding: 8px 14px; border: 1px solid color-mix(in srgb,#ffd15c 52%,var(--oh-line)); border-radius: 999px; color: var(--oh-ivory); background: color-mix(in srgb,#54215e 62%,var(--oh-panel)); font: inherit; font-weight: 700; cursor: pointer; }
+.adm-poster-directions button:hover,.adm-poster-directions button[aria-pressed="true"] { color: #251331; background: linear-gradient(140deg,#ffe08b,#ffad3d); }
+.adm-poster-directions button:focus-visible { outline: 3px solid #fff2c9; outline-offset: 3px; }
 .adm-poster-actions,.adm-poster-export { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 18px; }
 .adm-poster-export { justify-content: space-between; padding-top: 14px; border-top: 1px solid var(--oh-line); color: var(--oh-text-muted); font-size: 12px; }
 .adm-poster-export a,.public-poster-link a { color: var(--oh-gold-bright); }

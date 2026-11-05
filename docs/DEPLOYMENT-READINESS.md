@@ -1,6 +1,12 @@
 # Deployment readiness — what is proven, what is one command away, and what needs a human
 
-Phase 16B · prepared 31 October 2026 · base commit `0a4de55`
+Phase 16B · historical preparation 31 October 2026 · base commit `0a4de55`
+
+> **Current deployment package:** this historical report predates migrations
+> 028–030 and the maintained Hostinger VPS Compose/Caddy setup. Use
+> [`../deploy/hostinger/README.md`](../deploy/hostinger/README.md) for the current
+> VPS steps. Nothing in this report proves a Hostinger account, domain, DNS
+> change, or live deployment.
 
 This paper is the operational half of `docs/FREE-INFRASTRUCTURE-RESEARCH.md`. That
 one answers *where* the application can run for nothing. This one answers *how it

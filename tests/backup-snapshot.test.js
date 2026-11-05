@@ -12,7 +12,7 @@ test("backup manifest shares the dump snapshot while concurrent writes continue"
       await fixture.db.query("INSERT INTO snapshot_probe VALUES (2)");
       const manifest = await collectSnapshot(process.env.DATABASE_URL, fixture.schema, snapshotId);
       assert.equal(manifest.rows.snapshot_probe, 1, "manifest must exclude commits after the dump snapshot");
-      assert.equal(manifest.ledger.length, 29);
+      assert.equal(manifest.ledger.at(-1)?.version, "030", "the snapshot includes the current final migration");
       const live = await collectSnapshot(process.env.DATABASE_URL, fixture.schema);
       assert.equal(live.rows.snapshot_probe, 2, "the later write really committed");
     });

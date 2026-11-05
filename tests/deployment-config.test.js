@@ -18,8 +18,18 @@ test("free-start keeps the trusted-proxy app port on host loopback", () => {
 test("Hostinger Compose keeps the database private and app ingress on loopback", () => {
   const compose = read("deploy/hostinger/compose.yml");
   assert.match(compose, /ports:\s*\n\s*- "127\.0\.0\.1:4000:4000"/);
+  assert.match(compose, /DATABASE_PRIVATE_NETWORK:\s*"1"/);
+  assert.match(compose, /networks:\s*\[tambola, database\]/);
+  assert.match(compose, /database:\s*\n\s+internal:\s+true/);
+  assert.match(compose, /OPENAI_API_KEY:/);
+  assert.match(compose, /SARVAM_API_KEY:/);
+  assert.match(compose, /read_only:\s+true/);
+  assert.doesNotMatch(compose, /container_name:/, "project-scoped names keep disposable/staging stacks isolated");
   const db = compose.split("\n  app:")[0];
   assert.doesNotMatch(db, /^\s+ports:/m);
+  const caddy = read("deploy/hostinger/Caddyfile.example");
+  assert.match(caddy, /Strict-Transport-Security/);
+  assert.match(caddy, /reverse_proxy 127\.0\.0\.1:4000/);
 });
 
 test("generic Docker Compose keeps trusted-proxy app ingress on host loopback", () => {

@@ -14,6 +14,20 @@ const validPalette = (palette) => Boolean(palette && typeof palette === "object"
 export function validatePosterData(input) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return { error: "POSTER_DATA_INVALID" };
   const { title, schedule, details, patterns, themeVersionId, accent, layoutSize } = input;
+  const optionalText = [
+    ["eventDetails", 500], ["venue", 140], ["organizerName", 100], ["contactInfo", 120],
+  ];
+  const hasInvalidOptionalText = optionalText.some(([key, max]) => input[key] != null
+    && (typeof input[key] !== "string" || input[key].trim().length > max));
+  const bookingUrl = input.bookingUrl == null ? "" : String(input.bookingUrl).trim();
+  const validBookingUrl = !bookingUrl || (() => {
+    if (bookingUrl.length > 500 || /[\u0000-\u001f\\]/.test(bookingUrl)) return false;
+    if (bookingUrl.startsWith("/") && !bookingUrl.startsWith("//")) return true;
+    try {
+      const url = new URL(bookingUrl);
+      return url.protocol === "https:" && !url.username && !url.password;
+    } catch { return false; }
+  })();
   if (typeof title !== "string" || title.trim().length < 2 || title.trim().length > 90
     || typeof schedule !== "string" || schedule.trim().length < 2 || schedule.trim().length > 120
     || typeof details !== "string" || details.trim().length > 240
@@ -25,10 +39,12 @@ export function validatePosterData(input) {
     || input.artworkAssetId != null && (typeof input.artworkAssetId !== "string" || !/^[0-9a-f-]{36}$/i.test(input.artworkAssetId))
     || input.prompt != null && (typeof input.prompt !== "string" || input.prompt.trim().length < 12 || input.prompt.trim().length > 1200)
     || input.cta != null && (typeof input.cta !== "string" || input.cta.trim().length < 2 || input.cta.trim().length > 48)
-    || input.eventDetails != null && (typeof input.eventDetails !== "string" || input.eventDetails.trim().length > 500)) return { error: "POSTER_DATA_INVALID" };
+    || hasInvalidOptionalText || !validBookingUrl) return { error: "POSTER_DATA_INVALID" };
   return { data: { title: title.trim(), schedule: schedule.trim(), details: details.trim(), patterns: patterns.trim(), themeVersionId, accent, layoutSize,
     ...(input.sessionId ? { sessionId: input.sessionId } : {}), ...(input.artworkAssetId ? { artworkAssetId: input.artworkAssetId } : {}),
-    ...(input.prompt ? { prompt: input.prompt.trim() } : {}), ...(input.cta ? { cta: input.cta.trim() } : {}), ...(input.eventDetails ? { eventDetails: input.eventDetails.trim() } : {}) } };
+    ...(input.prompt ? { prompt: input.prompt.trim() } : {}), ...(input.cta ? { cta: input.cta.trim() } : {}),
+    ...Object.fromEntries(optionalText.filter(([key]) => typeof input[key] === "string" && input[key].trim()).map(([key]) => [key, input[key].trim()])),
+    ...(bookingUrl ? { bookingUrl } : {}) } };
 }
 
 export function createPosterService({ db, imageProvider = createOpenAiImageProvider() } = {}) {
@@ -83,6 +99,7 @@ export function createPosterService({ db, imageProvider = createOpenAiImageProvi
       data.schedule = context.schedule;
       data.details = data.eventDetails || `${context.gameType} · ${context.ticketAvailability}`;
       data.patterns = context.prizesDescription || context.missingFields.join(" ");
+      data.bookingUrl ||= context.publicJoinUrl;
     }
     return { data };
   }
@@ -355,7 +372,7 @@ export function createPosterService({ db, imageProvider = createOpenAiImageProvi
         const context = await getEventContext({ instanceId: poster.instance_id, sessionId: data.sessionId });
         if (!context || !["draft", "open", "paused"].includes(context.status) || new Date(context.startsAt).getTime() <= Date.now()) return { error: "POSTER_SESSION_CLOSED" };
         data = { ...data, title: context.title, schedule: context.schedule, details: data.eventDetails || `${context.gameType} · ${context.ticketAvailability}`,
-          patterns: context.prizesDescription || context.missingFields.join(" "), eventFacts: context };
+          patterns: context.prizesDescription || context.missingFields.join(" "), bookingUrl: data.bookingUrl || context.publicJoinUrl, eventFacts: context };
       }
       const inserted = await client.query(`INSERT INTO poster_publications(poster_id,instance_id,instance_name,instance_slug,instance_branding,template_version_id,data,actor)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING publication_id,published_at`, [posterId, poster.instance_id, poster.display_name, poster.slug, JSON.stringify(publicInstanceBranding(poster.branding)), poster.template_version_id, data, actor]);
