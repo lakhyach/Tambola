@@ -59,6 +59,21 @@ async function main() {
   header("end-to-end full game");
   line("persistence: " + (DURABLE ? "durable (throwaway schema " + schema + ")" : "memory-only"));
 
+  if (DURABLE) {
+    // Prepare this run's throwaway schema the way an operator prepares a real
+    // one. The boot gate refuses to serve on an unmigrated schema by design, so
+    // a harness that let the app self-migrate only ever passed on a machine with
+    // AUTO_MIGRATE switched on - which production is deliberately not.
+    const { createPool } = await import("../server/db/pool.js");
+    const { migrate } = await import("../server/db/migrate.js");
+    const setup = createPool({ connectionString: url, schema, log: () => {} });
+    try {
+      await migrate({ db: setup, log: () => {} });
+    } finally {
+      await setup.end();
+    }
+  }
+
   const instance = await createApp({
     memoryOnly: !DURABLE,
     databaseUrl: url || undefined,

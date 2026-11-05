@@ -58,6 +58,25 @@ function guardTestDatabaseUrl() {
   return url;
 }
 
+/**
+ * The load harness runs against a throwaway schema, and a schema with no
+ * migration ledger will not let the app boot. That is the correct fail-closed
+ * behaviour for production, so the harness reproduces it rather than relying on
+ * AUTO_MIGRATE: migrate the schema first, exactly as an operator migrates a real
+ * one.
+ */
+async function migrateSchema(url, schema) {
+  if (!url) return;
+  const { createPool } = await import("../server/db/pool.js");
+  const { migrate } = await import("../server/db/migrate.js");
+  const db = createPool({ connectionString: url, schema, log: () => {} });
+  try {
+    await migrate({ db, log: () => {} });
+  } finally {
+    await db.end();
+  }
+}
+
 function configuredPoolMax(instance) {
   const max = instance && instance.db && instance.db.pool && instance.db.pool.options && instance.db.pool.options.max;
   return Number.isFinite(max) ? max : "?";
@@ -260,6 +279,7 @@ async function sequential() {
   const callsPerRoom = intArg("calls", 10);
   const url = guardTestDatabaseUrl();
   const schema = "tambola_load_" + Math.random().toString(16).slice(2, 8);
+  await migrateSchema(url, schema);
 
   const instance = await createApp({
     memoryOnly: !url,
@@ -392,6 +412,7 @@ async function staged() {
   }
   const url = guardTestDatabaseUrl();
   const schema = "tambola_load_" + Math.random().toString(16).slice(2, 8);
+  await migrateSchema(url, schema);
 
   const instance = await createApp({
     memoryOnly: !url,
