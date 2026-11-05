@@ -33,18 +33,18 @@ const responseWithAudio = (audio = sampleWav()) => ({
   json: async () => ({ audios: [audio.toString("base64")] }),
 });
 
-test("audition callout text and Sarvam speakers match the approved manifest", () => {
+test("reviewed callout text and configured Bulbul v3 speakers match the voice contract", () => {
   assert.deepEqual(Object.keys(AUDITIONED_CALLOUTS.en).map(Number), [1, 7, 11, 27, 44, 55, 77, 90]);
   assert.deepEqual(Object.keys(AUDITIONED_CALLOUTS.hi).map(Number), [1, 7, 11, 27, 44, 55, 77, 90]);
   assert.deepEqual(Object.keys(AUDITIONED_CALLOUTS.hinglish).map(Number), [1, 7, 11, 27, 44, 55, 77, 90]);
   assert.equal(AUDITIONED_CALLOUTS.en[1], "Number one! The game woke up; even the chai sat up straight.");
   assert.equal(AUDITIONED_CALLOUTS.hi[90], "नब्बे नंबर! आख़िरी पुकार, मामा जी की टिकट जाँच अभी भी जारी!");
   assert.equal(AUDITIONED_CALLOUTS.hinglish[55], "Pachpan number! Double five aaya, luck bhi filmi andaaz mein!");
-  assert.equal(SARVAM_MODEL, "bulbul:v4-flash");
+  assert.equal(SARVAM_MODEL, "bulbul:v3");
   assert.deepEqual(SARVAM_VOICES, {
-    en: { languageCode: "en-IN", speaker: "ashwin_en_sports_energetic" },
-    hi: { languageCode: "hi-IN", speaker: "shubh_hi_ads" },
-    hinglish: { languageCode: "hi-IN", speaker: "shubh_enhi_ads" },
+    en: { languageCode: "en-IN", speaker: "ratan" },
+    hi: { languageCode: "hi-IN", speaker: "shubh" },
+    hinglish: { languageCode: "hi-IN", speaker: "simran" },
   });
   assert.equal(buildSarvamAnnouncement(7, { language: "en" }), AUDITIONED_CALLOUTS.en[7]);
   assert.equal(buildSarvamAnnouncement(7, { language: "hi" }), AUDITIONED_CALLOUTS.hi[7]);
@@ -96,12 +96,13 @@ test("provider configuration is fixed, valid WAV is cached, and cache hits avoid
   assert.equal(seen.length, 1);
   assert.equal(seen[0].url, "https://api.sarvam.ai/text-to-speech");
   assert.equal(seen[0].headers["api-subscription-key"], "test-secret-do-not-report");
-  assert.equal(seen[0].body.model, "bulbul:v4-flash");
+  assert.equal(seen[0].body.model, "bulbul:v3");
   assert.equal(seen[0].body.language_code, "hi-IN");
-  assert.equal(seen[0].body.speaker, "shubh_hi_ads");
+  assert.equal(seen[0].body.speaker, "shubh");
   assert.equal(seen[0].body.pace, 1);
-  assert.equal(seen[0].body.pitch, 0);
-  assert.equal(seen[0].body.loudness, 1);
+  assert.equal(seen[0].body.temperature, 0.6);
+  assert.equal("pitch" in seen[0].body, false);
+  assert.equal("loudness" in seen[0].body, false);
   assert.equal(seen[0].body.enable_preprocessing, true);
   assert.deepEqual(service.stats(), { requests: 1, cacheEntries: 1, cacheBytes: sampleWav().length, inFlight: 0 });
 });
@@ -116,9 +117,9 @@ test("each language sends its audited language tag and speaker", async () => {
     await service.generate({ text: `sample-${language}`, language });
   }
   assert.deepEqual(sent.map(({ language_code, speaker }) => [language_code, speaker]), [
-    ["en-IN", "ashwin_en_sports_energetic"],
-    ["hi-IN", "shubh_hi_ads"],
-    ["hi-IN", "shubh_enhi_ads"],
+    ["en-IN", "ratan"],
+    ["hi-IN", "shubh"],
+    ["hi-IN", "simran"],
   ]);
 });
 

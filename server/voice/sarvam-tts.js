@@ -1,12 +1,12 @@
 import { buildNumberAnnouncement, CALLER_FESTIVALS, SARVAM_CALLOUTS } from "../../client/src/lib/number-callouts.js";
 import { speakWord } from "../../client/src/lib/number-words.js";
 
-export const SARVAM_MODEL = "bulbul:v4-flash";
+export const SARVAM_MODEL = "bulbul:v3";
 export { CALLER_FESTIVALS };
 export const SARVAM_VOICES = Object.freeze({
-  en: Object.freeze({ languageCode: "en-IN", speaker: "ashwin_en_sports_energetic" }),
-  hi: Object.freeze({ languageCode: "hi-IN", speaker: "shubh_hi_ads" }),
-  hinglish: Object.freeze({ languageCode: "hi-IN", speaker: "shubh_enhi_ads" }),
+  en: Object.freeze({ languageCode: "en-IN", speaker: "ratan" }),
+  hi: Object.freeze({ languageCode: "hi-IN", speaker: "shubh" }),
+  hinglish: Object.freeze({ languageCode: "hi-IN", speaker: "simran" }),
 });
 export const AUDITIONED_CALLOUTS = Object.freeze({
   en: SARVAM_CALLOUTS.en,
@@ -37,8 +37,7 @@ export function sarvamCacheKey({ text, language }) {
     speaker: selected.speaker,
     languageCode: selected.languageCode,
     pace: 1,
-    pitch: 0,
-    loudness: 1,
+    temperature: 0.6,
     enablePreprocessing: true,
     speechSampleRate: 24000,
     outputAudioCodec: "wav",
@@ -107,8 +106,7 @@ export function createSarvamTtsService({
             output_audio_codec: "wav",
             enable_preprocessing: true,
             pace: 1,
-            pitch: 0,
-            loudness: 1,
+            temperature: 0.6,
           }),
           signal: controller.signal,
         });
