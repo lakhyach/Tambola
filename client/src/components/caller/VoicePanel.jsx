@@ -241,9 +241,9 @@ const VoicePanel = ({ sound, voice, onChange, onRetry, language = "en" }) => {
             {previewing ? (language === "hi" ? "नमूना चल रहा है…" : "Playing sample…") : (language === "hi" ? "आवाज़ सुनें" : "Preview voice")}
           </Button>
         </div>
-        {sound.voiceSupport?.provider ? (
+        {sound.voiceSupport?.provider && sound.voiceSupport?.providerLabel ? (
           <p className="oh-caller-note" role="status" style={{ marginTop: 6 }}>
-            Sarvam Bulbul v4 Flash · {lang === "en" ? "ashwin_en_sports_energetic" : lang === "hi" ? "shubh_hi_ads" : "shubh_enhi_ads"}
+            {`Server voice: ${sound.voiceSupport.providerLabel}`}
           </p>
         ) : null}
         {sound.voiceSupport?.degraded ? (

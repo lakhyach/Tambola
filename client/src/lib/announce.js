@@ -52,7 +52,7 @@ let settings = { speech: true, chime: false, callouts: true, personality: "playf
 let audioCtx = null;
 let cachedVoices = [];
 const voiceListeners = new Set();
-let sarvamStatus = { configured: false, languages: [] };
+let sarvamStatus = { configured: false, languages: [], model: null, voices: null };
 let sarvamDegraded = false;
 let sarvamStatusLoaded = typeof window === "undefined";
 let resolveSarvamStatus;
@@ -73,7 +73,12 @@ if (typeof window !== "undefined") {
     .then((response) => response.ok ? response.json() : null)
     .then((result) => {
       if (result?.ok) {
-        sarvamStatus = { configured: Boolean(result.configured), languages: Array.isArray(result.languages) ? result.languages : [] };
+        sarvamStatus = {
+          configured: Boolean(result.configured),
+          languages: Array.isArray(result.languages) ? result.languages : [],
+          model: typeof result.model === "string" ? result.model : null,
+          voices: result.voices && typeof result.voices === "object" ? result.voices : null,
+        };
       }
       sarvamStatusLoaded = true;
       resolveSarvamStatus();
@@ -493,6 +498,19 @@ export function getAnnounceSettings() {
 }
 
 /**
+ * The voice the server will actually use for this language, straight from the
+ * provider status. The panel used to print a hard-coded model and speaker name,
+ * which quietly went stale when the server moved to another voice - a host was
+ * told one thing and heard another. Nothing is named here that the server did
+ * not report.
+ */
+export function providerVoiceLabel(status = sarvamStatus, lang = settings.speechLang) {
+  const speaker = status?.voices?.[lang]?.speaker;
+  if (!status?.model && !speaker) return null;
+  return [status.model, speaker].filter(Boolean).join(" · ");
+}
+
+/**
  * What this browser can actually do for a language, so the console can say
  * "no Hindi voice here" instead of silently reading English. A missing chosen
  * voice never falls back across language families.
@@ -507,6 +525,7 @@ export function voiceSupport(lang = settings.speechLang) {
     engine: available().speech,
     voices: voices.length,
     provider,
+    providerLabel: provider ? providerVoiceLabel(sarvamStatus, lang) : null,
     degraded: sarvamStatus.configured && sarvamDegraded,
     supported: provider || voices.length > 0,
     lang,

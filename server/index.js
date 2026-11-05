@@ -47,7 +47,7 @@ import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createRoomRegistry } from "./net/registry.js";
 import { registerGameHandlers } from "./net/socket.js";
-import { createSarvamTtsService } from "./voice/sarvam-tts.js";
+import { createSarvamTtsService, SARVAM_MODEL, SARVAM_VOICE_CATALOG } from "./voice/sarvam-tts.js";
 import { DEFAULT_CONFIG, GameState } from "./game/engine.js";
 import { createGameController } from "./persist/controller.js";
 import { createCallScheduler } from "./persist/scheduler.js";
@@ -613,7 +613,16 @@ export async function createApp(options = {}) {
   }
   app.get("/api/voice/status", (_req, res) => {
     const status = sarvamTts.status();
-    res.set("Cache-Control", "no-store").json({ ok: true, configured: status.configured, languages: status.languages });
+    // The model and speaker names come from the module contract, not the
+    // instance, so the label the host sees is the voice that will really speak
+    // even when a different service object has been injected.
+    res.set("Cache-Control", "no-store").json({
+      ok: true,
+      configured: status.configured,
+      languages: status.languages,
+      model: status.model || SARVAM_MODEL,
+      voices: status.voices || SARVAM_VOICE_CATALOG,
+    });
   });
   registerGameHandlers(io, { rooms: registry, controller, log, limits: options.limits, db: persistence.db, moderatorAuth: moderatorService?.auth || null, sarvamTts });
 

@@ -8,6 +8,11 @@ export const SARVAM_VOICES = Object.freeze({
   hi: Object.freeze({ languageCode: "hi-IN", speaker: "shubh" }),
   hinglish: Object.freeze({ languageCode: "hi-IN", speaker: "simran" }),
 });
+// What the status endpoint is allowed to publish: the public Sarvam voice names
+// per language, and nothing that could identify an account.
+export const SARVAM_VOICE_CATALOG = Object.freeze(Object.fromEntries(
+  Object.entries(SARVAM_VOICES).map(([id, voice]) => [id, Object.freeze({ speaker: voice.speaker, languageCode: voice.languageCode })]),
+));
 export const AUDITIONED_CALLOUTS = Object.freeze({
   en: SARVAM_CALLOUTS.en,
   hi: SARVAM_CALLOUTS.hindi,
@@ -142,7 +147,16 @@ export function createSarvamTtsService({
 
   return {
     generate,
-    status: () => ({ configured: Boolean(apiKey), languages: Object.keys(SARVAM_VOICES) }),
+    // The client must be able to tell the host which voice is actually going to
+    // speak, so the model and speaker travel with the status instead of being
+    // guessed in the UI. Speaker ids and language codes are public Sarvam names;
+    // the api key never appears here.
+    status: () => ({
+      configured: Boolean(apiKey),
+      languages: Object.keys(SARVAM_VOICES),
+      model: SARVAM_MODEL,
+      voices: SARVAM_VOICE_CATALOG,
+    }),
     stats: () => ({ requests, cacheEntries: cache.size, cacheBytes, inFlight: inFlight.size }),
   };
 }

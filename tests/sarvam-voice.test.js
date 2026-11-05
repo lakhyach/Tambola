@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { io as connectClient } from "socket.io-client";
 import { createApp } from "../server/index.js";
 import {
@@ -52,6 +53,30 @@ test("reviewed callout text and configured Bulbul v3 speakers match the voice co
   assert.equal(buildSarvamAnnouncement(46, { language: "en" }), "Forty-six entered without a plot twist. The room has requested a refund.");
   assert.equal(buildSarvamAnnouncement(46, { language: "hinglish" }), "Chhiyalis ke baad kambal ne officially ghar ka lease le liya.");
   assert.equal(buildSarvamAnnouncement(46, { language: "hi" }), "46");
+});
+
+test("the panel names the voice the server will really use instead of a hard-coded label", async () => {
+  const service = createSarvamTtsService({ apiKey: "key-for-shape", fetchImpl: async () => responseWithAudio() });
+  const status = service.status();
+  assert.equal(status.model, SARVAM_MODEL, "status reports the model that is actually called");
+  assert.deepEqual(status.voices, {
+    en: { speaker: "ratan", languageCode: "en-IN" },
+    hi: { speaker: "shubh", languageCode: "hi-IN" },
+    hinglish: { speaker: "simran", languageCode: "hi-IN" },
+  });
+  assert.equal(JSON.stringify(status).includes("key-for-shape"), false, "status never echoes the key");
+
+  const { providerVoiceLabel } = await import("../client/src/lib/announce.js");
+  assert.equal(providerVoiceLabel(status, "hi"), "bulbul:v3 · shubh");
+  assert.equal(providerVoiceLabel(status, "hinglish"), "bulbul:v3 · simran");
+  assert.equal(providerVoiceLabel({ model: null, voices: null }, "hi"), null, "nothing is claimed when the server reports nothing");
+  assert.equal(providerVoiceLabel({ model: SARVAM_MODEL, voices: {} }, "fr"), SARVAM_MODEL, "an unknown language still names the model it will use");
+
+  const panel = readFileSync(new URL("../client/src/components/caller/VoicePanel.jsx", import.meta.url), "utf8");
+  for (const stale of ["Bulbul v4", "ashwin_en_sports_energetic", "shubh_hi_ads", "shubh_enhi_ads"]) {
+    assert.equal(panel.includes(stale), false, `the panel must not hard-code ${stale}, which goes stale silently`);
+  }
+  assert.match(panel, /providerLabel/, "the panel renders the label the server reported");
 });
 
 test("cache key includes language, fixed model, speaker, parameters, and exact text", () => {
@@ -200,7 +225,17 @@ test("voice audio socket requires a room and only synthesizes an exact official 
   });
   const statusResponse = await fetch(`${url}/api/voice/status`);
   const status = await statusResponse.json();
-  assert.deepEqual(status, { ok: true, configured: true, languages: ["en", "hi", "hinglish"] });
+  assert.deepEqual(status, {
+    ok: true,
+    configured: true,
+    languages: ["en", "hi", "hinglish"],
+    model: SARVAM_MODEL,
+    voices: {
+      en: { speaker: "ratan", languageCode: "en-IN" },
+      hi: { speaker: "shubh", languageCode: "hi-IN" },
+      hinglish: { speaker: "simran", languageCode: "hi-IN" },
+    },
+  });
   assert.equal(JSON.stringify(status).includes("test-secret-do-not-report"), false);
   const host = await connect();
   const outsider = await connect();
