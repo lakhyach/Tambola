@@ -126,7 +126,7 @@ async function buildPersistence(options, log) {
   }
 
   const { createPool } = await import("./db/pool.js");
-  const { migrate } = await import("./db/migrate.js");
+  const { migrate, verifyMigrationStatus } = await import("./db/migrate.js");
   const { createStore } = await import("./persist/store.js");
   const { createSessionStore } = await import("./persist/sessions.js");
 
@@ -142,7 +142,11 @@ async function buildPersistence(options, log) {
     connectionTimeoutMillis: positiveInt(process.env.DB_POOL_ACQUIRE_TIMEOUT_MS) || 5000,
     log: (...args) => log("db", ...args),
   });
-  await migrate({ db, log: (...args) => log("migrate", ...args) });
+  if (process.env.AUTO_MIGRATE === "1" && process.env.NODE_ENV !== "production") {
+    await migrate({ db, log: (...args) => log("migrate", ...args) });
+  } else {
+    await verifyMigrationStatus({ db });
+  }
   const lease = await db.acquireInstanceLease({ holder: options.instanceId });
   const store = createStore({ db, log });
   const sessions = createSessionStore({

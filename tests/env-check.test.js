@@ -31,6 +31,12 @@ test("a complete production environment passes with no errors", () => {
   assert.equal(result.errors, 0);
 });
 
+test("production refuses automatic schema migrations", () => {
+  const result = validateEnv({ ...GOOD, AUTO_MIGRATE: "1" });
+  assert.equal(result.ok, false);
+  assert.ok(ids(result, "error").includes("AUTO_MIGRATE"));
+});
+
 test("the Ninety Club MFA issuer default is accepted while the legacy brand is flagged", () => {
   const defaultIssuer = validateEnv({ ...GOOD, MFA_ISSUER: "" });
   assert.equal(ids(defaultIssuer, "warn").includes("MFA_ISSUER"), false);

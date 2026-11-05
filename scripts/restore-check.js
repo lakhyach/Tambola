@@ -45,6 +45,7 @@ import pg from "pg";
 import {
   parseConnection,
   connectionArgs,
+  connectionEnv,
   connectionToDatabase,
   runPgTool,
   collectSnapshot,
@@ -130,7 +131,7 @@ async function main() {
   }
 
   const scratchUrl = connectionToDatabase(url, scratch);
-  const env = source.password ? { PGPASSWORD: source.password } : {};
+  const env = connectionEnv(source);
 
   let restoreFailures = initialFailures;
   let issues = [];

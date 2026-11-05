@@ -13,7 +13,7 @@ import pg from "pg";
 import { createPool } from "../server/db/pool.js";
 import { migrate } from "../server/db/migrate.js";
 import { hashPassword } from "../server/admin/password.js";
-import { parseConnection, connectionArgs, connectionToDatabase, runPgTool, assertIdentifier } from "./pg-cli.js";
+import { parseConnection, connectionArgs, connectionEnv, connectionToDatabase, runPgTool, assertIdentifier } from "./pg-cli.js";
 
 const { Pool } = pg;
 const url = process.env.DATABASE_URL;
@@ -77,14 +77,14 @@ try {
            ('drill.suspended','super_admin','regular','moderator.suspend.synthetic','success','{"state":"suspended"}')`);
 
   const dumpArgs = [...connectionArgs(source), "-d", source.database, "--format=custom", "--no-owner", "--no-privileges", "--schema", schema];
-  const dump = await runPgTool({ tool: "pg_dump", args: dumpArgs, env: source.password ? { PGPASSWORD: source.password } : {}, container, binDir, containerPort, stdoutFile: dumpPath });
+  const dump = await runPgTool({ tool: "pg_dump", args: dumpArgs, env: connectionEnv(source), container, binDir, containerPort, stdoutFile: dumpPath });
   if (dump.code !== 0) throw new Error(`pg_dump failed (${dump.code}): ${dump.stderr.slice(0, 400)}`);
 
   admin = new Pool({ connectionString: adminUrl, max: 1, connectionTimeoutMillis: 8000 });
   await admin.query(`CREATE DATABASE ${JSON.stringify(scratch)}`);
   createdScratch = true;
   const restoreArgs = [...connectionArgs(source), "-d", scratch, "--no-owner", "--no-privileges", "--exit-on-error"];
-  const restore = await runPgTool({ tool: "pg_restore", args: restoreArgs, env: source.password ? { PGPASSWORD: source.password } : {}, container, binDir, containerPort, stdinFile: dumpPath });
+  const restore = await runPgTool({ tool: "pg_restore", args: restoreArgs, env: connectionEnv(source), container, binDir, containerPort, stdinFile: dumpPath });
   if (restore.code !== 0) throw new Error(`pg_restore failed (${restore.code}): ${restore.stderr.slice(0, 500)}`);
 
   const restoredUrl = connectionToDatabase(url, scratch);

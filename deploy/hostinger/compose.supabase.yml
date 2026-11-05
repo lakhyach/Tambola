@@ -1,0 +1,68 @@
+# Single application instance backed by the existing Supabase Session Pooler.
+# Set DATABASE_URL in the host's mode-0600 .env file, including
+# sslmode=verify-full and sslrootcert=/app/deploy/supabase-root-ca.pem.
+# No local database is defined here: a missing URI is a hard Compose error.
+x-app-environment: &app-environment
+  NODE_ENV: production
+  PORT: 4000
+  DATABASE_URL: ${DATABASE_URL:?set the verified Supabase Session Pooler URI}
+  DATABASE_PRIVATE_NETWORK: "0"
+  DB_SCHEMA: public
+  DB_POOL_MAX: ${DB_POOL_MAX:-8}
+  PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN to the approved HTTPS origin}
+  TRUST_PROXY: "1"
+  TAMBOLA_COOKIE_SECURE: "1"
+  OWNER_MFA_KEY: ${OWNER_MFA_KEY:?set OWNER_MFA_KEY}
+  ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
+  SARVAM_API_KEY: ${SARVAM_API_KEY:-}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  POSTER_IMAGE_MODEL: ${POSTER_IMAGE_MODEL:-}
+  AUTO_MIGRATE: "0"
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  HTTP_REQUEST_TIMEOUT_MS: ${HTTP_REQUEST_TIMEOUT_MS:-30000}
+
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+    environment: *app-environment
+    volumes:
+      - tambola-backups:/app/backups
+    ports:
+      - "127.0.0.1:4000:4000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 45s
+      retries: 3
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt: [no-new-privileges:true]
+
+  migrate:
+    profiles: [ops]
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    restart: "no"
+    init: true
+    environment: *app-environment
+    entrypoint: ["npm", "run", "migrate"]
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt: [no-new-privileges:true]
+
+volumes:
+  tambola-backups:

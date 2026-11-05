@@ -130,6 +130,54 @@ export async function migrationStatus({ db } = {}) {
   }
 }
 
+/**
+ * Production boot gate: inspect the ledger without creating schemas/tables or
+ * applying DDL. The explicit `npm run migrate` command is the only default
+ * path that changes schema. A server must refuse traffic if its code and DB
+ * are out of sync.
+ */
+export async function verifyMigrationStatus({ db, dir } = {}) {
+  if (!db) throw new Error("verifyMigrationStatus() needs a database handle");
+  const migrations = listMigrations(dir);
+  const client = await db.pool.connect();
+  try {
+    const exists = await client.query("SELECT to_regclass($1) AS ledger", [`${db.schema || "public"}.schema_migrations`]);
+    if (!exists.rows[0]?.ledger) {
+      const error = new Error("schema_migrations is missing; run the explicit `npm run migrate` command before starting the app");
+      error.code = "MIGRATIONS_MISSING";
+      throw error;
+    }
+    const existing = await client.query("SELECT version, name, checksum FROM schema_migrations ORDER BY version");
+    const expected = new Map(migrations.map((migration) => [migration.version, migration]));
+    const recorded = new Map(existing.rows.map((row) => [row.version, row]));
+
+    for (const row of existing.rows) {
+      const migration = expected.get(row.version);
+      if (!migration) {
+        const error = new Error(`database has unknown migration ${row.version} (${row.name}); deploy matching application code`);
+        error.code = "MIGRATION_AHEAD";
+        throw error;
+      }
+      if (migration.checksum !== row.checksum || migration.name !== row.name) {
+        const error = new Error(`migration ${migration.name} differs from the database ledger (MIGRATION_DRIFT)`);
+        error.code = "MIGRATION_DRIFT";
+        throw error;
+      }
+    }
+
+    const pending = migrations.filter((migration) => !recorded.has(migration.version)).map((migration) => migration.name);
+    if (pending.length) {
+      const error = new Error(`database migrations are pending (${pending.join(", ")}); run the explicit npm run migrate command before starting the app`);
+      error.code = "MIGRATIONS_PENDING";
+      error.pending = pending;
+      throw error;
+    }
+    return { current: true, latest: migrations.at(-1)?.name || null, applied: existing.rows.length, pending: [] };
+  } finally {
+    client.release();
+  }
+}
+
 // ------------------------------------------------------------------- command
 
 const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

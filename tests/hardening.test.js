@@ -31,7 +31,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { compareSnapshots, driverAvailable, parseConnection } from "../scripts/pg-cli.js";
+import { compareSnapshots, connectionEnv, driverAvailable, parseConnection } from "../scripts/pg-cli.js";
 import { openDurableSchema } from "./pattern-harness.js";
 
 import { createApp } from "../server/index.js";
@@ -1024,6 +1024,15 @@ describe("backup snapshot comparison (pure)", () => {
     // the parsed object legitimately carries the password (it must, to auth),
     // but redact() is what callers print, and it never leaks it.
     assert.match(c.password, /s3cr3t/);
+  });
+
+  test("external backup tools require verified TLS and receive CA settings through environment", () => {
+    const remote = parseConnection("postgres://admin:s3cr3t@db.example:5432/tambola?sslmode=verify-full&sslrootcert=deploy%2Froot.pem");
+    const env = connectionEnv(remote);
+    assert.equal(env.PGSSLMODE, "verify-full");
+    assert.equal(path.basename(env.PGSSLROOTCERT), "root.pem");
+    assert.equal(env.PGPASSWORD, "s3cr3t");
+    assert.throws(() => connectionEnv(parseConnection("postgres://admin:p@db.example/tambola")), /verify-full/);
   });
 
   test("compareSnapshots reports a faithful restore as clean", () => {

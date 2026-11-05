@@ -48,7 +48,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 4000
-      # Migrations 001/002/003 apply automatically on boot.
+      # Startup verifies the ledger; apply migrations explicitly before launch.
+      AUTO_MIGRATE: "0"
       DATABASE_URL: postgres://${POSTGRES_USER:-tambola}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-tambola}
       DB_SCHEMA: public
       # Secrets come from .env / the host secret store, never hard-coded here.

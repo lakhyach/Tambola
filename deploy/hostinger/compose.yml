@@ -49,6 +49,7 @@ services:
       DATABASE_PRIVATE_NETWORK: "1"
       DB_SCHEMA: ${DB_SCHEMA:-public}
       DB_POOL_MAX: ${DB_POOL_MAX:-8}
+      AUTO_MIGRATE: "0"
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:?set PUBLIC_ORIGIN to your HTTPS origin}
       TRUST_PROXY: "1"
       TAMBOLA_COOKIE_SECURE: "1"

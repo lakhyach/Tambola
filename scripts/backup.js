@@ -39,7 +39,7 @@ import path from "node:path";
 import os from "node:os";
 import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { parseConnection, connectionArgs, runPgTool, collectSnapshot, withExportedSnapshot } from "./pg-cli.js";
+import { parseConnection, connectionArgs, connectionEnv, runPgTool, collectSnapshot, withExportedSnapshot } from "./pg-cli.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -87,7 +87,7 @@ async function main() {
     const result = await runPgTool({
     tool: "pg_dump",
     args: [...args, "--snapshot", snapshotId],
-    env: conn.password ? { PGPASSWORD: conn.password } : {},
+    env: connectionEnv(conn),
     container,
     binDir,
     containerPort,

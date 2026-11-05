@@ -25,7 +25,7 @@ RUN npm run build
 FROM node:22-alpine AS runner
 ENV NODE_ENV=production
 WORKDIR /app
-RUN apk add --no-cache postgresql16-client
+RUN apk add --no-cache postgresql17-client
 # Only production dependencies are needed to run the server (express, socket.io,
 # pg, cors, dotenv). The test runner and Playwright are dev-only.
 COPY package.json package-lock.json ./
@@ -39,8 +39,8 @@ COPY --from=client-build /build/dist ./client/dist
 # not part of the static bundle, so keep both files in the final stage.
 COPY client/src/lib/number-callouts.js ./client/src/lib/number-callouts.js
 COPY client/src/lib/number-words.js ./client/src/lib/number-words.js
-# Migration SQL and the owner/backup CLIs live under server/ and scripts/; the
-# server applies migrations itself on boot, scripts/ is for operator tooling.
+# Migration SQL and the owner/backup CLIs live under server/ and scripts/;
+# production migration runs are explicit operator actions.
 COPY scripts/ ./scripts/
 # Pinned Supabase root/intermediate CA so DATABASE_URL can use the safest TLS
 # mode (?sslmode=verify-full&sslrootcert=/app/deploy/supabase-root-ca.pem). It is

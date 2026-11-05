@@ -110,6 +110,14 @@ export function validateEnv(env = {}, options = {}) {
     add("NODE_ENV", "ok", "production");
   }
 
+  if (env.AUTO_MIGRATE !== undefined && !["0", "1"].includes(env.AUTO_MIGRATE)) {
+    wrong("AUTO_MIGRATE", false, "must be 0 or 1");
+  } else if (strict && env.AUTO_MIGRATE === "1") {
+    wrong("AUTO_MIGRATE", false, "automatic schema changes are prohibited in production; run the explicit migration command");
+  } else {
+    add("AUTO_MIGRATE", "ok", strict ? "startup migration is disabled" : (env.AUTO_MIGRATE === "1" ? "development opt-in" : "disabled"));
+  }
+
   const rawUrl = env.DATABASE_URL;
   let dbUrl = null;
   if (rawUrl && rawUrl.trim()) {

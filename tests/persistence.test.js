@@ -20,7 +20,7 @@ import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { createPool, instanceLeaseKey } from "../server/db/pool.js";
-import { migrate, listMigrations, migrationStatus } from "../server/db/migrate.js";
+import { migrate, listMigrations, migrationStatus, verifyMigrationStatus } from "../server/db/migrate.js";
 import { createStore } from "../server/persist/store.js";
 import { createSessionStore, SESSION_CODES } from "../server/persist/sessions.js";
 import { createGameController } from "../server/persist/controller.js";
@@ -109,6 +109,21 @@ test("migrations are versioned, recorded and idempotent", { skip }, async () => 
   const again = await migrate({ db, log: () => {} });
   assert.deepEqual(again.applied, [], "nothing re-applied");
   assert.ok(again.skipped.includes(files[0].name), "001 reported skipped");
+  const gate = await verifyMigrationStatus({ db });
+  assert.equal(gate.current, true, "the read-only boot gate accepts a fully migrated schema");
+  assert.equal(gate.pending.length, 0);
+});
+
+test("the read-only production boot gate rejects migration drift", { skip }, async () => {
+  const client = await db.pool.connect();
+  try {
+    await client.query("SET search_path TO " + SCHEMA + ", public");
+    await client.query("UPDATE schema_migrations SET checksum = 'tampered' WHERE version = '001'");
+    await assert.rejects(() => verifyMigrationStatus({ db }), (error) => error.code === "MIGRATION_DRIFT");
+  } finally {
+    await client.query("UPDATE schema_migrations SET checksum = $1 WHERE version = '001'", [listMigrations()[0].checksum]).catch(() => {});
+    client.release();
+  }
 });
 
 test("migration 027 removes the historical per-player ticket-count ceiling in the isolated schema", { skip }, async () => {

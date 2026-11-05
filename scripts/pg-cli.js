@@ -40,8 +40,23 @@ export function parseConnection(url) {
     host: decodeURIComponent(u.hostname || "127.0.0.1"),
     port: Number(u.port || 5432),
     database: decodeURIComponent((u.pathname || "/").replace(/^\//, "")) || "postgres",
+    sslmode: u.searchParams.get("sslmode") || "",
+    sslrootcert: u.searchParams.get("sslrootcert") || "",
     ssl: searchSsl && searchSsl !== "disable" ? { rejectUnauthorized: searchSsl !== "no-verify" } : undefined,
   };
+}
+
+/** Pass libpq TLS settings out-of-band; never put passwords or options in argv. */
+export function connectionEnv(conn) {
+  const env = {};
+  if (conn.password) env.PGPASSWORD = conn.password;
+  const local = /^(localhost|127\.0\.0\.1|::1|\[::1\]|host\.docker\.internal|db)$/i.test(conn.host);
+  if (!local && (conn.sslmode !== "verify-full" || !conn.sslrootcert)) {
+    throw new Error("remote database backup requires sslmode=verify-full and sslrootcert");
+  }
+  if (conn.sslmode) env.PGSSLMODE = conn.sslmode;
+  if (conn.sslrootcert) env.PGSSLROOTCERT = path.resolve(conn.sslrootcert);
+  return env;
 }
 
 /** Swap the database segment of a connection string (used to reach the maintenance db). */
@@ -66,7 +81,7 @@ export async function runPgTool({ tool, args, env = {}, container = null, binDir
   if (!/^[a-z_]+$/.test(tool || "")) throw new Error("unknown tool: " + String(tool));
   const spawnEnv = { ...process.env, ...env };
   // Which env keys we forward into the container without ever printing them.
-  const forward = Object.keys(env).filter((k) => ["PGPASSWORD", "PGSSLMODE", "PGCONNECT_TIMEOUT", "PGOPTIONS"].includes(k));
+  const forward = Object.keys(env).filter((k) => ["PGPASSWORD", "PGSSLMODE", "PGSSLROOTCERT", "PGCONNECT_TIMEOUT", "PGOPTIONS"].includes(k));
 
   let cmd;
   let fullArgs;

@@ -62,16 +62,19 @@ Set these on the host / secret manager — **never** commit real values:
 | `TAMBOLA_COOKIE_SECURE` | prod | `1` so session/owner cookies are `Secure` over HTTPS |
 | `OWNER_MFA_KEY` | yes (secret) | base64 32-byte key sealing MFA secrets; cannot change once enrollments exist |
 | `OWNER_USERNAME`/`OWNER_EMAIL`/`OWNER_PASSWORD` | bootstrap only | consumed on first boot, then remove |
+| `AUTO_MIGRATE` | no | keep `0` or unset in production; apply reviewed changes with `npm run migrate` |
 | `LOG_LEVEL` / `LOG_FILE` / `LOG_MAX_BYTES` / `LOG_KEEP` | no | see `server/RUNBOOK.md` §6 |
 
 Full list with safe defaults is in `.env.example`.
 
 ## First boot: migrations, owner, data safety
 
-- Ordered SQL migrations apply **automatically** on startup and are checksummed
-  and ledgered in `schema_migrations`. Do not run them
-  by hand unless `AUTO_MIGRATE=0`. Never drop or recreate a database that has
-  data.
+- Production startup verifies migration checksums and refuses to serve if a
+  migration is missing or drifted. After taking and validating a backup, apply
+  reviewed SQL changes explicitly with `npm run migrate` while the app is
+  stopped. Development can opt into automatic migrations with
+  `AUTO_MIGRATE=1`; production validation rejects that setting. Never drop or
+  recreate a database that has data.
 - The owner account is created only if it does not exist. Verify state first with
   `node scripts/owner.js status` (needs the prod env). Do **not** reset the owner
   or MFA unless the credentials are genuinely lost; recovery is
