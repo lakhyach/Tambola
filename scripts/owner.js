@@ -26,13 +26,9 @@
  * migrate before changing owner rows. Prefer the hidden prompt over an
  * environment variable, so a password never lands in shell history.
  *
- * MFA recovery is the one command here that weakens an account on purpose. It is
- * the documented answer to "I lost the authenticator", and the barrier it leans
- * on is host access to DATABASE_URL - not a secret the dashboard can leak. It
- * destroys the sealed secret, clears the confirmation, revokes every live session
- * and every outstanding challenge, and writes an audit row. It never prints or
- * returns a secret, and it refuses to run if OWNER_MFA_KEY is unreadable, because
- * a half-completed reset would leave an account that cannot sign in at all.
+ * MFA recovery registers a short-lived authorization for a browser-generated
+ * code. It does not alter the active factor; the owner must confirm a replacement
+ * TOTP in the browser. The destructive mfa-reset command remains separate.
  */
 
 import readline from "node:readline";
@@ -43,7 +39,7 @@ import { createOwnerSessionStore } from "../server/admin/owner-sessions.js";
 import { createMfaChallengeStore } from "../server/admin/mfa-challenges.js";
 import { createAdminAudit, ADMIN_ACTIONS } from "../server/admin/audit.js";
 import { hashPassword } from "../server/admin/password.js";
-import { parseMfaKey, MFA_KEY_ENV } from "../server/admin/mfa.js";
+import { decryptSecret, parseMfaKey, MFA_KEY_ENV } from "../server/admin/mfa.js";
 import { createMfaRecoveryStore } from "../server/admin/mfa-recovery.js";
 
 const MIN_PASSWORD = 8;
@@ -59,7 +55,7 @@ function usage(code = 0) {
     "  list                   list owner usernames (never passwords)",
     "  reset   <username>     rotate a password and revoke its sessions",
     "  mfa-reset <username>   destroy a lost second factor and revoke its sessions",
-    "  mfa-recovery-issue <username>  issue a one-use, 15-minute authenticator replacement authorization",
+    "  mfa-recovery-issue <username>  register a browser-generated, one-use replacement authorization",
     "  remove  <username>     delete an owner account and its sessions",
     "",
     "Environment:",
@@ -199,16 +195,32 @@ async function main() {
         process.exitCode = 1;
         return;
       }
+      let currentSecret = decryptSecret({ envelope: (await store.getForMfa({ ownerId: account.ownerId }))?.totpSecretEnc, ownerId: account.ownerId, key: recoveryKey.key });
+      recoveryKey.key.fill(0);
+      if (!currentSecret) {
+        console.error(`${MFA_KEY_ENV} does not match the active owner factor; no authorization was issued.`);
+        process.exitCode = 1;
+        return;
+      }
+      currentSecret = "";
+      let authorizationToken = await askHidden("Browser-generated one-time recovery authorization: ");
+      if (!/^[0-9a-f]{64}$/.test(authorizationToken)) {
+        authorizationToken = "";
+        console.error("The recovery authorization must be 64 lowercase hexadecimal characters.");
+        process.exitCode = 1;
+        return;
+      }
       const answer = await ask(`This authorizes replacement of the authenticator for '${account.username}' for 15 minutes. The current factor remains active until a new one is verified. Type 'authorize mfa recovery ${account.username}': `);
       if (answer !== `authorize mfa recovery ${account.username}`) {
+        authorizationToken = "";
         console.log("aborted; no recovery authorization was issued");
         return;
       }
       const recovery = createMfaRecoveryStore({ db });
-      const issued = await recovery.issueAuthorization({ ownerId: account.ownerId, username: account.username });
-      console.log("One-time recovery authorization (valid for 15 minutes):");
-      console.log(issued.token);
-      console.log("Enter it only on the Ninety Club owner sign-in recovery screen. Do not share or save it.");
+      const issued = await recovery.issueAuthorization({ ownerId: account.ownerId, username: account.username, authorizationToken });
+      authorizationToken = "";
+      console.log(`Recovery authorization registered until ${new Date(issued.expiresAt).toISOString()}.`);
+      console.log("Return to the browser and submit the code already held there. This command did not display or store the code in plaintext.");
       return;
     }
 

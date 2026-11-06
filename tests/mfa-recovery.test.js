@@ -19,14 +19,17 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
 test("owner MFA recovery authorization is expiring, bound to owner, and one-use", async () => {
   let now = 1_000;
   const store = createMemoryMfaRecoveryStore({ now: () => now, ttlMs: 100 });
-  const issued = await store.issueAuthorization({ ownerId: "owner-a" });
-  assert.equal((await store.begin({ ownerId: "owner-b", authorization: issued.token })).ok, false);
+  const issuedToken = "a".repeat(64);
+  const issued = await store.issueAuthorization({ ownerId: "owner-a", authorizationToken: issuedToken });
+  assert.equal(Object.hasOwn(issued, "token"), false, "the authorization store never returns the bearer token");
+  assert.equal((await store.begin({ ownerId: "owner-b", authorization: issuedToken })).ok, false);
   assert.equal((await store.begin({ ownerId: "owner-a", authorization: "wrong" })).ok, false);
-  assert.equal((await store.begin({ ownerId: "owner-a", authorization: issued.token })).ok, true);
-  assert.equal((await store.begin({ ownerId: "owner-a", authorization: issued.token })).ok, false);
-  const expiring = await store.issueAuthorization({ ownerId: "owner-a" });
+  assert.equal((await store.begin({ ownerId: "owner-a", authorization: issuedToken })).ok, true);
+  assert.equal((await store.begin({ ownerId: "owner-a", authorization: issuedToken })).ok, false);
+  const expiringToken = "b".repeat(64);
+  const expiring = await store.issueAuthorization({ ownerId: "owner-a", authorizationToken: expiringToken });
   now += 101;
-  assert.equal((await store.begin({ ownerId: "owner-a", authorization: expiring.token })).ok, false);
+  assert.equal((await store.begin({ ownerId: "owner-a", authorization: expiringToken })).ok, false);
 });
 
 test("recovery QR is a genuine TOTP provisioning QR and is revealed only once", async () => {
@@ -39,8 +42,9 @@ test("recovery QR is a genuine TOTP provisioning QR and is revealed only once", 
   assert.equal(verifyCode({ secret, code: currentCode({ secret }) }).ok, true);
 
   const store = createMemoryMfaRecoveryStore();
-  const auth = await store.issueAuthorization({ ownerId: "owner-1" });
-  const flow = await store.begin({ ownerId: "owner-1", authorization: auth.token });
+  const authToken = "c".repeat(64);
+  await store.issueAuthorization({ ownerId: "owner-1", authorizationToken: authToken });
+  const flow = await store.begin({ ownerId: "owner-1", authorization: authToken });
   assert.equal((await store.setPending({ flowId: flow.flowId, secretEnc: "sealed" })).ok, true);
   assert.equal((await store.revealQr({ flowId: flow.flowId })).ok, true);
   assert.equal((await store.revealQr({ flowId: flow.flowId })).ok, false);
@@ -52,8 +56,9 @@ test("recovery codes are high entropy, hashed at rest, and consumed once", async
   assert.equal(new Set(values).size, values.length);
   assert.equal(hashes.every((value, index) => value !== values[index] && /^[0-9a-f]{64}$/.test(value)), true);
   const store = createMemoryMfaRecoveryStore();
-  const auth = await store.issueAuthorization({ ownerId: "owner-1" });
-  const flow = await store.begin({ ownerId: "owner-1", authorization: auth.token });
+  const authToken = "d".repeat(64);
+  await store.issueAuthorization({ ownerId: "owner-1", authorizationToken: authToken });
+  const flow = await store.begin({ ownerId: "owner-1", authorization: authToken });
   await store.setPending({ flowId: flow.flowId, secretEnc: "ciphertext" });
   await store.revealQr({ flowId: flow.flowId });
   const complete = await store.complete({ flowId: flow.flowId, ownerId: "owner-1", secretEnc: "ciphertext", step: 1, codes: hashes });
@@ -67,8 +72,9 @@ test("recovery codes are high entropy, hashed at rest, and consumed once", async
 
 test("a recovery flow accepts no more than five verification attempts", async () => {
   const store = createMemoryMfaRecoveryStore();
-  const authorization = await store.issueAuthorization({ ownerId: "owner-attempts" });
-  const flow = await store.begin({ ownerId: "owner-attempts", authorization: authorization.token });
+  const authorizationToken = "e".repeat(64);
+  await store.issueAuthorization({ ownerId: "owner-attempts", authorizationToken });
+  const flow = await store.begin({ ownerId: "owner-attempts", authorization: authorizationToken });
   await store.setPending({ flowId: flow.flowId, secretEnc: "encrypted-pending-secret" });
   await store.revealQr({ flowId: flow.flowId });
   for (let i = 0; i < 5; i += 1) assert.equal((await store.consumeAttempt({ flowId: flow.flowId })).ok, true);
@@ -86,6 +92,10 @@ test("durable MFA recovery is transactional on PostgreSQL", { skip: !hasDatabase
   const recovery = createMfaRecoveryStore({ db });
   const passwordHash = await hashPassword("test-only-owner-password");
   const owner = await owners.create({ username: "recovery_owner", passwordHash });
+  const rls = await db.query("SELECT relrowsecurity FROM pg_class WHERE oid=to_regclass($1)", [
+    `${db.schema}.owner_mfa_recovery_authorizations`,
+  ]);
+  assert.equal(rls.rows[0]?.relrowsecurity, true, "recovery tables enable deny-by-default row-level security");
   const oldSecret = generateSecret();
   const oldEnvelope = encryptSecret({ secret: oldSecret, ownerId: owner.ownerId, key });
   assert.equal((await owners.beginMfaEnrollment({ ownerId: owner.ownerId, secretEnc: oldEnvelope })).ok, true);
@@ -93,18 +103,21 @@ test("durable MFA recovery is transactional on PostgreSQL", { skip: !hasDatabase
   const session = await sessions.issue({ ownerId: owner.ownerId });
   const challenge = await challenges.issue({ ownerId: owner.ownerId });
 
-  const firstAuthorization = await recovery.issueAuthorization({ ownerId: owner.ownerId, username: owner.username });
+  const firstAuthorizationToken = "f".repeat(64);
+  const firstAuthorization = await recovery.issueAuthorization({ ownerId: owner.ownerId, username: owner.username, authorizationToken: firstAuthorizationToken });
   const firstHash = await db.query("SELECT token_hash FROM owner_mfa_recovery_authorizations WHERE owner_id=$1", [owner.ownerId]);
-  assert.notEqual(firstHash.rows[0].token_hash.trim(), firstAuthorization.token);
+  assert.notEqual(firstHash.rows[0].token_hash.trim(), firstAuthorizationToken);
+  assert.equal(Object.hasOwn(firstAuthorization, "token"), false, "durable authorization issue returns no bearer token");
   assert.equal((await recovery.begin({ ownerId: owner.ownerId, authorization: "bad-token", username: owner.username })).ok, false);
-  const firstFlow = await recovery.begin({ ownerId: owner.ownerId, authorization: firstAuthorization.token, username: owner.username });
+  const firstFlow = await recovery.begin({ ownerId: owner.ownerId, authorization: firstAuthorizationToken, username: owner.username });
   assert.equal(firstFlow.ok, true);
   assert.equal((await recovery.flow({ token: firstFlow.token })).ok, true);
 
-  const secondAuthorization = await recovery.issueAuthorization({ ownerId: owner.ownerId, username: owner.username });
+  const secondAuthorizationToken = "1".repeat(64);
+  const secondAuthorization = await recovery.issueAuthorization({ ownerId: owner.ownerId, username: owner.username, authorizationToken: secondAuthorizationToken });
   assert.equal((await recovery.flow({ token: firstFlow.token })).ok, false, "issuing a new authorization cancels an old flow");
-  assert.equal((await recovery.begin({ ownerId: owner.ownerId, authorization: firstAuthorization.token })).ok, false, "authorization is one-use");
-  const flow = await recovery.begin({ ownerId: owner.ownerId, authorization: secondAuthorization.token, username: owner.username });
+  assert.equal((await recovery.begin({ ownerId: owner.ownerId, authorization: firstAuthorizationToken })).ok, false, "authorization is one-use");
+  const flow = await recovery.begin({ ownerId: owner.ownerId, authorization: secondAuthorizationToken, username: owner.username });
   const newSecret = generateSecret();
   const newEnvelope = encryptSecret({ secret: newSecret, ownerId: owner.ownerId, key });
   assert.equal((await recovery.setPending({ flowId: flow.flowId, secretEnc: newEnvelope })).ok, true);

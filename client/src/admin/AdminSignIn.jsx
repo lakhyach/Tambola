@@ -135,6 +135,22 @@ export default function AdminSignIn() {
     setFailure(null);
   }
 
+  function generateRecoveryAuthorization() {
+    if (!window.crypto?.getRandomValues) {
+      setFailure(new Error("This browser cannot safely generate a recovery code. Use a current browser over HTTPS."));
+      return;
+    }
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    setRecoveryAuthorization(Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(""));
+    setFailure(null);
+  }
+
+  async function copyRecoveryAuthorization() {
+    if (!recoveryAuthorization) return;
+    await navigator.clipboard.writeText(recoveryAuthorization);
+  }
+
   async function beginRecovery(event) {
     event.preventDefault();
     if (busy) return;
@@ -213,13 +229,17 @@ export default function AdminSignIn() {
 
         {recoveryStage === "start" ? (
           <form className="adm-form" onSubmit={beginRecovery} noValidate>
-            <p>Recovery requires your current owner password and a one-time authorization issued through the secure server-side owner procedure.</p>
+            <p>Generate a one-time code here, then paste it into the interactive owner recovery command on the server. The code is not active until that command verifies your password and confirmation.</p>
             <Field label="Owner username" htmlFor="adm-recovery-username"><input id="adm-recovery-username" className="oh-field" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required disabled={busy} /></Field>
             <Field label="Current owner password" htmlFor="adm-recovery-password"><input id="adm-recovery-password" className="oh-field" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={busy} /></Field>
-            <Field label="One-time recovery authorization" htmlFor="adm-recovery-auth" hint="This authorization expires after 15 minutes and can be used once.">
-              <input id="adm-recovery-auth" className="oh-field" autoComplete="off" value={recoveryAuthorization} onChange={(e) => setRecoveryAuthorization(e.target.value)} required disabled={busy} />
+            <div className="adm-actions">
+              <Button type="button" variant="ghost" block onClick={generateRecoveryAuthorization} disabled={busy}>Generate one-time code</Button>
+              {recoveryAuthorization ? <Button type="button" variant="ghost" block onClick={copyRecoveryAuthorization} disabled={busy}>Copy code for the server terminal</Button> : null}
+            </div>
+            <Field label="One-time recovery authorization" htmlFor="adm-recovery-auth" hint="Paste this code into the interactive server command. It expires 15 minutes after registration and works once.">
+              <input id="adm-recovery-auth" className="oh-field" autoComplete="off" spellCheck="false" value={recoveryAuthorization} onChange={(e) => setRecoveryAuthorization(e.target.value)} required disabled={busy} />
             </Field>
-            <Button type="submit" variant="gold" block disabled={busy || !username || !password || recoveryAuthorization.length < 32}>{busy ? "Verifying…" : "Verify and continue"}</Button>
+            <Button type="submit" variant="gold" block disabled={busy || !username || !password || !/^[0-9a-f]{64}$/.test(recoveryAuthorization)}>{busy ? "Verifying…" : "Verify and continue"}</Button>
             <Button type="button" variant="ghost" block onClick={() => { setRecoveryStage(null); setPassword(""); setRecoveryAuthorization(""); setFailure(null); }} disabled={busy}>Back to sign in</Button>
           </form>
         ) : recoveryStage === "setup" && recoveryEnrollment ? (

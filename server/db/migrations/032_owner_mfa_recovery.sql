@@ -41,3 +41,24 @@ CREATE TABLE owner_mfa_recovery_codes (
 );
 CREATE INDEX owner_mfa_recovery_codes_live_idx
   ON owner_mfa_recovery_codes(owner_id) WHERE used_at IS NULL;
+
+-- Recovery tables contain authentication material. Keep Data API roles out and
+-- enable deny-by-default RLS as defense in depth; the app reads them only from
+-- its owning backend role, never through PostgREST.
+ALTER TABLE owner_mfa_recovery_authorizations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE owner_mfa_recovery_flows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE owner_mfa_recovery_codes ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE owner_mfa_recovery_authorizations, owner_mfa_recovery_flows, owner_mfa_recovery_codes FROM PUBLIC;
+
+DO $$
+DECLARE
+  api_role text;
+BEGIN
+  -- service_role commonly bypasses RLS in Supabase; it must not inherit access
+  -- to owner-recovery material either. The app connects directly as postgres.
+  FOREACH api_role IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = api_role) THEN
+      EXECUTE format('REVOKE ALL ON TABLE owner_mfa_recovery_authorizations, owner_mfa_recovery_flows, owner_mfa_recovery_codes FROM %I', api_role);
+    END IF;
+  END LOOP;
+END $$;

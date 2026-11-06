@@ -58,13 +58,14 @@ test("owner MFA recovery requires CSRF, password and one-use authorization, and 
   assert.equal((await stale.post("/api/admin/signin/mfa", { challengeToken: staleLogin.data.challengeToken, code: currentCode({ secret: oldSecret, now: Date.now() + 30_000 }) })).status, 200);
   const staleCookie = stale.cookies.get("tambola_owner");
 
-  const authorization = await recovery.issueAuthorization({ ownerId: (await ownerStore.getByUsername("owner")).ownerId });
+  const authorizationToken = "a".repeat(64);
+  await recovery.issueAuthorization({ ownerId: (await ownerStore.getByUsername("owner")).ownerId, authorizationToken });
   const browser = new Client(base); await browser.get("/api/admin/session");
   const badCsrf = new Client(base);
-  assert.equal((await badCsrf.post("/api/admin/mfa/recovery/authorize", { username: "owner", password: "correct-horse-battery", authorization: authorization.token })).status, 403);
-  assert.equal((await browser.post("/api/admin/mfa/recovery/authorize", { username: "owner", password: "wrong-password", authorization: authorization.token })).status, 401);
+  assert.equal((await badCsrf.post("/api/admin/mfa/recovery/authorize", { username: "owner", password: "correct-horse-battery", authorization: authorizationToken })).status, 403);
+  assert.equal((await browser.post("/api/admin/mfa/recovery/authorize", { username: "owner", password: "wrong-password", authorization: authorizationToken })).status, 401);
 
-  const started = await browser.post("/api/admin/mfa/recovery/authorize", { username: "owner", password: "correct-horse-battery", authorization: authorization.token });
+  const started = await browser.post("/api/admin/mfa/recovery/authorize", { username: "owner", password: "correct-horse-battery", authorization: authorizationToken });
   assert.equal(started.status, 200);
   const setup = await browser.post("/api/admin/mfa/recovery/enroll", {});
   assert.equal(setup.status, 200);
@@ -92,7 +93,7 @@ test("owner MFA recovery requires CSRF, password and one-use authorization, and 
   const challenge = await codeBrowser.post("/api/admin/signin", { username: "owner", password: "correct-horse-battery" });
   const recoveryCode = confirmed.data.recoveryCodes[0];
   assert.equal((await codeBrowser.post("/api/admin/signin/mfa", { challengeToken: challenge.data.challengeToken, code: recoveryCode })).status, 200);
-  assert.equal(logs.flat().some((value) => String(value).includes(oldSecret) || String(value).includes(newSecret) || String(value).includes(authorization.token) || confirmed.data.recoveryCodes.some((code) => String(value).includes(code))), false, "secrets are not logged");
+  assert.equal(logs.flat().some((value) => String(value).includes(oldSecret) || String(value).includes(newSecret) || String(value).includes(authorizationToken) || confirmed.data.recoveryCodes.some((code) => String(value).includes(code))), false, "secrets are not logged");
 
   const reused = new Client(base); await reused.get("/api/admin/session");
   const nextChallenge = await reused.post("/api/admin/signin", { username: "owner", password: "correct-horse-battery" });

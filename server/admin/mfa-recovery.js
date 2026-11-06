@@ -9,8 +9,11 @@ export function createMfaRecoveryStore({ db, now = () => Date.now(), ttlMs = 15 
   if (!db) throw new Error("createMfaRecoveryStore needs a database handle");
   return {
     backend: "database",
-    async issueAuthorization({ ownerId, username }) {
-      const value = token();
+    async issueAuthorization({ ownerId, username, authorizationToken }) {
+      if (typeof authorizationToken !== "string" || !/^[0-9a-f]{64}$/.test(authorizationToken)) {
+        throw new TypeError("MFA recovery authorization must be 32 bytes of lowercase hex");
+      }
+      const value = authorizationToken;
       const expiresAt = await db.withTransaction(async (client) => {
         await client.query("UPDATE owner_mfa_recovery_authorizations SET consumed_at=now() WHERE owner_id=$1 AND consumed_at IS NULL", [ownerId]);
         const cancelled = await client.query("DELETE FROM owner_mfa_recovery_flows WHERE owner_id=$1 RETURNING flow_id", [ownerId]);
@@ -24,7 +27,7 @@ export function createMfaRecoveryStore({ db, now = () => Date.now(), ttlMs = 15 
           VALUES($1,'owner.mfa.recovery-authorized','owner',$2,$3::jsonb)`, [`cli:${username}`, ownerId, JSON.stringify({ expiresAt: deadline })]);
         return deadline;
       });
-      return { token: value, expiresAt };
+      return { expiresAt };
     },
     async begin({ ownerId, authorization, username, ipHash }) {
       const value = token();
@@ -103,11 +106,14 @@ export function createMemoryMfaRecoveryStore({ now = () => Date.now(), ttlMs = 1
   const codes = new Map();
   return {
     backend: "memory",
-    async issueAuthorization({ ownerId }) {
+    async issueAuthorization({ ownerId, authorizationToken }) {
+      if (typeof authorizationToken !== "string" || !/^[0-9a-f]{64}$/.test(authorizationToken)) {
+        throw new TypeError("MFA recovery authorization must be 32 bytes of lowercase hex");
+      }
       for (const row of authorizations.values()) if (row.ownerId === ownerId && !row.consumed) row.consumed = true;
       for (const [key, flow] of flows) if (flow.ownerId === ownerId) flows.delete(key);
-      const value = token(); authorizations.set(hash(value), { ownerId, expiresAt: now() + ttlMs, consumed: false });
-      return { token: value, expiresAt: new Date(now() + ttlMs).toISOString() };
+      authorizations.set(hash(authorizationToken), { ownerId, expiresAt: now() + ttlMs, consumed: false });
+      return { expiresAt: new Date(now() + ttlMs).toISOString() };
     },
     async begin({ ownerId, authorization }) {
       const row = authorizations.get(hash(authorization || ""));
