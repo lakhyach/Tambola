@@ -772,15 +772,40 @@ export function createGameController({ store, sessions, registry: initialRegistr
   // ----------------------------------------------------------------- game flow
 
   async function start({ room, socketId, auth }) {
+    if (durable) {
+      const scheduled = await store.autoStartSessionForRoom?.({ roomId: room.roomId });
+      if (scheduled?.enabled) {
+        return { ok: false, code: "AUTO_START_RESERVED", error: "this session starts automatically at its scheduled time" };
+      }
+    }
+    return startCore({ room, socketId, auth, source: "host" });
+  }
+
+  /** Called only by the durable scheduled-start worker, never by a socket. */
+  async function startScheduled({ sessionId, claimToken } = {}) {
+    if (!durable || !sessionId || !claimToken) return { ok: false, code: "SCHEDULED_START_INVALID" };
+    const claim = await store.verifyScheduledStartClaim({ sessionId, claimToken });
+    if (!claim.ok) return { ok: false, code: claim.code || "SCHEDULED_START_INVALID", error: claim.error };
+    const room = registry.get(claim.roomCode);
+    if (!room) return { ok: false, code: "ROOM_NOT_LIVE", error: "the scheduled room is not available in the authoritative process" };
+    return startCore({ room, source: "scheduled", scheduledStart: claim });
+  }
+
+  async function startCore({ room, socketId, auth, source = "host", scheduledStart = null } = {}) {
     const blocked = refuseFrozen(room.roomId);
     if (blocked) return blocked;
     const hostAuth = auth || { socketId };
-    if (!durable) return room.start(hostAuth);
+    if (!durable) return source === "scheduled" ? { ok: false, code: "SCHEDULED_START_UNAVAILABLE" } : room.start(hostAuth);
 
     return runExclusive(room.roomId, async () => {
+      if (source === "scheduled") {
+        const currentClaim = await store.verifyScheduledStartClaim({ sessionId: scheduledStart.sessionId, claimToken: scheduledStart.claimToken });
+        if (!currentClaim.ok) return { ok: false, code: currentClaim.code || "SCHEDULED_START_INVALID", error: currentClaim.error };
+        if (currentClaim.roomCode !== room.roomId) return { ok: false, code: "SESSION_ROOM_INVALID" };
+      }
       const gate = registry.dispatchFor(room.roomId);
       gate.suspend();
-      const result = room.start(hostAuth);
+      const result = source === "scheduled" ? room.startScheduled() : room.start(hostAuth);
       if (!result.ok) {
         gate.discard();
         return result;
@@ -792,6 +817,14 @@ export function createGameController({ store, sessions, registry: initialRegistr
           gameNumber,
           drawSequence: room.draw,
           config: publicConfig(room.config),
+          ...(scheduledStart ? {
+            startSource: source,
+            scheduledStart: {
+            sessionId: scheduledStart.sessionId,
+            claimToken: scheduledStart.claimToken,
+            scheduledAt: scheduledStart.scheduledAt,
+            },
+          } : {}),
           tickets: [...room.players.values()].flatMap((player) =>
             player.tickets.map((t) => ({
               playerId: player.id, ticketNo: t.no, grid: t.grid,
@@ -1266,6 +1299,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
     closeRoom,
     selectTickets,
     start,
+    startScheduled,
     callNext,
     handleTick,
     transition,

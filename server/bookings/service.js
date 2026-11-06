@@ -22,7 +22,9 @@ function sessionShape(row, timestamp = Date.now()) {
   const gameStatus = row.room_status === "RUNNING" ? "live"
     : row.status === "completed" ? "completed"
       : row.status === "cancelled" ? "cancelled"
-        : startsAt <= at ? "started" : "upcoming";
+        : row.auto_start_enabled && row.auto_start_state === "waiting" ? "waiting"
+          : row.auto_start_enabled && row.auto_start_state === "starting" ? "starting"
+            : startsAt <= at ? "waiting" : "upcoming";
   const bookingStatus = row.status === "paused" ? "paused"
     : row.status !== "open" ? row.status
       : startsAt <= at ? "closed"
@@ -47,6 +49,11 @@ function sessionShape(row, timestamp = Date.now()) {
     gameStatus,
     inventoryMode: row.inventory_mode || "legacy",
     inventoryState: row.inventory_state || "legacy",
+    autoStartEnabled: Boolean(row.auto_start_enabled),
+    scheduledStartStatus: row.auto_start_state || "disabled",
+    scheduledStartedAt: iso(row.auto_started_at),
+    scheduledStartAttempts: Number(row.auto_start_attempts || 0),
+    scheduledStartError: row.auto_start_error || null,
   };
 }
 
@@ -128,7 +135,8 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
 
   function publicSessionVisible(row, at = now()) {
     const time = at instanceof Date ? at.getTime() : new Date(at).getTime();
-    const scheduledOrLive = new Date(row.starts_at).getTime() > time || row.room_status === "RUNNING";
+    const waitingForAutoStart = row.auto_start_enabled && ["scheduled", "starting", "waiting"].includes(row.auto_start_state) && row.room_status === "WAITING";
+    const scheduledOrLive = new Date(row.starts_at).getTime() > time || waitingForAutoStart || row.room_status === "RUNNING";
     const roomEligible = !row.room_code
       || (row.room_status === "WAITING" && Number(row.room_game_number) === 0 && !row.room_has_games)
       || (row.room_status === "RUNNING" && row.room_has_games);
@@ -150,7 +158,9 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
        FROM game_sessions s JOIN game_instances i ON i.instance_id=s.instance_id
        LEFT JOIN rooms bound_room ON bound_room.room_code=s.room_code
        WHERE i.slug=$1 AND i.status='active' AND i.public_visible AND s.status IN ('open','paused')
-         AND (s.starts_at>now() OR (bound_room.status='RUNNING' AND EXISTS(SELECT 1 FROM games g WHERE g.room_code=s.room_code)))
+         AND (s.starts_at>now()
+           OR (s.auto_start_enabled AND s.auto_start_state IN ('scheduled','starting','waiting') AND bound_room.status='WAITING')
+           OR (bound_room.status='RUNNING' AND EXISTS(SELECT 1 FROM games g WHERE g.room_code=s.room_code)))
          AND (s.room_code IS NULL
            OR (bound_room.status='WAITING' AND bound_room.game_number=0 AND NOT EXISTS(SELECT 1 FROM games g WHERE g.room_code=s.room_code))
            OR (bound_room.status='RUNNING' AND EXISTS(SELECT 1 FROM games g WHERE g.room_code=s.room_code)))
@@ -191,7 +201,7 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
     }));
   }
 
-  async function createSession({ instanceId, actor, title, startsAt, bookingOpensAt, bookingClosesAt, capacity, holdSeconds = 600, roomCode = null, inventoryMode = "legacy", timeZone = "UTC" }) {
+  async function createSession({ instanceId, actor, title, startsAt, bookingOpensAt, bookingClosesAt, capacity, holdSeconds = 600, roomCode = null, inventoryMode = "legacy", timeZone = "UTC", autoStartEnabled = false }) {
     const starts = cleanDate(startsAt); const opens = cleanDate(bookingOpensAt); const closes = cleanDate(bookingClosesAt);
     if (!starts || !opens || !closes || !(opens < closes && closes <= starts)) return { error: "INVALID_SCHEDULE" };
     if (!Number.isInteger(capacity) || capacity < 1 || capacity > 10000) return { error: "INVALID_CAPACITY" };
@@ -201,6 +211,8 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
     if (roomCode !== null && !/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6,12}$/.test(roomCode)) return { error: "INVALID_ROOM_CODE" };
     if (typeof title !== "string" || title.trim().length < 1 || title.trim().length > 100) return { error: "INVALID_TITLE" };
     if (!["legacy", "numbered"].includes(inventoryMode)) return { error: "INVALID_INVENTORY_MODE" };
+    if (typeof autoStartEnabled !== "boolean") return { error: "INVALID_AUTO_START" };
+    if (autoStartEnabled && !roomCode) return { error: "AUTO_START_ROOM_REQUIRED" };
     const sessionId = randomUUID();
     const created = await db.withTransaction(async (client) => {
       const instance = await client.query("SELECT status FROM game_instances WHERE instance_id=$1 FOR UPDATE", [instanceId]);
@@ -214,11 +226,11 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
         if (!room.rowCount || room.rows[0].game_instance_id !== instanceId || room.rows[0].status !== "WAITING" || Number(room.rows[0].game_number) !== 0 || room.rows[0].has_games) return { error: "SESSION_ROOM_INVALID" };
       }
       await client.query(
-        `INSERT INTO game_sessions(session_id,instance_id,title,starts_at,booking_opens_at,booking_closes_at,ticket_capacity,reservation_ttl_seconds,status,created_by,updated_by,room_code,inventory_mode,inventory_state,time_zone)
-         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$9,$10,$11,$12,$13)`,
-        [sessionId, instanceId, title.trim(), starts, opens, closes, capacity, holdSeconds, actor, roomCode, inventoryMode, inventoryMode === "legacy" ? "legacy" : "not_generated", timeZone]
+        `INSERT INTO game_sessions(session_id,instance_id,title,starts_at,booking_opens_at,booking_closes_at,ticket_capacity,reservation_ttl_seconds,status,created_by,updated_by,room_code,inventory_mode,inventory_state,time_zone,auto_start_enabled,auto_start_state)
+         VALUES($1,$2,$3,$4,$5,$6,$7,$8,'draft',$9,$9,$10,$11,$12,$13,$14,$15)`,
+        [sessionId, instanceId, title.trim(), starts, opens, closes, capacity, holdSeconds, actor, roomCode, inventoryMode, inventoryMode === "legacy" ? "legacy" : "not_generated", timeZone, autoStartEnabled, autoStartEnabled ? "scheduled" : "disabled"]
       );
-      await appendAudit(client, { sessionId, action: "session.create", actorType: "super_admin", actorLabel: actor, metadata: { title: title.trim(), capacity } });
+      await appendAudit(client, { sessionId, action: "session.create", actorType: "super_admin", actorLabel: actor, metadata: { title: title.trim(), capacity, autoStartEnabled } });
       return { row: await getSessionRow(sessionId, client) };
     });
     if (created.error) return created;
@@ -242,18 +254,22 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
       const holdSeconds = patch.holdSeconds === undefined ? row.reservation_ttl_seconds : patch.holdSeconds;
       const roomCode = patch.roomCode === undefined ? row.room_code : (patch.roomCode === null || patch.roomCode === "" ? null : String(patch.roomCode).trim().toUpperCase());
       const timeZone = patch.timeZone === undefined ? (row.time_zone || "UTC") : patch.timeZone;
+      const autoStartEnabled = patch.autoStartEnabled === undefined ? Boolean(row.auto_start_enabled) : patch.autoStartEnabled;
       if (typeof title !== "string" || title.trim().length < 1 || title.trim().length > 100) return { error: "INVALID_TITLE" };
       if (!starts || !opens || !closes || !(opens < closes && closes <= starts)) return { error: "INVALID_SCHEDULE" };
       if (!Number.isInteger(capacity) || capacity < 1 || capacity > 10000) return { error: "INVALID_CAPACITY" };
       if (!Number.isInteger(holdSeconds) || holdSeconds < 60 || holdSeconds > 900) return { error: "INVALID_HOLD_DURATION" };
       if (!validTimeZone(timeZone)) return { error: "INVALID_TIME_ZONE" };
+      if (typeof autoStartEnabled !== "boolean") return { error: "INVALID_AUTO_START" };
+      if (autoStartEnabled && !roomCode) return { error: "AUTO_START_ROOM_REQUIRED" };
+      if (row.auto_started_at && (autoStartEnabled !== Boolean(row.auto_start_enabled) || starts.getTime() !== new Date(row.starts_at).getTime() || roomCode !== row.room_code || status === "cancelled")) return { error: "AUTO_START_ALREADY_STARTED" };
       if (roomCode !== null && !/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6,12}$/.test(roomCode)) return { error: "INVALID_ROOM_CODE" };
       const transitions = { draft: ["draft", "open", "paused", "cancelled"], open: ["open", "paused", "cancelled", "completed"], paused: ["paused", "open", "cancelled", "completed"], cancelled: ["cancelled"], completed: ["completed"] };
       if (!transitions[row.status]?.includes(status)) return { error: "INVALID_TRANSITION" };
       if (status === "open" && (row.instance_status !== "active" || new Date(starts) <= now() || new Date(closes) <= now())) return { error: "SESSION_NOT_OPENABLE" };
       if (status === "open" && row.inventory_mode === "numbered" && row.inventory_state !== "ready") return { error: "INVENTORY_NOT_READY" };
       if (row.inventory_state === "ready" && capacity !== Number(row.ticket_capacity)) return { error: "INVENTORY_CAPACITY_LOCKED" };
-      if (roomCode && roomCode !== row.room_code) {
+      if (roomCode && (roomCode !== row.room_code || (autoStartEnabled && !row.auto_start_enabled))) {
         const room = await client.query(
           `SELECT r.game_instance_id,r.status,r.game_number,r.config,
              EXISTS(SELECT 1 FROM games g WHERE g.room_code=r.room_code) AS has_games
@@ -275,10 +291,23 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
       // Otherwise an unobserved expired hold would be mislabeled as cancelled,
       // making its final state depend on which API happened to read it first.
       if (status === "cancelled") await expireHolds(client, sessionId);
+      const scheduleChanged = starts.getTime() !== new Date(row.starts_at).getTime() || roomCode !== row.room_code || autoStartEnabled !== Boolean(row.auto_start_enabled);
+      const reopened = row.status !== "open" && status === "open";
+      const autoStartState = !autoStartEnabled ? "disabled"
+        : status === "cancelled" ? "cancelled"
+          : status === "completed" ? "completed"
+            : scheduleChanged || reopened ? "scheduled" : row.auto_start_state;
+      const clearStartClaim = scheduleChanged || status !== row.status || status === "cancelled";
       await client.query(
         `UPDATE game_sessions SET title=$3,starts_at=$4,booking_opens_at=$5,booking_closes_at=$6,
-          ticket_capacity=$7,reservation_ttl_seconds=$8,status=$9,updated_by=$10,room_code=$11,time_zone=$12 WHERE session_id=$1 AND instance_id=$2`,
-        [sessionId, instanceId, title.trim(), starts, opens, closes, capacity, holdSeconds, status, actor, roomCode, timeZone]
+          ticket_capacity=$7,reservation_ttl_seconds=$8,status=$9,updated_by=$10,room_code=$11,time_zone=$12,
+          auto_start_enabled=$13,auto_start_state=$14,
+          auto_start_claim_token=CASE WHEN $15 THEN NULL ELSE auto_start_claim_token END,
+          auto_start_claimed_until=CASE WHEN $15 THEN NULL ELSE auto_start_claimed_until END,
+          auto_start_retry_at=CASE WHEN $15 THEN NULL ELSE auto_start_retry_at END,
+          auto_start_error=CASE WHEN $15 THEN NULL ELSE auto_start_error END
+         WHERE session_id=$1 AND instance_id=$2`,
+        [sessionId, instanceId, title.trim(), starts, opens, closes, capacity, holdSeconds, status, actor, roomCode, timeZone, autoStartEnabled, autoStartState, clearStartClaim]
       );
       if (status === "cancelled") {
         const cancelled = await client.query(
@@ -289,7 +318,7 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
       }
       const actionByStatus = { open: "session.open", paused: "session.pause", cancelled: "session.cancel", completed: "session.complete" };
       const action = status !== row.status ? (actionByStatus[status] || "session.update") : "session.update";
-      await appendAudit(client, { sessionId, action, actorType: "super_admin", actorLabel: actor, metadata: { title: title.trim(), capacity, status } });
+      await appendAudit(client, { sessionId, action, actorType: "super_admin", actorLabel: actor, metadata: { title: title.trim(), capacity, status, autoStartEnabled } });
       const fresh = await getSessionRow(sessionId, client);
       return { session: { ...sessionShape(fresh), roomCode: fresh.room_code || null, createdAt: iso(fresh.created_at), updatedAt: iso(fresh.updated_at) } };
     });

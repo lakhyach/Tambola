@@ -1161,13 +1161,26 @@ export class TambolaRoom {
   }
 
   start(auth = {}) {
-    const denied = this.assertHost(auth);
+    return this.startInternal(auth, false);
+  }
+
+  /** Server-only scheduled start; this method is never exposed by a socket. */
+  startScheduled() {
+    return this.startInternal({}, true);
+  }
+
+  startInternal(auth = {}, scheduled = false) {
+    const denied = scheduled ? null : this.assertHost(auth);
     if (denied) return denied;
     if (this.state !== GameState.WAITING) {
       return fail(ErrorCodes.INVALID_STATE, "game is " + this.state, { state: this.state });
     }
     const active = [...this.players.values()].filter((p) => p.connected);
-    if (active.length < 1) return fail(ErrorCodes.INVALID_STATE, "nobody is connected to play");
+    if (scheduled ? this.players.size < 1 : active.length < 1) {
+        return scheduled
+          ? fail("NO_PLAYERS", "the scheduled room has no joined players yet")
+          : fail(ErrorCodes.INVALID_STATE, "nobody is connected to play");
+    }
     const requestedRoomTickets = [...this.players.values()].reduce((sum, player) => sum + Math.max(1, player.ticketCount || 0), 0);
     if (requestedRoomTickets > this.roomTicketCapacity()) {
       return fail(ErrorCodes.TICKET_LIMIT, "the room ticket capacity is exceeded", { max: this.roomTicketCapacity() });

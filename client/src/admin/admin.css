@@ -486,6 +486,20 @@
   gap: 14px;
 }
 
+.adm-form .adm-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.adm-form .adm-check-row input {
+  width: 18px;
+  min-height: 18px;
+  margin: 0;
+  accent-color: var(--oh-gold);
+}
+
 .adm-form-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

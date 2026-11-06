@@ -19,6 +19,10 @@
 import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createPool, instanceLeaseKey } from "../server/db/pool.js";
 import { migrate, listMigrations, migrationStatus, verifyMigrationStatus } from "../server/db/migrate.js";
 import { createStore } from "../server/persist/store.js";
@@ -26,6 +30,8 @@ import { createSessionStore, SESSION_CODES } from "../server/persist/sessions.js
 import { createGameController } from "../server/persist/controller.js";
 import { createRoomRegistry } from "../server/net/registry.js";
 import { createCallScheduler } from "../server/persist/scheduler.js";
+import { createScheduledStartScheduler } from "../server/persist/scheduled-start-scheduler.js";
+import { createBookingService } from "../server/bookings/service.js";
 import { recoverRooms, buildHydrationSource } from "../server/persist/recovery.js";
 import { GameState, ErrorCodes, IntegrityError } from "../server/game/engine.js";
 
@@ -55,12 +61,30 @@ function freshController(registry, extraStore = store, extraSessions = sessions)
   return controller;
 }
 
-async function makeDurableRoom() {
+async function makeDurableRoom({ instanceId = "regular", overrides = {} } = {}) {
   const registry = freshRegistry();
   const controller = freshController(registry);
-  const created = await controller.createRoom({ name: "Host " + Math.random().toString(36).slice(2, 6), socketId: "s-host" });
+  const created = await controller.createRoom({ name: "Host " + Math.random().toString(36).slice(2, 6), socketId: "s-host", instanceId, overrides });
   assert.equal(created.ok, true, JSON.stringify(created));
   return { registry, controller, roomId: created.roomId, hostId: created.playerId, room: registry.get(created.roomId), session: created };
+}
+
+async function createDueAutoStartSession({ instanceId = "bumper", roomCode, timeZone = "Asia/Kolkata", due = true, autoStartEnabled = true }) {
+  const bookings = createBookingService({ db });
+  const future = (minutes) => new Date(Date.now() + minutes * 60_000).toISOString();
+  const created = await bookings.createSession({
+    instanceId, actor: "owner-test", title: "Scheduled Bumper test", startsAt: future(30),
+    bookingOpensAt: future(-10), bookingClosesAt: future(20), capacity: 12,
+    roomCode, autoStartEnabled, timeZone,
+  });
+  assert.ok(created.session, JSON.stringify(created));
+  const published = await bookings.updateSession({ instanceId, sessionId: created.session.sessionId, actor: "owner-test", patch: { status: "open" } });
+  assert.equal(published.session.status, "open");
+  // Move the schedule using database time, keeping booking_closes_at <= starts_at.
+  if (due) await db.query(`UPDATE game_sessions SET starts_at=clock_timestamp()-interval '2 seconds',
+      booking_opens_at=clock_timestamp()-interval '4 seconds',booking_closes_at=clock_timestamp()-interval '3 seconds'
+    WHERE session_id=$1`, [created.session.sessionId]);
+  return { bookings, sessionId: created.session.sessionId };
 }
 
 /** A room plus one real seated player, for the session tests (FK-safe). */
@@ -112,6 +136,52 @@ test("migrations are versioned, recorded and idempotent", { skip }, async () => 
   const gate = await verifyMigrationStatus({ db });
   assert.equal(gate.current, true, "the read-only boot gate accepts a fully migrated schema");
   assert.equal(gate.pending.length, 0);
+});
+
+test("migration 033 preserves existing host-controlled sessions and game defaults", { skip }, async () => {
+  const columns = await db.query(`SELECT column_name,column_default,is_nullable FROM information_schema.columns
+    WHERE table_schema=current_schema() AND table_name='game_sessions' AND column_name IN ('auto_start_enabled','auto_start_state')`);
+  assert.equal(columns.rows.length, 2);
+  assert.equal(columns.rows.find((r) => r.column_name === "auto_start_enabled").column_default, "false");
+  assert.equal(columns.rows.find((r) => r.column_name === "auto_start_state").column_default, "'disabled'::text");
+  assert.equal((await db.query("SELECT start_source,scheduled_for FROM games LIMIT 0")).fields.length, 2);
+});
+
+test("migration 033 applies after 032 and rolls back atomically on a failed DDL batch", { skip }, async () => {
+  const schema = "tambola_m033_" + randomBytes(4).toString("hex");
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "tambola-m033-"));
+  const pre = path.join(scratch, "pre"); const broken = path.join(scratch, "broken"); const good = path.join(scratch, "good");
+  for (const dir of [pre, broken, good]) fs.mkdirSync(dir);
+  const migrationSource = fileURLToPath(new URL("../server/db/migrations/", import.meta.url));
+  const files = fs.readdirSync(migrationSource).filter((name) => /^\d{3,}_[A-Za-z0-9_]+\.sql$/.test(name)).sort();
+  for (const name of files.filter((name) => Number(name.slice(0, 3)) <= 32)) {
+    const sql = fs.readFileSync(path.join(migrationSource, name));
+    fs.writeFileSync(path.join(pre, name), sql); fs.writeFileSync(path.join(broken, name), sql);
+    fs.writeFileSync(path.join(good, name), sql);
+  }
+  const migration033 = files.find((name) => name.startsWith("033_"));
+  const sql033 = fs.readFileSync(path.join(migrationSource, migration033), "utf8");
+  fs.writeFileSync(path.join(broken, migration033), sql033 + "\nTHIS IS INVALID SQL;\n");
+  fs.writeFileSync(path.join(good, migration033), sql033);
+  const isolated = createPool({ connectionString: process.env.DATABASE_URL, schema, log: () => {} });
+  try {
+    await migrate({ db: isolated, dir: pre, log: () => {} });
+    const before = await migrationStatus({ db: isolated });
+    assert.ok(before.some((row) => row.version === "032"));
+    assert.equal(before.some((row) => row.version === "033"), false);
+    await assert.rejects(() => migrate({ db: isolated, dir: broken, log: () => {} }));
+    assert.equal((await isolated.query("SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='game_sessions' AND column_name='auto_start_enabled'")).rowCount, 0, "DDL from failed 033 was rolled back");
+    assert.equal((await migrationStatus({ db: isolated })).some((row) => row.version === "033"), false);
+    const applied = await migrate({ db: isolated, dir: good, log: () => {} });
+    assert.match(applied.latest, /^033_scheduled_game_auto_start\.sql$/);
+    assert.equal((await isolated.query("SELECT 1 FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='game_sessions' AND column_name='auto_start_enabled'")).rowCount, 1);
+  } finally {
+    const client = await isolated.pool.connect();
+    await client.query("DROP SCHEMA IF EXISTS " + schema + " CASCADE").catch(() => {});
+    client.release();
+    await isolated.end();
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 test("the read-only production boot gate rejects migration drift", { skip }, async () => {
@@ -212,6 +282,123 @@ test("an operator room keeps its name in storage and after recovery", { skip }, 
   const room2 = registry2.get(created.roomId);
   assert.ok(room2, "the room came back");
   assert.equal(room2.config.name, "Friday Night", "and so did its name");
+});
+
+test("due Bumper session starts once from the server, persists audit times, and arms calls after transition", { skip }, async () => {
+  const made = await makeDurableRoom({ instanceId: "bumper", overrides: { autoCall: true, callIntervalMs: 8000 } });
+  const participant = await made.controller.joinRoom({ roomId: made.roomId, name: "Bumper player", socketId: "s-bumper-player" });
+  assert.equal(participant.ok, true);
+  const { sessionId } = await createDueAutoStartSession({ instanceId: "bumper", roomCode: made.roomId, timeZone: "Asia/Kolkata" });
+  const held = await db.query("SELECT auto_start_enabled,auto_start_state,starts_at,time_zone FROM game_sessions WHERE session_id=$1", [sessionId]);
+  assert.equal(held.rows[0].auto_start_enabled, true);
+  assert.equal(held.rows[0].auto_start_state, "scheduled");
+  assert.equal(held.rows[0].time_zone, "Asia/Kolkata");
+  const publicSession = await createBookingService({ db }).getPublicSession(sessionId);
+  assert.equal(publicSession.gameStatus, "waiting", "the published session remains visible during the due-to-start handoff");
+
+  let armedAfterState = null;
+  let scheduleWhenArmed;
+  const callScheduler = { arm(room) { armedAfterState = room.state; scheduleWhenArmed = store.loadSchedule({ roomId: room.roomId }); return {}; }, cancel() {} };
+  made.controller.bindScheduler(callScheduler);
+  const tokenA = "11111111-1111-4111-8111-111111111111";
+  const tokenB = "22222222-2222-4222-8222-222222222222";
+  const stores = [store, createStore({ db, log: () => {} })];
+  const claims = await Promise.all(stores.map((candidate, index) => candidate.claimDueScheduledStart({ claimToken: index ? tokenB : tokenA })));
+  assert.equal(claims.filter((claim) => claim.claimed).length, 1, "parallel workers cannot claim one session twice");
+  const claim = claims.find((candidate) => candidate.claimed);
+  assert.ok(claim);
+
+  const manual = await made.controller.start({ room: made.room, socketId: "s-host" });
+  assert.equal(manual.code, "AUTO_START_RESERVED", "the public host action cannot bypass its scheduled start");
+  const result = await made.controller.startScheduled({ sessionId, claimToken: claim.claimToken });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(made.room.state, GameState.RUNNING);
+  assert.equal(result.snapshot.state, GameState.RUNNING);
+  assert.equal(made.room.playerSnapshot(participant.playerId).state, GameState.RUNNING, "a player snapshot receives the authoritative running state");
+  assert.equal(armedAfterState, GameState.RUNNING, "auto-caller arms only after the durable room transition");
+  assert.equal((await scheduleWhenArmed).auto_call, true, "the durable call schedule exists before its local timer is armed");
+
+  const game = await db.query("SELECT status,start_source,scheduled_for,started_at FROM games WHERE room_code=$1", [made.roomId]);
+  assert.equal(game.rows.length, 1);
+  assert.equal(game.rows[0].status, "RUNNING");
+  assert.equal(game.rows[0].start_source, "scheduled");
+  assert.equal(new Date(game.rows[0].scheduled_for).toISOString(), new Date(held.rows[0].starts_at).toISOString());
+  assert.ok(new Date(game.rows[0].started_at) >= new Date(game.rows[0].scheduled_for));
+  const session = await db.query("SELECT auto_start_state,auto_started_at,auto_start_claim_token FROM game_sessions WHERE session_id=$1", [sessionId]);
+  assert.equal(session.rows[0].auto_start_state, "started");
+  assert.ok(session.rows[0].auto_started_at);
+  assert.equal(session.rows[0].auto_start_claim_token, null);
+  const cannotCancelStarted = await createBookingService({ db }).updateSession({ instanceId: "bumper", sessionId, actor: "owner-test", patch: { status: "cancelled" } });
+  assert.equal(cannotCancelStarted.error, "AUTO_START_ALREADY_STARTED");
+  const audit = await db.query("SELECT detail FROM audit_events WHERE room_code=$1 AND type='start'", [made.roomId]);
+  assert.equal(audit.rows.length, 1);
+  assert.equal(audit.rows[0].detail.source, "scheduled");
+  assert.ok(audit.rows[0].detail.scheduledAt);
+
+  const duplicate = await stores[1].claimDueScheduledStart({ claimToken: tokenB });
+  assert.equal(duplicate.claimed, false, "a started game cannot be claimed a second time");
+});
+
+test("auto-start cancellation and invalid room association are terminal and never start gameplay", { skip }, async () => {
+  const room = await makeDurableRoom({ instanceId: "bumper" });
+  const cancelled = await createDueAutoStartSession({ instanceId: "bumper", roomCode: room.roomId });
+  const bookings = createBookingService({ db });
+  const cancelledResult = await bookings.updateSession({ instanceId: "bumper", sessionId: cancelled.sessionId, actor: "owner-test", patch: { status: "cancelled" } });
+  assert.equal(cancelledResult.session.scheduledStartStatus, "cancelled");
+  const noCancelledClaim = await store.claimDueScheduledStart({ claimToken: "33333333-3333-4333-8333-333333333333" });
+  assert.equal(noCancelledClaim.claimed, false);
+  assert.equal((await room.controller.start({ room: room.room, socketId: "s-host" })).ok, true, "cancelling the automatic session restores host control of the waiting room");
+
+  const wrongRoom = await makeDurableRoom({ instanceId: "bumper" });
+  const mismatch = await createDueAutoStartSession({ instanceId: "bumper", roomCode: wrongRoom.roomId });
+  await db.query("UPDATE rooms SET game_instance_id='regular' WHERE room_code=$1", [wrongRoom.roomId]);
+  const rejected = await store.claimDueScheduledStart({ claimToken: "44444444-4444-4444-8444-444444444444" });
+  assert.equal(rejected.claimed, false);
+  assert.equal(rejected.failed, true);
+  assert.equal(rejected.errorCode, "SESSION_ROOM_INVALID");
+  const rejectedState = await db.query("SELECT auto_start_state,auto_start_error FROM game_sessions WHERE session_id=$1", [mismatch.sessionId]);
+  assert.equal(rejectedState.rows[0].auto_start_state, "failed");
+  assert.equal(rejectedState.rows[0].auto_start_error, "SESSION_ROOM_INVALID");
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM games WHERE room_code=$1", [wrongRoom.roomId])).rows[0].n, 0);
+});
+
+test("a published session with auto-start disabled keeps the host-controlled start path", { skip }, async () => {
+  const made = await makeDurableRoom({ instanceId: "bumper" });
+  const { sessionId } = await createDueAutoStartSession({ instanceId: "bumper", roomCode: made.roomId, due: false, autoStartEnabled: false });
+  const session = await db.query("SELECT auto_start_enabled,auto_start_state FROM game_sessions WHERE session_id=$1", [sessionId]);
+  assert.equal(session.rows[0].auto_start_enabled, false);
+  assert.equal(session.rows[0].auto_start_state, "disabled");
+  const result = await made.controller.start({ room: made.room, socketId: "s-host" });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  const game = await db.query("SELECT start_source FROM games WHERE room_code=$1", [made.roomId]);
+  assert.equal(game.rows[0].start_source, "host");
+});
+
+test("a due start without seats waits and can be recovered after a process restart", { skip }, async () => {
+  const made = await makeDurableRoom({ instanceId: "bumper" });
+  const { sessionId } = await createDueAutoStartSession({ instanceId: "bumper", roomCode: made.roomId, due: false });
+  const early = await store.claimDueScheduledStart({ claimToken: "55555555-5555-4555-8555-555555555555" });
+  assert.equal(early.claimed, false, "database clock prevents a future session from starting early");
+
+  await db.query(`UPDATE game_sessions SET starts_at=clock_timestamp()-interval '1 second',
+      booking_opens_at=clock_timestamp()-interval '3 seconds',booking_closes_at=clock_timestamp()-interval '2 seconds'
+    WHERE session_id=$1`, [sessionId]);
+  const interrupted = await store.claimDueScheduledStart({ claimToken: "66666666-6666-4666-8666-666666666666", leaseMs: 1000 });
+  assert.equal(interrupted.claimed, true);
+  // Simulate a process dying after it claimed the durable lease but before it
+  // changed the room. Expiry makes the event recoverable without replaying a
+  // partially committed game.
+  await db.query("UPDATE game_sessions SET auto_start_claimed_until=clock_timestamp()-interval '1 second' WHERE session_id=$1", [sessionId]);
+  const restartedRegistry = freshRegistry();
+  const recovered = await recoverRooms({ store, registry: restartedRegistry, log: () => {} });
+  assert.equal(recovered.frozen.length, 0);
+  assert.ok(restartedRegistry.get(made.roomId));
+  const retry = await store.claimDueScheduledStart({ claimToken: "77777777-7777-4777-8777-777777777777" });
+  assert.equal(retry.claimed, true);
+  const restartedController = freshController(restartedRegistry);
+  const result = await restartedController.startScheduled({ sessionId, claimToken: retry.claimToken });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(restartedRegistry.get(made.roomId).state, GameState.RUNNING);
 });
 
 test("each durable call is audited exactly once", { skip }, async () => {

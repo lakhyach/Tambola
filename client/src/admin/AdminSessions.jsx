@@ -4,18 +4,7 @@ import TambolaTicket from "../components/TambolaTicket.jsx";
 import "../booking.css";
 import { api } from "./api.js";
 import { Badge, Empty, ErrorNote, Section, StatusPill, Table } from "./ui.jsx";
-
-function localInput(date) {
-  const value = new Date(date);
-  if (Number.isNaN(value.getTime())) return "";
-  const offset = value.getTimezoneOffset() * 60000;
-  return new Date(value.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function toIso(value) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
+import { localInput, toIso, validTimeZone } from "./time-zone.js";
 
 function formatDate(value, timeZone) {
   if (!value) return "Not scheduled";
@@ -28,8 +17,13 @@ const freshForm = () => {
   start.setSeconds(0, 0);
   const close = new Date(start.getTime() - 10 * 60 * 1000);
   const open = new Date(close.getTime() - 24 * 60 * 60 * 1000);
-  return { title: "", startsAt: localInput(start), bookingOpensAt: localInput(open), bookingClosesAt: localInput(close), capacity: "100", roomCode: "", timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC" };
+  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  return { title: "", startsAt: localInput(start, timeZone), bookingOpensAt: localInput(open, timeZone), bookingClosesAt: localInput(close, timeZone), capacity: "100", roomCode: "", timeZone, autoStartEnabled: false };
 };
+const timezoneChoices = () => [
+  "UTC", "Asia/Kolkata", "Asia/Dubai", "Asia/Singapore", "Europe/London", "Europe/Paris", "America/New_York", "America/Los_Angeles",
+  Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+];
 
 export default function AdminSessions() {
   const [instances, setInstances] = useState([]);
@@ -170,21 +164,29 @@ export default function AdminSessions() {
   async function create(event) {
     event.preventDefault();
     if (!instanceId) return;
-    const startsAt = toIso(form.startsAt);
-    const bookingOpensAt = toIso(form.bookingOpensAt);
-    const bookingClosesAt = toIso(form.bookingClosesAt);
+    if (!validTimeZone(form.timeZone)) {
+      setError(new Error("Choose a valid IANA event timezone."));
+      return;
+    }
+    const startsAt = toIso(form.startsAt, form.timeZone);
+    const bookingOpensAt = toIso(form.bookingOpensAt, form.timeZone);
+    const bookingClosesAt = toIso(form.bookingClosesAt, form.timeZone);
     const capacity = Number(form.capacity);
     if (!startsAt || !bookingOpensAt || !bookingClosesAt || bookingOpensAt >= bookingClosesAt || bookingClosesAt >= startsAt) {
-      setError(new Error("Booking must open before it closes, and closing must be before the scheduled start."));
+      setError(new Error("Enter valid local times in the selected timezone. Booking must open before it closes, and closing must be before the scheduled start."));
       return;
     }
     if (!Number.isInteger(capacity) || capacity < 1 || capacity > 10000) {
       setError(new Error("Capacity must be from 1 to 10,000 tickets."));
       return;
     }
+    if (form.autoStartEnabled && !form.roomCode.trim()) {
+      setError(new Error("Choose a waiting room before enabling automatic start."));
+      return;
+    }
     setBusy(true); setError(null); setNotice("");
     try {
-      const payload = { title: form.title.trim(), startsAt, bookingOpensAt, bookingClosesAt, capacity, timeZone: form.timeZone, roomCode: form.roomCode.trim().toUpperCase() || null, ...(!editingId ? { inventoryMode: "numbered" } : {}) };
+      const payload = { title: form.title.trim(), startsAt, bookingOpensAt, bookingClosesAt, capacity, timeZone: form.timeZone, roomCode: form.roomCode.trim().toUpperCase() || null, autoStartEnabled: Boolean(form.autoStartEnabled), ...(!editingId ? { inventoryMode: "numbered" } : {}) };
       if (editingId) await api.updateSession(instanceId, editingId, payload);
       else {
         const bytes = new Uint8Array(24);
@@ -264,16 +266,27 @@ export default function AdminSessions() {
     setInventoryCapacityLocked((session.inventoryState || session.inventory_state) === "ready");
     setForm({
       title: session.title || "",
-      startsAt: localInput(session.starts_at || session.startsAt),
-      bookingOpensAt: localInput(session.booking_opens_at || session.bookingOpensAt),
-      bookingClosesAt: localInput(session.booking_closes_at || session.bookingClosesAt),
+      startsAt: localInput(session.starts_at || session.startsAt, session.timeZone || session.time_zone || "UTC"),
+      bookingOpensAt: localInput(session.booking_opens_at || session.bookingOpensAt, session.timeZone || session.time_zone || "UTC"),
+      bookingClosesAt: localInput(session.booking_closes_at || session.bookingClosesAt, session.timeZone || session.time_zone || "UTC"),
       capacity: String(session.capacity || ""),
       roomCode: session.roomCode || session.room_code || "",
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      timeZone: session.timeZone || session.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+      autoStartEnabled: Boolean(session.autoStartEnabled ?? session.auto_start_enabled),
     });
     setError(null);
     setNotice("");
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function changeTimeZone(nextZone) {
+    const values = ["startsAt", "bookingOpensAt", "bookingClosesAt"];
+    const converted = {};
+    for (const key of values) {
+      const instant = toIso(form[key], form.timeZone);
+      converted[key] = instant ? localInput(instant, nextZone) : form[key];
+    }
+    setForm({ ...form, ...converted, timeZone: nextZone });
   }
 
   function cancelEdit() {
@@ -307,17 +320,19 @@ export default function AdminSessions() {
       {!instanceId ? <Empty title="No active game instance">Activate an instance before scheduling a public session.</Empty> : <form className="adm-form" onSubmit={create}>
         <label>Session name<input required maxLength={100} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
         <label>Scheduled start<input required type="datetime-local" value={form.startsAt} onChange={(event) => setForm({ ...form, startsAt: event.target.value })} /></label>
-        <label>Event time zone<input value={form.timeZone} readOnly aria-readonly="true" /><small>Detected from this browser. Session time and poster announcements use this timezone.</small></label>
+        <label>Event time zone<select value={form.timeZone} onChange={(event) => changeTimeZone(event.target.value)}>{[...new Set([...timezoneChoices(), form.timeZone])].map((zone) => <option key={zone} value={zone}>{zone}</option>)}</select><small>The scheduled times below are interpreted in this timezone and stored as an exact instant.</small></label>
         <label>Booking opens<input required type="datetime-local" value={form.bookingOpensAt} onChange={(event) => setForm({ ...form, bookingOpensAt: event.target.value })} /></label>
         <label>Booking closes<input required type="datetime-local" value={form.bookingClosesAt} onChange={(event) => setForm({ ...form, bookingClosesAt: event.target.value })} /></label>
         <label>{editingId ? "Ticket capacity" : "Tickets to generate"}<input required type="number" min="1" max="10000" step="1" value={form.capacity} disabled={Boolean(editingId && inventoryCapacityLocked)} onChange={(event) => setForm({ ...form, capacity: event.target.value })} /><small>{inventoryCapacityLocked ? "Generated ticket quantity is fixed for this inventory." : "Free-to-play inventory; exactly this many numbered tickets will be generated and saved. Maximum 10,000."}</small></label>
-        <label>Waiting room code<input maxLength="12" autoCapitalize="characters" autoComplete="off" spellCheck="false" value={form.roomCode} onChange={(event) => setForm({ ...form, roomCode: event.target.value.toUpperCase() })} /><small>Optional. The room must be waiting and belong to the selected instance. Public pages reveal it only to a confirmed reservation code.</small></label>
+        <label>Waiting room code<input required={form.autoStartEnabled} maxLength="12" autoCapitalize="characters" autoComplete="off" spellCheck="false" value={form.roomCode} onChange={(event) => setForm({ ...form, roomCode: event.target.value.toUpperCase() })} /><small>{form.autoStartEnabled ? "Required for automatic start. The room must be waiting and belong to the selected instance; its code is revealed only to confirmed reservations." : "Optional. The room must be waiting and belong to the selected instance. Public pages reveal it only to a confirmed reservation code."}</small></label>
+        <label className="adm-check-row"><input type="checkbox" checked={Boolean(form.autoStartEnabled)} onChange={(event) => setForm({ ...form, autoStartEnabled: event.target.checked })} /> Automatically start this game at the scheduled time</label>
+        <small className="adm-sub">The server starts the linked waiting room at the scheduled time. Its timezone is shown above. Existing sessions remain host controlled unless you enable this for that session.</small>
         <div className="adm-actions"><Button type="submit" variant="gold" disabled={busy || generationBusy}>{busy ? (generationBusy ? "Generating inventory…" : "Saving…") : editingId ? "Save changes" : "Create and generate tickets"}</Button>{editingId ? <Button type="button" variant="ghost" disabled={busy} onClick={cancelEdit}>Cancel edit</Button> : null}</div>
       </form>}
     </Section>
     <Section title="Sessions" description="Availability is read from transactional reservation records, not a cached counter.">
       {loading ? <p className="adm-sub" role="status">Loading sessions…</p> : sessions.length === 0 ? <Empty title="No sessions yet">Create a draft above, then publish it when you are ready to accept reservations.</Empty> : <Table className="adm-table--booking-ops" wrapClassName="adm-table-wrap--booking-sessions">
-        <thead><tr><th>Session</th><th>Room</th><th>Schedule</th><th>Capacity</th><th>State</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Session</th><th>Room</th><th>Schedule</th><th>Capacity</th><th>Booking</th><th>Game start</th><th>Actions</th></tr></thead>
         <tbody>{sessions.map((session) => {
           const id = session.session_id || session.sessionId;
           const held = Number(session.held_ticket_count ?? session.heldTicketCount ?? 0);
@@ -327,12 +342,23 @@ export default function AdminSessions() {
           const reportedInventory = Number(session.inventoryTotal ?? session.inventory_total ?? session.generatedCount ?? session.generated_count ?? 0);
           const inventoryReady = (session.inventoryState || session.inventory_state) === "ready";
           const inventoryTotal = inventoryReady ? (reportedInventory || capacity) : reportedInventory;
+          const autoStartState = session.scheduledStartStatus || session.auto_start_state || "disabled";
+          const gameStartLabel = session.status === "cancelled" || autoStartState === "cancelled" ? "Cancelled"
+            : session.status === "completed" || autoStartState === "completed" ? "Completed"
+              : session.gameStatus === "live" || autoStartState === "started" ? "Running"
+                : autoStartState === "failed" ? `Failed${session.scheduledStartError ? ` · ${session.scheduledStartError}` : ""}`
+                  : autoStartState === "waiting" ? "Waiting for players"
+                    : autoStartState === "starting" ? "Starting"
+                      : session.status === "draft" ? "Draft"
+                        : session.gameStatus === "waiting" ? (session.autoStartEnabled ? "Waiting for start" : "Waiting for host")
+                          : session.autoStartEnabled ? "Scheduled" : "Scheduled · host controlled";
           return <tr key={id}>
             <td data-label="Session"><span className="adm-mobile-label" aria-hidden="true">Session</span><strong>{session.title}</strong><small className="adm-table-sub">{formatDate(session.starts_at || session.startsAt, session.timeZone || session.time_zone || "UTC")}</small></td>
             <td data-label="Room"><span className="adm-mobile-label" aria-hidden="true">Room</span>{session.roomCode || session.room_code || "Not assigned"}</td>
-            <td data-label="Schedule"><span className="adm-mobile-label" aria-hidden="true">Schedule</span><span>Opens {formatDate(session.booking_opens_at || session.bookingOpensAt)}</span><small className="adm-table-sub">Closes {formatDate(session.booking_closes_at || session.bookingClosesAt)}</small></td>
+            <td data-label="Schedule"><span className="adm-mobile-label" aria-hidden="true">Schedule</span><span>Starts {formatDate(session.startsAt || session.starts_at, session.timeZone || session.time_zone || "UTC")}</span><small className="adm-table-sub">Opens {formatDate(session.booking_opens_at || session.bookingOpensAt)}</small><small className="adm-table-sub">Closes {formatDate(session.booking_closes_at || session.bookingClosesAt)}</small></td>
             <td data-label="Capacity"><span className="adm-mobile-label" aria-hidden="true">Capacity</span>{numbered ? `${inventoryTotal.toLocaleString()} / ${capacity.toLocaleString()} generated` : `${Math.max(0, capacity - held - confirmed)} available`}<small className="adm-table-sub">{held} held · {confirmed} confirmed of {capacity}</small></td>
-            <td data-label="State"><span className="adm-mobile-label" aria-hidden="true">State</span><StatusPill status={session.status} /></td>
+            <td data-label="Booking"><span className="adm-mobile-label" aria-hidden="true">Booking</span><StatusPill status={session.status} /></td>
+            <td data-label="Game start"><span className="adm-mobile-label" aria-hidden="true">Game start</span>{gameStartLabel}{session.scheduledStartedAt ? <small className="adm-table-sub">Started {formatDate(session.scheduledStartedAt, session.timeZone || session.time_zone || "UTC")}</small> : null}</td>
             <td data-label="Actions"><span className="adm-mobile-label" aria-hidden="true">Actions</span><div className="adm-actions">{numbered && !inventoryReady && session.inventoryState !== "generating" && session.inventory_state !== "generating" ? <Button size="sm" variant="gold" disabled={busy || generationBusy} onClick={() => retrySessionGeneration(session)}>Generate inventory</Button> : null}{numbered ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => openInventory(session)}>Inventory</Button> : null}{!["cancelled", "completed"].includes(session.status) ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => editSession(session)}>Edit</Button> : null}{session.status === "draft" ? <Button size="sm" variant="gold" disabled={busy} onClick={() => updateStatus(session, "open")}>Publish</Button> : null}{session.status === "open" ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => updateStatus(session, "paused")}>Pause</Button> : null}{session.status === "paused" ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => updateStatus(session, "open")}>Reopen</Button> : null}{!["cancelled", "completed"].includes(session.status) ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => updateStatus(session, "cancelled")}>Cancel</Button> : <Badge tone="muted">Closed</Badge>}</div></td>
           </tr>;
         })}</tbody>

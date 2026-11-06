@@ -10,9 +10,9 @@ const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).cat
 
 function statusFor(error) {
   switch (error) {
-    case "INVALID_TITLE": case "INVALID_SCHEDULE": case "INVALID_ROOM_CODE": case "INVALID_CAPACITY": case "INVALID_HOLD_DURATION": case "INVALID_TIME_ZONE": case "INVALID_NAME": case "INVALID_TICKET_COUNT": case "INVALID_INPUT": case "INVALID_INVENTORY_MODE": case "INVALID_INVENTORY_COUNT": case "INVALID_IDEMPOTENCY_KEY": case "INVALID_TICKET_SELECTION": return 400;
+    case "INVALID_TITLE": case "INVALID_SCHEDULE": case "INVALID_ROOM_CODE": case "INVALID_CAPACITY": case "INVALID_HOLD_DURATION": case "INVALID_TIME_ZONE": case "INVALID_NAME": case "INVALID_TICKET_COUNT": case "INVALID_INPUT": case "INVALID_INVENTORY_MODE": case "INVALID_INVENTORY_COUNT": case "INVALID_IDEMPOTENCY_KEY": case "INVALID_TICKET_SELECTION": case "INVALID_AUTO_START": case "AUTO_START_ROOM_REQUIRED": return 400;
     case "INSTANCE_NOT_FOUND": case "SESSION_NOT_FOUND": case "SESSION_UNAVAILABLE": case "RESERVATION_NOT_FOUND": return 404;
-    case "INSTANCE_NOT_ACTIVE": case "SESSION_NOT_ACTIVE": case "SESSION_NOT_OPENABLE": case "SESSION_ROOM_INVALID": case "SESSION_HAS_ASSIGNED_RESERVATIONS": case "RESERVATION_TICKET_LIMIT": case "TICKET_LIMIT": case "CAPACITY_FULL": case "CAPACITY_BELOW_BOOKED": case "INVALID_TRANSITION": case "INVALID_RESERVATION_STATE": case "BOOKING_CLOSED": case "CANCELLATION_CLOSED": case "RESERVATION_ASSIGNED": case "INVENTORY_NOT_READY": case "INVENTORY_COUNT_MISMATCH": case "INVENTORY_ALREADY_GENERATED": case "INVENTORY_STATE_INVALID": case "INVENTORY_CAPACITY_LOCKED": case "LEGACY_SESSION": case "SESSION_NOT_GENERATABLE": case "IDEMPOTENCY_KEY_REUSED": case "TICKET_SELECTION_REQUIRED": case "TICKET_SELECTION_REQUIRES_INVENTORY": case "TICKET_UNAVAILABLE": case "TICKET_NOT_FOUND": case "TICKET_COUNT_MISMATCH": case "RESERVATION_ALREADY_ALLOCATED": case "RESERVATION_NOT_ACTIVE": case "NO_ALLOCATED_TICKETS": case "RESERVATION_STATE_MISMATCH": case "RESERVATION_NOT_CONFIRMED": case "RESERVATION_NOT_ASSIGNED": return 409;
+    case "INSTANCE_NOT_ACTIVE": case "SESSION_NOT_ACTIVE": case "SESSION_NOT_OPENABLE": case "SESSION_ROOM_INVALID": case "SESSION_HAS_ASSIGNED_RESERVATIONS": case "RESERVATION_TICKET_LIMIT": case "TICKET_LIMIT": case "CAPACITY_FULL": case "CAPACITY_BELOW_BOOKED": case "INVALID_TRANSITION": case "INVALID_RESERVATION_STATE": case "BOOKING_CLOSED": case "CANCELLATION_CLOSED": case "RESERVATION_ASSIGNED": case "INVENTORY_NOT_READY": case "INVENTORY_COUNT_MISMATCH": case "INVENTORY_ALREADY_GENERATED": case "INVENTORY_STATE_INVALID": case "INVENTORY_CAPACITY_LOCKED": case "LEGACY_SESSION": case "SESSION_NOT_GENERATABLE": case "IDEMPOTENCY_KEY_REUSED": case "TICKET_SELECTION_REQUIRED": case "TICKET_SELECTION_REQUIRES_INVENTORY": case "TICKET_UNAVAILABLE": case "TICKET_NOT_FOUND": case "TICKET_COUNT_MISMATCH": case "RESERVATION_ALREADY_ALLOCATED": case "RESERVATION_NOT_ACTIVE": case "NO_ALLOCATED_TICKETS": case "RESERVATION_STATE_MISMATCH": case "RESERVATION_NOT_CONFIRMED": case "RESERVATION_NOT_ASSIGNED": case "AUTO_START_ALREADY_STARTED": return 409;
     case "RESERVATION_EXPIRED": return 410;
     default: return 500;
   }
@@ -43,7 +43,7 @@ function fail(res, error) {
     INSTANCE_NOT_FOUND: "instance not found", INSTANCE_NOT_ACTIVE: "sessions can only be created for active instances", SESSION_NOT_FOUND: "session not found", SESSION_UNAVAILABLE: "session is not available for booking",
     SESSION_NOT_ACTIVE: "sessions can only be created for active instances", SESSION_NOT_OPENABLE: "session is not eligible to open for booking",
     CAPACITY_FULL: "not enough tickets remain", CAPACITY_BELOW_BOOKED: "capacity cannot be lower than the existing reservations",
-    INVALID_TRANSITION: "that session status change is not allowed", BOOKING_CLOSED: "booking is closed",
+    INVALID_TRANSITION: "that session status change is not allowed", AUTO_START_ROOM_REQUIRED: "automatic start requires a valid waiting room", INVALID_AUTO_START: "automatic start must be true or false", AUTO_START_ALREADY_STARTED: "a started session's automatic start cannot be changed", BOOKING_CLOSED: "booking is closed",
     RESERVATION_NOT_FOUND: "reservation could not be found", RESERVATION_EXPIRED: "the reservation hold has expired",
     INVALID_RESERVATION_STATE: "that reservation can no longer be changed", CANCELLATION_CLOSED: "the cancellation window has closed", RESERVATION_ASSIGNED: "an assigned reservation cannot be cancelled by an operator",
   };
@@ -234,7 +234,7 @@ export function createAdminBookingRouter({ db, ownerSessions, ownerStore, thrott
       instanceId: req.params.instanceId, actor: req.owner.username, title: body.title,
       startsAt: body.startsAt, bookingOpensAt: body.bookingOpensAt, bookingClosesAt: body.bookingClosesAt,
       capacity: body.capacity, holdSeconds: body.reservationTtlSeconds ?? 600, roomCode: body.roomCode ?? null,
-      inventoryMode: body.inventoryMode ?? "legacy", timeZone: body.timeZone ?? "UTC",
+      inventoryMode: body.inventoryMode ?? "legacy", timeZone: body.timeZone ?? "UTC", autoStartEnabled: body.autoStartEnabled ?? false,
     });
     if (result.error) return fail(res, result.error);
     res.status(201).json({ ok: true, session: result.session });
@@ -242,7 +242,7 @@ export function createAdminBookingRouter({ db, ownerSessions, ownerStore, thrott
   router.patch("/instances/:instanceId/sessions/:sessionId", requireOwner, wrap(async (req, res) => {
     if (!isUuid(req.params.sessionId)) return fail(res, "SESSION_NOT_FOUND");
     const body = req.body || {};
-    const allowed = new Set(["title", "startsAt", "bookingOpensAt", "bookingClosesAt", "capacity", "reservationTtlSeconds", "status", "roomCode", "timeZone"]);
+    const allowed = new Set(["title", "startsAt", "bookingOpensAt", "bookingClosesAt", "capacity", "reservationTtlSeconds", "status", "roomCode", "timeZone", "autoStartEnabled"]);
     if (Object.keys(body).some((key) => !allowed.has(key))) return fail(res, "INVALID_INPUT");
     const result = await service.updateSession({
       instanceId: req.params.instanceId, sessionId: req.params.sessionId, actor: req.owner.username,

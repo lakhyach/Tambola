@@ -51,6 +51,7 @@ import { createSarvamTtsService, SARVAM_MODEL, SARVAM_VOICE_CATALOG } from "./vo
 import { DEFAULT_CONFIG, GameState } from "./game/engine.js";
 import { createGameController } from "./persist/controller.js";
 import { createCallScheduler } from "./persist/scheduler.js";
+import { createScheduledStartScheduler } from "./persist/scheduled-start-scheduler.js";
 import { recoverRooms } from "./persist/recovery.js";
 import { createMemorySessions } from "./persist/memory-sessions.js";
 import { createAdmin } from "./admin/index.js";
@@ -335,6 +336,14 @@ export async function createApp(options = {}) {
       })
     : null;
   if (scheduler) controller.bindScheduler(scheduler);
+  const scheduledStartScheduler = durable
+    ? createScheduledStartScheduler({
+        store: persistence.store,
+        controller,
+        log: (...args) => log("scheduled-start", ...args),
+        canRun: () => !runtime.draining && runtime.lease.held && !runtime.lease.lost,
+      })
+    : null;
 
   /**
    * Lease heartbeat.
@@ -354,6 +363,7 @@ export async function createApp(options = {}) {
     if (runtime.lease.lost || runtime.draining) return;
     runtime.lease = { ...runtime.lease, held: false, lost: true, lastHeartbeatAt: Date.now() };
     if (scheduler) scheduler.stopAll();
+    if (scheduledStartScheduler) scheduledStartScheduler.stop();
     stopLeaseMonitor();
     logger.error("instance.lease_lost", { reason: reason || "unknown" });
     if (typeof options.onLeaseLost === "function") options.onLeaseLost(reason);
@@ -707,6 +717,7 @@ export async function createApp(options = {}) {
       server.once("error", reject);
       server.listen(port, () => {
         startLeaseMonitor();
+        if (scheduledStartScheduler) scheduledStartScheduler.start();
         startMaintenance();
         resolve(server.address().port);
       });
@@ -768,6 +779,7 @@ export async function createApp(options = {}) {
       if (themeReleaseTimer) clearInterval(themeReleaseTimer);
       themeReleaseTimer = null;
       if (scheduler) scheduler.stopAll();
+      if (scheduledStartScheduler) scheduledStartScheduler.stop();
       io.close(() => {
         server.close(async () => {
           try {
@@ -797,6 +809,7 @@ export async function createApp(options = {}) {
     sarvamTts,
     controller,
     scheduler,
+    scheduledStartScheduler,
     store: persistence.store,
     sessions: persistence.sessions,
     db: persistence.db,
