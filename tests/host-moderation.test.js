@@ -7,6 +7,7 @@ import { createLogger } from "../server/observability/log.js";
 test("only the waiting-room host can remove a seat and removal revokes its socket session", async () => {
   const app = await createApp({
     memoryOnly: true,
+    allowPublicHosting: true,
     production: false,
     origins: [],
     config: { autoCall: false },

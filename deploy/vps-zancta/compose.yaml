@@ -24,13 +24,17 @@
 # Rollback = `docker compose -p ninetyclub down`. That removes the labels from
 # Traefik's view immediately. ZANCTA never depends on anything in this file.
 #
+# Image tags are immutable build outputs, never `latest`: rc4 is the previous
+# production image. rc5 adds an explicit 404 for the removed public theme API.
+# To roll back, set the tag back to rc4 and force-recreate only this app.
+#
 # Secrets live in ./ninetyclub.env (mode 600), never in this file.
 
 name: ninetyclub
 
 services:
   app:
-    image: ninetyclub:rc1
+    image: ninetyclub:rc5
     container_name: ninetyclub-app
     restart: unless-stopped
     init: true
@@ -41,6 +45,13 @@ services:
     mem_limit: 1g
     mem_reservation: 256m
     cpus: "1"
+
+    # Keep the per-container descriptor ceiling high enough for a large
+    # WebSocket population. The host Docker service must also permit this limit.
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
 
     # ---- hardening, mirrors the audited production image assumptions ----
     read_only: true
@@ -111,7 +122,7 @@ services:
   # that changes schema, and it is always an operator decision.
   migrate:
     profiles: ["ops"]
-    image: ninetyclub:rc1
+    image: ninetyclub:rc5
     container_name: ninetyclub-migrate
     restart: "no"
     env_file:

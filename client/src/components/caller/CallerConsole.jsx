@@ -62,6 +62,7 @@ const CallerConsole = ({ view }) => {
     receivedAt,
     sound,
     busy,
+    pendingCall,
     message,
   } = view;
 
@@ -198,6 +199,7 @@ const CallerConsole = ({ view }) => {
               callIntervalMs={callIntervalMs}
               actions={actions}
               busy={busy}
+              pendingCall={pendingCall}
               onAction={view.onHostAction}
               onSetInterval={setInterval}
             />

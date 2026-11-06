@@ -71,7 +71,8 @@ server (`TICKET_LIMIT`), not by the browser.
 | `room:updated` | room | `{ players: [{ id, name, connected, isHost, points, tickets }] }` (`tickets` is how many that seat is playing — the chosen count, which is what `game:start` issues — never a grid and never the number of grids minted so far) |
 | `room:removed` | **target socket only** | `{ reason: "removed-by-host" }`; the client clears its seat credential and returns to join, and the socket leaves the room before further room broadcasts |
 | `game:state` | room | `{ roomId, state, calledCount, remaining, lastCall, autoCall, callIntervalMs, enabledPatterns }` |
-| `number:called` | room | `{ number, index, remaining }` |
+| `number:called` | room | `{ number, index, remaining, calledAt, elapsedMs }` |
+| `game:call-state` | **private seat socket** | `{ index, claimStates }` (eligibility for that seat after the same committed call; sent only to avoid a full `room:state` fetch on every number) |
 | `ticket:assigned` | **private** | `{ ticket: 3x9 grid, ticketNo, ticketCount }` (one push per owned ticket) |
 | `claim:result` | room | `{ pattern, label, won, playerId, name, points, leaderboard, awards }` |
 | `game:completed` | room | `{ reason, leaderboard, awards }` |

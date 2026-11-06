@@ -32,6 +32,24 @@ test("theme package schema rejects unsafe values and checks design contrast", { 
   } finally { await env.close(); }
 });
 
+test("public theme delivery exposes only the selected theme, never the gallery", async (t) => {
+  const app = express();
+  app.use("/api/public", createPublicThemeRouter({ service: {
+    async listStore() { throw new Error("public theme catalog must not be queried"); },
+    async getGlobalTheme() { return { themeVersionId: "selected" }; },
+  } }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const gallery = await fetch(`${origin}/api/public/themes`);
+  assert.equal(gallery.status, 404);
+  assert.equal((await gallery.json()).code, "THEME_CATALOG_DISABLED");
+  const active = await fetch(`${origin}/api/public/themes/active`);
+  assert.equal(active.status, 200);
+  assert.equal((await active.json()).theme.themeVersionId, "selected");
+});
+
 test("reviewed themes publish on an idempotent local schedule and roll back", { skip: !HAS_DB }, async () => {
   const env = await openDurableSchema({ prefix: "theme_release" });
   const service = createThemeService({ db: env.db });
@@ -122,9 +140,7 @@ test("public theme delivery resolves active instance themes while owner library 
   const origin = `http://127.0.0.1:${server.address().port}`;
   try {
     const libraryResponse = await fetch(`${origin}/api/public/themes`);
-    assert.equal(libraryResponse.status, 200);
-    const library = await libraryResponse.json();
-    assert.equal(library.themes.length, 9);
+    assert.equal(libraryResponse.status, 404, "theme library is not a public-facing catalog");
 
     const activeResponse = await fetch(`${origin}/api/public/themes/active?instance=regular`);
     assert.equal(activeResponse.status, 200);

@@ -45,6 +45,7 @@ const GameScreen = ({ role }) => {
   const [snapAt, setSnapAt] = useState(0);
   const [connected, setConnected] = useState(() => socket.connected);
   const [busy, setBusy] = useState(false);
+  const [pendingCall, setPendingCall] = useState(false);
   const [claimPending, setClaimPending] = useState(null);
   const [claimFeedback, setClaimFeedback] = useState(null);
   const [message, setMessage] = useState("");
@@ -57,13 +58,16 @@ const GameScreen = ({ role }) => {
   // nothing replays.
   const celebrated = useRef(new Set());
   const claimPendingRef = useRef(false);
+  const hostActionPendingRef = useRef(false);
   const roomIdRef = useRef("");
+  const callCursorRef = useRef(0);
   const languageRef = useRef(language);
   useEffect(() => { languageRef.current = language; }, [language]);
 
   const refresh = useCallback(async () => {
     const result = await fetchState();
     if (result.ok) {
+      callCursorRef.current = Number.isInteger(result.snapshot?.calledCount) ? result.snapshot.calledCount : 0;
       setSnap(result.snapshot);
       setSnapAt(Date.now());
     } else if (result.code === "ROOM_NOT_FOUND") {
@@ -125,6 +129,7 @@ const GameScreen = ({ role }) => {
           return;
         }
         if (resumed.snapshot) {
+          callCursorRef.current = Number.isInteger(resumed.snapshot.calledCount) ? resumed.snapshot.calledCount : 0;
           setSnap(resumed.snapshot);
           setSnapAt(Date.now());
           // A reconnect must not read the board aloud from call 1: seed the
@@ -159,14 +164,39 @@ const GameScreen = ({ role }) => {
       // would silently do nothing while the transport is down.
       on("disconnect", () => alive && setConnected(false)),
       // Announce the number from the authoritative event itself, keyed by its
-      // server call index. Feeding the queue here (and not off the snapshot's
-      // `lastCall`) means two calls landing before one state fetch completes
-      // BOTH get announced, in order — the old snapshot-diff path silently
-      // dropped the first of them.
+      // server call index. The same ordered event appends to local state, so
+      // back-to-back calls are neither dropped nor followed by a full fetch.
       on("number:called", (data) => {
         if (!alive) return;
         if (data && Number.isInteger(data.number)) announce(data.number, data.index);
-        refresh();
+        if (!Number.isInteger(data?.index) || data.index <= callCursorRef.current) return;
+        if (data.index !== callCursorRef.current + 1) {
+          // A missed or reordered event needs a full authoritative snapshot.
+          refresh();
+          return;
+        }
+        callCursorRef.current = data.index;
+        setSnapAt(Date.now());
+        setSnap((prev) => {
+          if (!prev) return prev;
+          const calledNumbers = Array.isArray(prev.calledNumbers) ? prev.calledNumbers : [];
+          if (calledNumbers.length + 1 !== data.index) return prev;
+          return {
+            ...prev,
+            calledNumbers: [...calledNumbers, data.number],
+            calledCount: data.index,
+            remaining: data.remaining,
+            lastCall: data.number,
+            ...(Number.isFinite(data.elapsedMs) ? { elapsedMs: data.elapsedMs } : {}),
+          };
+        });
+      }),
+      on("game:call-state", (data) => {
+        if (!alive || !Array.isArray(data?.claimStates)) return;
+        setSnap((prev) => {
+          if (!prev || data.index !== prev.calledCount) return prev;
+          return { ...prev, claimStates: data.claimStates };
+        });
       }),
       on("game:state", (data) => {
         if (!alive) return;
@@ -331,15 +361,27 @@ const GameScreen = ({ role }) => {
 
   const hostAction = useCallback(
     async (event, payload) => {
-      if (busy) return;
+      // Guard synchronously as well as disabling the control on the next
+      // render; two clicks/keyboard intents in one paint must still send once.
+      if (hostActionPendingRef.current) return null;
+      hostActionPendingRef.current = true;
       setBusy(true);
-      const result = await call(event, payload);
-      if (!result.ok) flash(bookingRefusalText(language, result), 2200);
-      await refresh();
-      setBusy(false);
-      return result;
+      setPendingCall(event === "game:call-next");
+      try {
+        const result = await call(event, payload);
+        if (!result.ok) flash(bookingRefusalText(language, result), 2200);
+        await refresh();
+        return result;
+      } catch (error) {
+        flash(error?.message || bookingCopy(language, "reconnectingRoom"), 2500);
+        return { ok: false, error: error?.message || "The host action could not be completed." };
+      } finally {
+        hostActionPendingRef.current = false;
+        setPendingCall(false);
+        setBusy(false);
+      }
     },
-    [busy, flash, refresh, language]
+    [flash, refresh, language]
   );
 
   const removePlayer = useCallback(async (playerId) => {
@@ -467,6 +509,7 @@ const GameScreen = ({ role }) => {
     gameNumber: snap?.gameNumber ?? null,
     connected,
     busy,
+    pendingCall,
     sound,
     message,
     onToggleSound: toggleSound,

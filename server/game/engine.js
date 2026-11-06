@@ -75,7 +75,7 @@ export const STATE_TRANSITIONS = Object.freeze({
 
 export const DEFAULT_CONFIG = Object.freeze({
   /** ms between server-scheduled calls while auto-call is on */
-  callIntervalMs: 8000,
+  callIntervalMs: 3000,
   /** the server drives the draw on a timer; the host may still call manually */
   autoCall: true,
   /** Fresh seats may be admitted; existing credentials can always resume. */
@@ -94,6 +94,8 @@ export const DEFAULT_CONFIG = Object.freeze({
    * value turns the rule off entirely. Also reachable as an admin setting.
    */
   claimWindowCalls: 0,
+  /** Server-clock allowance for a claim that arrives just after its completing call. */
+  claimGraceMs: 1500,
   /** pattern id -> boolean, overrides enabledByDefault */
   patterns: {},
   multipleWinnersPerPattern: false,
@@ -321,6 +323,7 @@ export class TambolaRoom {
     /** public history, oldest first */
     this.calledNumbers = [];
     this.calledSet = new Set();
+    this.calledAt = [];
 
     /** patternId -> winner records (length 1 unless multiple winners allowed) */
     this.awards = new Map();
@@ -389,6 +392,8 @@ export class TambolaRoom {
 
     this.draw = Array.isArray(source.draw) ? source.draw.slice() : [];
     this.calledNumbers = Array.isArray(source.calledNumbers) ? source.calledNumbers.slice() : [];
+    this.calledAt = Array.isArray(source.calledAt) ? source.calledAt.map((at) => Number.isFinite(at) ? at : Date.parse(at)).map((at) => Number.isFinite(at) ? at : null) : [];
+    while (this.calledAt.length < this.calledNumbers.length) this.calledAt.push(null);
     this.calledSet = new Set(this.calledNumbers);
     this.cursor = Number.isInteger(source.cursor) ? source.cursor : this.calledNumbers.length;
 
@@ -1199,6 +1204,7 @@ export class TambolaRoom {
     this.cursor = 0;
     this.calledNumbers = [];
     this.calledSet = new Set();
+    this.calledAt = [];
     this.awards = new Map();
     this.claimLog = [];
     for (const player of this.players.values()) {
@@ -1296,12 +1302,25 @@ export class TambolaRoom {
     this.cursor = index;
     this.calledNumbers.push(number);
     this.calledSet.add(number);
+    this.calledAt.push(Number.isFinite(calledAt) ? calledAt : (typeof calledAt === "string" ? Date.parse(calledAt) : NaN) || this.now());
     this.emit("number:called", {
       number,
       index: this.cursor,
       remaining: this.draw.length ? this.draw.length - this.cursor : null,
       calledAt,
+      elapsedMs: this.roundElapsedMs(),
     });
+    // Eligibility is private to each seat, unlike the public draw event. This
+    // lets clients update their snapshot from the committed event without
+    // issuing a full room-state request for every number.
+    for (const player of this.players.values()) {
+      if (player.socketId) {
+        this.emitTo(player.socketId, "game:call-state", {
+          index: this.cursor,
+          claimStates: this.claimStates(player.id),
+        });
+      }
+    }
     this.record({ type: "call", number, index: this.cursor, source });
 
     if (this.draw.length && this.cursor === this.draw.length) {
@@ -1362,6 +1381,7 @@ export class TambolaRoom {
     this.cursor = 0;
     this.calledNumbers = [];
     this.calledSet = new Set();
+    this.calledAt = [];
     this.awards = new Map();
     this.claimLog = [];
     // Seats that closed the tab after the final whistle were kept on the board.
@@ -1544,11 +1564,33 @@ export class TambolaRoom {
     // about which ticket won - the grids here are the server's own. The awards
     // already on the board go in too, because two of the rules (Second Full
     // House, Half Sheet) can only be judged against them or across tickets.
-    const verdict = evaluateClaimAcrossTickets(pattern, player.tickets, this.calledNumbers, this.config, {
+    let verdict = evaluateClaimAcrossTickets(pattern, player.tickets, this.calledNumbers, this.config, {
       ticketNo,
       awards: this.awardList(),
       claimantId: player.id,
     });
+    let claimGraceAccepted = false;
+    const claimGraceMs = Number.isFinite(this.config.claimGraceMs) ? Math.max(0, this.config.claimGraceMs) : 0;
+    const configuredCallWindow = Number.isInteger(this.config.claimWindowCalls) && this.config.claimWindowCalls >= 0
+      ? this.config.claimWindowCalls
+      : 0;
+    // A claim can cross the wire just after the following call even though it
+    // was submitted promptly. Allow exactly one additional call only when the
+    // server timestamp for the completing call is within the short grace.
+    if (!verdict.valid && verdict.late && claimGraceMs > 0) {
+      const graceVerdict = evaluateClaimAcrossTickets(pattern, player.tickets, this.calledNumbers, {
+        ...this.config,
+        claimWindowCalls: configuredCallWindow + 1,
+      }, { ticketNo, awards: this.awardList(), claimantId: player.id });
+      if (graceVerdict.valid) {
+        const lateBy = this.calledNumbers.length - graceVerdict.completedOnCall;
+        const completedAt = this.calledAt[graceVerdict.completedOnCall - 1];
+        if (lateBy === configuredCallWindow + 1 && Number.isFinite(completedAt) && this.now() - completedAt <= claimGraceMs) {
+          verdict = graceVerdict;
+          claimGraceAccepted = true;
+        }
+      }
+    }
     this.claimLog.push({
       at: this.now(),
       playerId: player.id,
@@ -1585,6 +1627,9 @@ export class TambolaRoom {
         ticketNos: verdict.ticketNos ?? null,
         completedOnCall: verdict.completedOnCall ?? null,
         callIndex: this.cursor,
+        claimedAt: this.now(),
+        claimGraceAccepted,
+        completedAt: this.calledAt[(verdict.completedOnCall || 0) - 1] ?? null,
       },
     });
   }
@@ -1610,7 +1655,12 @@ export class TambolaRoom {
       });
     }
     const window = this.config.claimWindowCalls;
-    if (Number.isInteger(window) && window >= 0 && Number.isInteger(prepared.completedOnCall)) {
+    const claimGraceMs = Number.isFinite(this.config.claimGraceMs) ? Math.max(0, this.config.claimGraceMs) : 0;
+    const withinTimestampGrace = prepared.claimGraceAccepted === true
+      && Number.isFinite(prepared.claimedAt)
+      && Number.isFinite(prepared.completedAt)
+      && prepared.claimedAt - prepared.completedAt <= claimGraceMs;
+    if (!withinTimestampGrace && Number.isInteger(window) && window >= 0 && Number.isInteger(prepared.completedOnCall)) {
       const lateBy = this.calledNumbers.length - prepared.completedOnCall;
       if (lateBy > window) {
         return fail(ErrorCodes.CLAIM_TOO_LATE, "invalid claim: the next number was called before the award landed", {

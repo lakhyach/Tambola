@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate, Outlet, useSearchParams } from "react-router-dom";
-import { call, clearSession, loadOwnSession, loadPendingSession, saveSession, socket } from "./net.js";
+import { Link, useLocation, useNavigate, Outlet, useSearchParams } from "react-router-dom";
+import { call, clearPendingSession, clearSession, isSeatGone, loadOwnSession, loadPendingSession, saveSession, socket } from "./net.js";
 import { offeredSeatLabel, planJoinEntry } from "./lib/joinSeat.js";
 import Header from "./Header";
 import Panel from "./components/Panel.jsx";
@@ -17,6 +17,10 @@ const Player = () => {
   const t = (key, variables) => bookingCopy(language, key, variables);
   const searchTerm = searchParams.get("id");
   const instanceSlug = searchParams.get("instance");
+  const roomParam = searchParams.get("room") || "";
+  const resumeRequested = searchParams.get("resume") === "1";
+  const pendingSeat = loadPendingSession();
+  const resumeHref = `/player?resume=1${pendingSeat.instanceSlug ? `&instance=${encodeURIComponent(pendingSeat.instanceSlug)}` : ""}`;
 
   const [name, setName] = useState("");
   const [instanceName, setInstanceName] = useState("");
@@ -46,6 +50,9 @@ const Player = () => {
     const plan = planJoinEntry({
       pathname: location.pathname,
       searchTerm,
+      roomCode: roomParam,
+      instanceSlug,
+      resumeRequested,
       own: loadOwnSession(),
       pending: loadPendingSession(),
     });
@@ -55,8 +62,26 @@ const Player = () => {
     // those screens re-claim their seat themselves — so the plan ignores them,
     // otherwise a seated player would be bounced out of the game they are in.
     if (plan.action === "resume") navigate(`/player/room`);
-    else if (plan.action === "offer") setOffer(plan.seat);
-  }, [navigate, searchTerm, location.pathname]);
+    else if (plan.action === "offer") {
+      let active = true;
+      setOffer(null);
+      call("session:check", {
+        roomId: plan.seat.roomId,
+        sessionToken: plan.seat.sessionToken,
+        ...(plan.seat.instanceSlug ? { instanceSlug: plan.seat.instanceSlug } : {}),
+      }).then((checked) => {
+        if (!active) return;
+        if (!checked.ok || (instanceSlug && checked.instanceSlug !== instanceSlug)) {
+          if (isSeatGone(checked.code) || checked.code === "ROOM_CLOSED" || checked.code === "NOT_PLAYER") clearPendingSession();
+          setOffer(null);
+          return;
+        }
+        setOffer({ ...plan.seat, instanceSlug: checked.instanceSlug || plan.seat.instanceSlug || null });
+      });
+      return () => { active = false; };
+    }
+    return undefined;
+  }, [navigate, searchTerm, roomParam, instanceSlug, resumeRequested, location.pathname]);
 
   const reclaimSeat = () => {
     if (!offer) return;
@@ -68,8 +93,10 @@ const Player = () => {
   };
 
   const declineSeat = () => {
+    clearPendingSession();
     setOffer(null);
     setError("");
+    navigate("/player", { replace: true });
   };
 
   const handleJoinClick = async (e) => {
@@ -112,6 +139,7 @@ const Player = () => {
       name: joined.name,
       playerId: joined.playerId,
       sessionToken: joined.sessionToken,
+      instanceSlug: joined.instanceSlug || instanceSlug || null,
     });
     navigate(`/player/room`);
   };
@@ -123,6 +151,7 @@ const Player = () => {
       <Header />
       <main id="main-content" lang={language === "hi" ? "hi" : "en"} tabIndex="-1" className="player-entry-main flex-1 flex items-center justify-center" style={{ padding: 20 }}>
         <Panel className="player-entry-panel p-6 sm:p-8" style={{ width: "100%", maxWidth: 460 }}>
+          <Link className="public-back" to={instanceSlug ? `/games/${encodeURIComponent(instanceSlug)}` : "/games"}>← Back to game hall</Link>
           <div className="player-entry-art" aria-hidden="true"><span className="player-entry-art__ball">90</span><span className="player-entry-art__label">YOUR NEXT GREAT GAME</span><span className="player-entry-art__spark player-entry-art__spark--one" /><span className="player-entry-art__spark player-entry-art__spark--two" /></div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
             <h1 className="oh-display" style={{ fontSize: 30, margin: 0 }}>
@@ -196,6 +225,7 @@ const Player = () => {
               <label className="oh-eyebrow" htmlFor="booking-token" style={{ display: "block", margin: "12px 0 6px" }}>{t("privateBookingCode")}</label>
               <input id="booking-token" className="oh-field" type="password" value={bookingToken} maxLength={128} autoComplete="off" onChange={(event) => setBookingToken(event.target.value)} />
             </details>
+            {!resumeRequested ? <p className="player-resume-link"><Link to={resumeHref}>Returning player? Check for an active seat saved on this browser.</Link></p> : null}
             <Button type="submit" variant="gold" block className="mt-4" disabled={busy}>
               {busy ? t("joiningRoom") : t("joinRoom")}
             </Button>

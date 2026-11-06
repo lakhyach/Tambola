@@ -55,6 +55,7 @@ before(async () => {
   // Deliberately NO `log` / `logger` option: this is the production wiring.
   instance = await createApp({
     memoryOnly: true,
+    allowPublicHosting: true,
     origins: [],
     config: { autoCall: false, chatIntervalMs: 0, disconnectGraceMs: 500, callIntervalMs: 60000 },
   });

@@ -280,10 +280,20 @@ test("the join page resumes a seat this tab already holds", () => {
   assert.equal(plan.seat.sessionToken, "tok-ravi");
 });
 
-test("the join page asks instead of taking a remembered seat — the bug found in the browser", () => {
+test("a new-player join page never offers an unrelated device-wide remembered seat", () => {
   const plan = planJoinEntry({ pathname: "/player", own: {}, pending: RAVI_SEAT });
-  assert.equal(plan.action, "offer", "a brand-new tab must not be seated as somebody else");
+  assert.equal(plan.action, "none");
+});
+
+test("a remembered player seat is offered only after an explicit resume request", () => {
+  const plan = planJoinEntry({ pathname: "/player", resumeRequested: true, own: {}, pending: RAVI_SEAT });
+  assert.equal(plan.action, "offer");
   assert.equal(plan.seat.name, RAVI_SEAT.name);
+});
+
+test("a resume request scoped to another game instance does not offer the seat", () => {
+  const seat = { ...RAVI_SEAT, instanceSlug: "regular" };
+  assert.equal(planJoinEntry({ pathname: "/player", resumeRequested: true, instanceSlug: "bumper", own: {}, pending: seat }).action, "none");
 });
 
 test("a remembered host seat is never offered on the player join page", () => {
@@ -296,6 +306,11 @@ test("the host's own tab is not bounced into a player lobby by the join page", (
   // player room and told "You're Seated" while it holds the draw controls.
   const plan = planJoinEntry({ pathname: "/player", own: HOST_SEAT });
   assert.equal(plan.action, "none", "the host route resumes the host seat, not this one");
+});
+
+test("a room-code join ignores an unrelated remembered seat", () => {
+  const plan = planJoinEntry({ pathname: "/player", roomCode: "NEW123", own: {}, pending: RAVI_SEAT });
+  assert.deepEqual(plan, { action: "none", code: "NEW123" });
 });
 
 test("an invite link prefills the code and keeps the join page a join page", () => {

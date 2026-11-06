@@ -64,7 +64,7 @@ function normalise(args) {
 /** Session codes that mean the browser's saved credential is dead, full stop. */
 const SESSION_DEAD = new Set(["SESSION_INVALID", "SESSION_REVOKED", "SESSION_EXPIRED", "SESSION_ROTATED"]);
 
-export function registerGameHandlers(io, { rooms, controller, log = () => {}, limits = {}, db = null, moderatorAuth = null, sarvamTts = null } = {}) {
+export function registerGameHandlers(io, { rooms, controller, log = () => {}, limits = {}, db = null, moderatorAuth = null, sarvamTts = null, allowPublicHosting = false } = {}) {
   io.on("connection", (socket) => {
     socket.data.session = null;
     const moderatorTicket = socket.handshake && socket.handshake.auth && socket.handshake.auth.moderatorTicket;
@@ -109,6 +109,9 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
         if (requiresRoom && !room) {
           return rejected(ack, ErrorCodes.ROOM_NOT_FOUND, "your room no longer exists");
         }
+        if (hostOnly && !allowPublicHosting) {
+          return rejected(ack, "NOT_ALLOWED", "live game controls are restricted to authorized administrators and moderators");
+        }
         if (hostOnly && !room.isHostSocket(socket.id)) {
           return rejected(ack, ErrorCodes.NOT_HOST, "only the host may do that");
         }
@@ -124,6 +127,9 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
     // ------------------------------------------------------------- room setup
 
     on("room:create", async ({ socket, payload, ack }) => {
+      if (!allowPublicHosting) {
+        return rejected(ack, "NOT_ALLOWED", "game rooms can only be created from an authorized management panel");
+      }
       const name = asName(payload.name);
       if (!name) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "name must be 3-20 characters");
       const instanceSlug = payload.instanceSlug === undefined ? null : payload.instanceSlug;
@@ -172,6 +178,20 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
         sessionId: joined.sessionId || null,
       };
       reply(ack, joined);
+    });
+
+    /** Read-only, authenticated seat check for an explicit resume prompt. */
+    on("session:check", async ({ socket, payload, ack }) => {
+      if (socket.data.session) return rejected(ack, "ALREADY_IN_ROOM", "this connection already has a game seat");
+      const roomId = asRoomId(payload.roomId);
+      const sessionToken = asToken(payload.sessionToken);
+      const instanceSlug = payload.instanceSlug === undefined ? null : payload.instanceSlug;
+      if (!roomId || !sessionToken) return rejected(ack, ErrorCodes.BAD_PAYLOAD, "saved seat details are invalid");
+      if (instanceSlug !== null && (typeof instanceSlug !== "string" || !/^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(instanceSlug))) {
+        return rejected(ack, ErrorCodes.BAD_PAYLOAD, "game hall is invalid");
+      }
+      const result = await controller.checkSession({ roomId, sessionToken, instanceSlug });
+      reply(ack, result);
     });
 
     /**

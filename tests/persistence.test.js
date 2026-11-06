@@ -50,7 +50,7 @@ function freshRegistry(overrides = {}) {
 }
 
 function freshController(registry, extraStore = store, extraSessions = sessions) {
-  const controller = createGameController({ store: extraStore, sessions: extraSessions, registry, log: () => {} });
+  const controller = createGameController({ store: extraStore, sessions: extraSessions, registry, log: () => {}, allowPublicHostSessions: true });
   controller.bindRegistry(registry);
   return controller;
 }
@@ -516,7 +516,7 @@ test("a database failure is never announced as an official call", { skip }, asyn
   broken.recordCall = async () => {
     throw new Error("simulated connection loss mid-write");
   };
-  const controller = createGameController({ store: broken, sessions, registry, log: () => {} });
+  const controller = createGameController({ store: broken, sessions, registry, log: () => {}, allowPublicHostSessions: true });
   controller.bindRegistry(registry);
 
   const created = await controller.createRoom({ name: "Ivy", socketId: "s-i" });

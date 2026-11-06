@@ -33,6 +33,7 @@ test("smoke test: probes pass, but memory mode is not a deployable answer", asyn
 test("smoke test: a full multiplayer round over real sockets", async (t) => {
   const instance = await createApp({
     memoryOnly: true,
+    allowPublicHosting: true,
     origins: [],
     config: { autoCall: false, callIntervalMs: 60000, chatIntervalMs: 0 },
     log: () => {},

@@ -1,6 +1,6 @@
 import React, { Suspense, useLayoutEffect, useMemo, useRef } from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import App from "./App.jsx";
 import ThemeRuntime from "./ThemeRuntime.jsx";
 import "./index.css";
@@ -43,9 +43,6 @@ if (typeof document !== "undefined") {
 // base entry bundle therefore does not carry the game, owner console and
 // moderator workspace payloads for every visitor.
 /* eslint-disable react-refresh/only-export-components */
-const Host = React.lazy(() => import("./Host.jsx"));
-const HostRoom = React.lazy(() => import("./HostRoom.jsx"));
-const HostGame = React.lazy(() => import("./HostGame.jsx"));
 const Player = React.lazy(() => import("./Player.jsx"));
 const PlayerRoom = React.lazy(() => import("./PlayerRoom.jsx"));
 const PlayerGame = React.lazy(() => import("./PlayerGame.jsx"));
@@ -71,7 +68,6 @@ const PublicInstances = React.lazy(() => import("./PublicInstances.jsx"));
 const PublicInstance = React.lazy(() => import("./PublicInstance.jsx"));
 const PublicSessions = React.lazy(() => import("./PublicSessions.jsx"));
 const PublicBooking = React.lazy(() => import("./PublicBooking.jsx"));
-const PublicThemeStore = React.lazy(() => import("./PublicThemeStore.jsx"));
 const PublicPoster = React.lazy(() => import("./PublicPoster.jsx"));
 const ModeratorBookings = React.lazy(() => import("./ModeratorBookings.jsx"));
 const ModeratorCredential = React.lazy(() => import("./ModeratorCredential.jsx"));
@@ -191,7 +187,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           {import.meta.env.DEV ? <Route path="/__internal/voice-audition" element={<VoiceAudition />} /> : null}
           <Route path="/" element={<App />} />
           <Route path="/games" element={<PublicInstances />} />
-          <Route path="/themes" element={<PublicThemeStore />} />
+          <Route path="/themes" element={<Navigate to="/" replace />} />
           <Route path="/poster/:posterId" element={<PublicPoster />} />
           <Route path="/games/:slug" element={<PublicInstance />} />
           <Route path="/games/:slug/sessions" element={<PublicSessions />} />
@@ -199,10 +195,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <Route path="/moderator/bookings" element={<ModeratorBookings />} />
           <Route path="/moderator/accept" element={<ModeratorCredential kind="accept" />} />
           <Route path="/moderator/recovery" element={<ModeratorCredential kind="recovery" />} />
-          <Route path="/host" element={<Host />}>
-            <Route path="room" element={<HostRoom />} />
-            <Route path="game" element={<HostGame />} />
-          </Route>
+          <Route path="/host/*" element={<Navigate to="/" replace />} />
           <Route path="/player" element={<Player />}>
             <Route path="room" element={<PlayerRoom />} />
             <Route path="game" element={<PlayerGame />} />

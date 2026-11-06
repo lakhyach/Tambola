@@ -46,6 +46,10 @@ export function loadPendingSession() {
   return seatStore().loadPending();
 }
 
+export function clearPendingSession() {
+  return seatStore().clearPending();
+}
+
 export function saveSession(patch) {
   return seatStore().save(patch);
 }

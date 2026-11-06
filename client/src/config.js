@@ -41,7 +41,7 @@ export const config = {
       const name = str("VITE_APP_NAME", DEFAULT_BRAND.name);
       return name.trim().toLowerCase() === "tambola house" ? DEFAULT_BRAND.name : name;
     })(),
-    tagline: str("VITE_APP_TAGLINE", "A festive home for Tambola"),
+    tagline: "",
     subtitle: str("VITE_APP_SUBTITLE", DEFAULT_BRAND.subtitle),
     logoPath: str("VITE_APP_LOGO", `/brand/${DEFAULT_BRAND.logo}`),
     horizontalLogoPath: str("VITE_APP_HORIZONTAL_LOGO", `/brand/${DEFAULT_BRAND.horizontalLogo}`),
@@ -49,7 +49,7 @@ export const config = {
     iconPath: str("VITE_APP_ICON", `/brand/${DEFAULT_BRAND.icon}`),
     socialCardPath: str("VITE_APP_SOCIAL_CARD", `/brand/${DEFAULT_BRAND.socialCard}`),
     // Provisional identity. Alternatives: Roundhouse 90, Rally Ninety.
-    mark: str("VITE_BRAND_EYEBROW", "FESTIVAL GAME NIGHT"),
+    mark: "",
   },
 
   // Provisional festival / saffron / gulal identity; replaceable by env.

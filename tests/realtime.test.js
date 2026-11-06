@@ -160,6 +160,7 @@ function settle(ms) {
 before(async () => {
   instance = await createApp({
     memoryOnly: true,
+    allowPublicHosting: true,
     origins: [],
     config: { autoCall: false, chatIntervalMs: 400, disconnectGraceMs: 500, callIntervalMs: 60000 },
     // generous budget here so the long games below are testing the game, not
@@ -234,6 +235,22 @@ test("an in-room player sees the roster, an outsider does not", async () => {
   assert.equal(outside.code, ErrorCodes.NOT_PLAYER);
 });
 
+test("an explicit remembered-seat check validates activity without attaching the socket", async () => {
+  const { session: hostSession } = await hostRoom("CheckHost");
+  const { client: seated, session: playerSession } = await joinRoom(hostSession.roomId, "CheckPlayer");
+  const fresh = await newClient("ResumePrompt");
+  const checked = await fresh.call("session:check", { roomId: hostSession.roomId, sessionToken: playerSession.sessionToken });
+  assert.equal(checked.ok, true, JSON.stringify(checked));
+  assert.equal(checked.roomId, hostSession.roomId);
+  assert.equal((await fresh.call("room:state")).code, ErrorCodes.NOT_PLAYER, "a check never reconnects the player silently");
+  const resumed = await fresh.call("session:resume", { roomId: hostSession.roomId, sessionToken: playerSession.sessionToken });
+  assert.equal(resumed.ok, true);
+  assert.equal((await fresh.call("room:state")).ok, true);
+  const hostProbe = await newClient("HostSeatPrompt");
+  assert.equal((await hostProbe.call("session:check", { roomId: hostSession.roomId, sessionToken: hostSession.sessionToken })).code, "NOT_PLAYER", "host credentials are never offered as player seats");
+  await seated.disconnect();
+});
+
 // --------------------------------------------------------------- room isolation
 
 test("two rooms run independently and never leak to each other", async () => {
@@ -252,7 +269,10 @@ test("two rooms run independently and never leak to each other", async () => {
   await settle(150);
 
   assert.equal(numbersOf(playerA.client.history("number:called")).length, 4);
+  assert.equal(playerA.client.history("game:call-state").length, 4, "each seat gets private claim eligibility after calls");
+  assert.equal(playerA.client.history("game:call-state")[0].claimStates instanceof Array, true);
   assert.equal(numbersOf(playerB.client.history("number:called")).length, 0, "room B heard nothing from room A");
+  assert.equal(playerB.client.count("game:call-state"), 0, "private call eligibility never crosses rooms");
   assert.equal(numbersOf(b.client.history("number:called")).length, 0);
   assert.equal(b.client.count("game:state"), 1, "only its own start");
 

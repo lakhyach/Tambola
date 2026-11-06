@@ -15,14 +15,14 @@ const KEYS = new Set(["name", "tagline", "subtitle", "mark", "logo", "horizontal
 const HEX = /^#[0-9a-f]{6}$/i;
 
 export const DEFAULT_PLATFORM_BRANDING = Object.freeze({
-  name: "Tambola House",
-  tagline: "A festive home for Tambola",
+  name: "Ninety Club",
+  tagline: "",
   subtitle: "Gather your friends for free, joyful live Tambola.",
-  mark: "FESTIVAL GAME NIGHT",
-  logo: "tambola-house-mark.svg",
-  horizontalLogo: "tambola-house-lockup.svg",
-  icon: "tambola-house-icon.svg",
-  socialCard: "tambola-house-social-card.svg",
+  mark: "",
+  logo: "ninety-club-mark.svg",
+  horizontalLogo: "ninety-club-lockup.svg",
+  icon: "ninety-club-mark.svg",
+  socialCard: "social-card.svg",
   accent: "#ffbe4d",
   accentBright: "#ffdc8a",
   accentDeep: "#c87918",
@@ -98,6 +98,9 @@ export function publicPlatformBranding(value) {
   const validated = validatePlatformBranding({ ...DEFAULT_PLATFORM_BRANDING, ...(value || {}) });
   if (validated.error) return { ...DEFAULT_PLATFORM_BRANDING };
   const branding = validated.branding;
+  if (branding.name.trim().toLowerCase() === "tambola house" || /festival\s+game\s+night/i.test(branding.name)) branding.name = "Ninety Club";
+  if (/festival\s+game\s+night/i.test(branding.tagline)) branding.tagline = "";
+  if (/festival\s+game\s+night/i.test(branding.mark)) branding.mark = "";
   const isLegacyProjectDefault = branding.name === "Ninety Club"
     && branding.tagline === "A fresh table for every game"
     && branding.logo === "ninety-club-mark.svg"

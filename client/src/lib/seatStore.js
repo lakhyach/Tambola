@@ -93,6 +93,12 @@ export function createSeatStore({ tab = null, device = null } = {}) {
       return isSeat(saved) ? saved : {};
     },
 
+    clearPending() {
+      const own = readSlot(tab);
+      const saved = readSlot(device);
+      if (!isSeat(own) || !isSeat(saved) || saved.sessionToken !== own.sessionToken) removeSlot(device);
+    },
+
     /** Record the seat in this tab and refresh the device-level recovery copy. */
     save(patch = {}) {
       const next = { ...this.load(), ...patch };

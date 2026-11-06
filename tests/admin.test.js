@@ -266,6 +266,7 @@ describe("owner control centre over HTTP (in-memory backends)", () => {
     await backends.store.create({ username: OWNER.username, passwordHash: await hashPassword(OWNER.password), role: "super_admin" });
     instance = await createApp({
       memoryOnly: true,
+      allowPublicHosting: true,
       origins: [],
       config: { autoCall: false, chatIntervalMs: 0, callIntervalMs: 60000 },
       limits: { burst: 2000, perSecond: 4000 },

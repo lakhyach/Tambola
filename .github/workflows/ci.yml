@@ -124,24 +124,132 @@ jobs:
           if-no-files-found: error
 
   docker:
-    name: docker image builds and starts
+    name: docker image boots durably and plays a room
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     needs: verify
+    env:
+      IMAGE: tambola:ci
+      NETWORK: ninetyclub-ci
+      # The database sits on a private Docker network under the service name
+      # `db`, which is how deploy/vps-zancta/compose.yaml runs it too. That is
+      # the one shape the environment gate accepts for an unpublished local
+      # database, so this job exercises the real boot path instead of a
+      # shortcut production would refuse.
+      DB_PASSWORD: ci-only-not-a-secret
+      MFA_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
     steps:
       - uses: actions/checkout@v4
 
-      - name: build production image
-        run: docker build --tag tambola:ci .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
 
-      - name: image starts and serves /livez (memory mode is allowed for this check)
+      # socket.io-client is a dev dependency, so it is deliberately absent from
+      # the runtime image. The multiplayer smoke below drives two real sockets
+      # from the runner and needs it installed there.
+      - name: install on the runner (for the multiplayer smoke)
+        run: npm ci
+
+      - name: build production image
+        run: docker build --tag "$IMAGE" .
+
+      # The image is NODE_ENV=production with CMD `npm start`, so the container
+      # runs the same environment gate an operator runs, and that gate fails
+      # closed on a database-less server: rooms would live only in RAM, a
+      # restart would lose all of them, and the owner console could not sign in.
+      #
+      # This job used to start the container with ALLOW_MEMORY_ONLY=1 and then
+      # wait for /livez to answer. It could never pass, because the product
+      # refuses exactly what the step asked for, and nothing in its output said
+      # so - `bash -e` ended the step before `docker logs` ran. The gate now
+      # asserts the refusal, which is the behaviour worth protecting.
+      - name: image refuses a memory-only start
         run: |
-          docker run --detach --name tambola-ci -p 4000:4000 \
-            -e ALLOW_MEMORY_ONLY=1 -e PORT=4000 tambola:ci
-          for attempt in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:4000/livez > /dev/null; then break; fi
+          set -euo pipefail
+          if docker run --rm -e ALLOW_MEMORY_ONLY=1 "$IMAGE" > memory-only.log 2>&1; then
+            echo "::error::the image served traffic with no database; the environment gate is not fail-closed"
+            sed -n '1,60p' memory-only.log
+            exit 1
+          fi
+          grep -q "startup refused by environment validation" memory-only.log
+          echo "refused a database-less server, as designed"
+
+      - name: database on a private network
+        run: |
+          set -euo pipefail
+          docker network create "$NETWORK"
+          docker run -d --name nc-ci-db --network "$NETWORK" --network-alias db \
+            -e POSTGRES_USER=tambola_ci \
+            -e POSTGRES_PASSWORD=ci-only-not-a-secret \
+            -e POSTGRES_DB=tambola postgres:16-alpine
+          for attempt in $(seq 1 60); do
+            if docker exec nc-ci-db pg_isready -U tambola_ci -d tambola > /dev/null 2>&1; then
+              echo "postgres ready after ${attempt}s"
+              exit 0
+            fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:4000/livez
-          docker logs tambola-ci
-          docker rm --force tambola-ci
+          echo "::error::the CI postgres never became ready"
+          docker logs nc-ci-db
+          exit 1
+
+      # Production prohibits AUTO_MIGRATE, so schema preparation is an explicit
+      # operator action. Running it here through the image's own ops entrypoint
+      # keeps this job honest about what a deploy actually consists of.
+      - name: schema migrated by the image itself
+        run: |
+          set -euo pipefail
+          DB_URL="postgresql://tambola_ci:${DB_PASSWORD}@db:5432/tambola"
+          docker run --rm --network "$NETWORK" \
+            -e DATABASE_URL="$DB_URL" -e DATABASE_PRIVATE_NETWORK=1 \
+            "$IMAGE" npm run migrate
+
+      - name: image boots durably and passes the deployment smoke test
+        run: |
+          set -euo pipefail
+          DB_URL="postgresql://tambola_ci:${DB_PASSWORD}@db:5432/tambola"
+          docker run -d --name nc-ci-app --network "$NETWORK" -p 127.0.0.1:4000:4000 \
+            -e DATABASE_URL="$DB_URL" -e DATABASE_PRIVATE_NETWORK=1 \
+            -e PUBLIC_ORIGIN=https://ninetyclub.invalid -e TRUST_PROXY=1 \
+            -e OWNER_MFA_KEY="$MFA_KEY" -e PORT=4000 "$IMAGE"
+          ready=no
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4000/readyz > /dev/null 2>&1; then ready=yes; break; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' nc-ci-app)" != true ]; then break; fi
+            sleep 1
+          done
+          if [ "$ready" != yes ]; then
+            echo "::error::/readyz never answered 200 on a durable boot"
+            docker logs nc-ci-app || true
+            exit 1
+          fi
+          echo "readyz answered 200 after ${attempt}s"
+          # First from inside the image, using only its production dependencies.
+          # Its /readyz check requires durable:true, so this cannot pass on an
+          # in-memory server, and its / check requires the built client bundle -
+          # which is the multi-stage Dockerfile actually working.
+          docker exec nc-ci-app node scripts/smoke-deploy.mjs --url http://127.0.0.1:4000
+          # Then from outside with two real sockets, one real call and one real
+          # game end, so the image's WebSocket path and its Postgres writes are
+          # covered and not just its HTTP handlers. The room is created in this
+          # throwaway CI database and is named SmokeHost/SmokeGuest.
+          node scripts/smoke-deploy.mjs --url http://127.0.0.1:4000 --full
+
+      - name: graceful shutdown drains, closes rooms and exits 0
+        run: |
+          set -euo pipefail
+          docker inspect -f '{{.State.Running}}' nc-ci-app | grep -q true
+          docker stop -t 60 nc-ci-app > /dev/null
+          code=$(docker inspect -f '{{.State.ExitCode}}' nc-ci-app)
+          docker logs --tail 40 nc-ci-app || true
+          if [ "$code" != 0 ]; then
+            echo "::error::container exited with code $code instead of draining cleanly"
+            exit 1
+          fi
+          # `docker stop` signals PID 1, which is npm; the signal has to travel
+          # npm -> scripts/start.js -> server/index.js before the grace period
+          # expires or the host kills it at 137 and open rooms are left unclosed.
+          docker logs nc-ci-app 2>&1 | grep -q "SIGTERM received, closing rooms"
+          echo "drained and exited 0"

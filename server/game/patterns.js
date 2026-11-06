@@ -36,15 +36,31 @@ import {
   starCells,
 } from "./pattern-geometry.js";
 
+/**
+ * Reuse one membership set and call-ordinal index for every ticket evaluated
+ * against the same append-only room history. A room replaces this array on a
+ * reset and only appends during a round, so its length is the cache version.
+ */
+const historyIndexes = new WeakMap();
+function historyIndex(calledNumbers) {
+  let index = historyIndexes.get(calledNumbers);
+  if (!index || index.length !== calledNumbers.length) {
+    const ordinals = new Map();
+    calledNumbers.forEach((number, i) => ordinals.set(number, i + 1));
+    index = { length: calledNumbers.length, set: new Set(calledNumbers), ordinals };
+    historyIndexes.set(calledNumbers, index);
+  }
+  return index;
+}
+
 /** Called-set helper: numbers the server has officially called. */
 function calledSet(calledNumbers) {
-  return new Set(calledNumbers);
+  return historyIndex(calledNumbers).set;
 }
 
 /** Index (1-based call ordinal) at which a number was called, or Infinity. */
 function callOrdinal(calledNumbers, value) {
-  const at = calledNumbers.indexOf(value);
-  return at === -1 ? Infinity : at + 1;
+  return historyIndex(calledNumbers).ordinals.get(value) ?? Infinity;
 }
 
 /**

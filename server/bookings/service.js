@@ -13,9 +13,25 @@ const cleanDate = (value) => {
 };
 const iso = (value) => (value instanceof Date ? value.toISOString() : value ? new Date(value).toISOString() : null);
 
-function sessionShape(row) {
+function sessionShape(row, timestamp = Date.now()) {
+  const at = timestamp instanceof Date ? timestamp.getTime() : new Date(timestamp).getTime();
+  const opensAt = new Date(row.booking_opens_at).getTime();
+  const closesAt = new Date(row.booking_closes_at).getTime();
+  const startsAt = new Date(row.starts_at).getTime();
+  const available = Number(row.available ?? 0);
+  const gameStatus = row.room_status === "RUNNING" ? "live"
+    : row.status === "completed" ? "completed"
+      : row.status === "cancelled" ? "cancelled"
+        : startsAt <= at ? "started" : "upcoming";
+  const bookingStatus = row.status === "paused" ? "paused"
+    : row.status !== "open" ? row.status
+      : startsAt <= at ? "closed"
+        : opensAt > at ? "not_open"
+          : closesAt <= at ? "closed"
+            : available <= 0 ? "sold_out" : "open";
   return {
     sessionId: row.session_id,
+    serverTime: new Date(at).toISOString(),
     instanceSlug: row.slug,
     instanceName: row.display_name,
     title: row.title,
@@ -24,9 +40,11 @@ function sessionShape(row) {
     bookingOpensAt: iso(row.booking_opens_at),
     bookingClosesAt: iso(row.booking_closes_at),
     capacity: Number(row.ticket_capacity),
-    available: Number(row.available ?? 0),
+    available,
     ticketLimit: Number(row.ticket_limit ?? row.ticket_capacity ?? 0),
     status: row.status,
+    bookingStatus,
+    gameStatus,
     inventoryMode: row.inventory_mode || "legacy",
     inventoryState: row.inventory_state || "legacy",
   };
@@ -108,6 +126,16 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
       new Date(row.starts_at).getTime() > time;
   }
 
+  function publicSessionVisible(row, at = now()) {
+    const time = at instanceof Date ? at.getTime() : new Date(at).getTime();
+    const scheduledOrLive = new Date(row.starts_at).getTime() > time || row.room_status === "RUNNING";
+    const roomEligible = !row.room_code
+      || (row.room_status === "WAITING" && Number(row.room_game_number) === 0 && !row.room_has_games)
+      || (row.room_status === "RUNNING" && row.room_has_games);
+    return row.instance_status === "active" && row.public_visible
+      && ["open", "paused"].includes(row.status) && scheduledOrLive && roomEligible;
+  }
+
   async function listPublicSessions(slug) {
     await expireSessionsWithStaleHolds(null, slug);
     const result = await db.query(
@@ -121,18 +149,20 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
           WHERE r.session_id=s.session_id AND r.status='held' AND r.expires_at>now()),0)::int AS available
        FROM game_sessions s JOIN game_instances i ON i.instance_id=s.instance_id
        LEFT JOIN rooms bound_room ON bound_room.room_code=s.room_code
-       WHERE i.slug=$1 AND i.status='active' AND i.public_visible AND s.status='open'
-         AND s.booking_opens_at<=now() AND s.booking_closes_at>now() AND s.starts_at>now()
-         AND (s.room_code IS NULL OR (bound_room.status='WAITING' AND bound_room.game_number=0 AND NOT EXISTS(SELECT 1 FROM games g WHERE g.room_code=s.room_code)))
+       WHERE i.slug=$1 AND i.status='active' AND i.public_visible AND s.status IN ('open','paused')
+         AND (s.starts_at>now() OR (bound_room.status='RUNNING' AND EXISTS(SELECT 1 FROM games g WHERE g.room_code=s.room_code)))
+         AND (s.room_code IS NULL
+           OR (bound_room.status='WAITING' AND bound_room.game_number=0 AND NOT EXISTS(SELECT 1 FROM games g WHERE g.room_code=s.room_code))
+           OR (bound_room.status='RUNNING' AND EXISTS(SELECT 1 FROM games g WHERE g.room_code=s.room_code)))
        ORDER BY s.starts_at,s.session_id`, [slug]
     );
-    return result.rows.map(sessionShape);
+    return result.rows.map((row) => sessionShape(row, now()));
   }
 
   async function getPublicSession(sessionId) {
     await expireSessionHolds(sessionId);
     const row = await getSessionRow(sessionId);
-    return row && windowOpen(row) ? sessionShape(row) : null;
+    return row && publicSessionVisible(row) ? sessionShape(row, now()) : null;
   }
 
   async function listAdminSessions(instanceId) {

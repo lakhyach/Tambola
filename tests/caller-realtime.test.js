@@ -114,6 +114,7 @@ async function runningRoom() {
 before(async () => {
   instance = await createApp({
     memoryOnly: true,
+    allowPublicHosting: true,
     origins: [],
     config: { autoCall: false, chatIntervalMs: 0, disconnectGraceMs: 500, callIntervalMs: 60000 },
     limits: { burst: 500, perSecond: 2000 },

@@ -75,6 +75,7 @@ test("completion is the LAST required number, not the first or the count", () =>
 
 test("the shipped default is the traditional rule: claim before the next call", () => {
   assert.equal(DEFAULT_CONFIG.claimWindowCalls, 0);
+  assert.equal(DEFAULT_CONFIG.callIntervalMs, 3000, "the default automatic caller cadence is three seconds");
 });
 
 test("a claim on the completing call wins; one call later it is too late", () => {

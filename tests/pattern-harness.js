@@ -215,7 +215,7 @@ export async function openDurableSchema({ prefix = "pat" } = {}) {
       keepHostSeat: true,
       log: () => {},
     });
-    const controller = createGameController({ store, sessions, registry, log: () => {} });
+    const controller = createGameController({ store, sessions, registry, log: () => {}, allowPublicHostSessions: true });
     controller.bindRegistry(registry);
     return { registry, controller };
   }

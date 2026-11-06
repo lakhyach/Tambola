@@ -80,11 +80,10 @@ export function createAdminThemeRouter({ service, spendMutationBudget } = {}) {
 export function createPublicThemeRouter({ service } = {}) {
   if (!service) throw new Error("createPublicThemeRouter needs a theme service");
   const router = express.Router();
-  router.get("/themes", wrap(async (_req, res) => {
-    const themes = await service.listStore();
-    res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=120");
-    res.json({ ok: true, themes });
-  }));
+  // Theme selection is a management capability. Players may fetch only the
+  // currently selected theme for the game they are joining; the public library
+  // must not expose drafts, alternatives, or an independent theme browser.
+  router.get("/themes", (_req, res) => res.status(404).json({ ok: false, code: "THEME_CATALOG_DISABLED" }));
   router.get("/themes/active", wrap(async (req, res) => {
     const slug = typeof req.query.instance === "string" ? req.query.instance : null;
     const roomId = typeof req.query.room === "string" ? req.query.room : null;

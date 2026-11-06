@@ -142,6 +142,7 @@
 .public-hero .public-title { max-width: 720px; text-wrap: balance; }
 .public-hero .public-lede { max-width: 540px; margin-bottom: 0; }
 .public-hero__art { position: relative; display: grid; place-items: center; min-height: 260px; isolation: isolate; }
+.public-hero__brand-mark { width: clamp(130px, 19vw, 220px); height: auto; filter: drop-shadow(0 22px 30px rgba(5,2,12,.48)); }
 .public-hero__art::before { position: absolute; z-index: -1; width: min(80%, 270px); aspect-ratio: 1; border: 1px solid color-mix(in srgb, var(--festival-saffron) 38%, transparent); border-radius: 50%; box-shadow: 0 0 0 20px color-mix(in srgb, var(--festival-coral) 6%, transparent), 0 0 0 48px color-mix(in srgb, var(--festival-teal) 5%, transparent); content: ""; }
 .public-hero__ticket { width: min(100%, 265px); padding: 17px; transform: rotate(-5deg); border: 1px solid #e2bd7a; border-radius: 17px; color: #302318; background: var(--festival-paper); box-shadow: 0 19px 45px #07060572; }
 .public-hero__ticket-label, .public-hero__ticket-note { display: block; color: #965438; font: 800 10px/1 var(--oh-font-ui); letter-spacing: .2em; }

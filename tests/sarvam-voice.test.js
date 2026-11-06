@@ -198,6 +198,7 @@ test("voice audio socket requires a room and only synthesizes an exact official 
   };
   const app = await createApp({
     memoryOnly: true,
+    allowPublicHosting: true,
     origins: [],
     sarvamTts,
     config: { autoCall: false, callIntervalMs: 60_000 },

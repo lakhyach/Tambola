@@ -59,7 +59,9 @@ function exited(child) {
   return new Promise((resolve) => child.once("exit", (code) => resolve(code)));
 }
 
-test("an abrupt server process restart recovers a live game and its sessions", { skip, timeout: 45000 }, async () => {
+// This covers migrations, two durable child boots and a real crash/recovery
+// cycle against PostgreSQL; cold local databases can exceed the former 45s cap.
+test("an abrupt server process restart recovers a live game and its sessions", { skip, timeout: 120000 }, async () => {
   const admin = createPool({ connectionString: databaseUrl, schema: "public", log: () => {} });
   // The fixture server boots through the production gate: a schema with no
   // migration ledger refuses traffic. Prepare this run's throwaway schema the

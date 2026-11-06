@@ -304,6 +304,7 @@ export async function createApp(options = {}) {
       store: persistence.store,
       sessions: persistence.sessions,
       log,
+      allowPublicHostSessions: options.allowPublicHosting === true,
     });
 
   const registry = createRoomRegistry({
@@ -624,7 +625,7 @@ export async function createApp(options = {}) {
       voices: status.voices || SARVAM_VOICE_CATALOG,
     });
   });
-  registerGameHandlers(io, { rooms: registry, controller, log, limits: options.limits, db: persistence.db, moderatorAuth: moderatorService?.auth || null, sarvamTts });
+  registerGameHandlers(io, { rooms: registry, controller, log, limits: options.limits, db: persistence.db, moderatorAuth: moderatorService?.auth || null, sarvamTts, allowPublicHosting: options.allowPublicHosting === true });
 
   // ---------------------------------------------------- web client + fallbacks
   // Registered AFTER the admin API so /api/admin/* is never swallowed by the

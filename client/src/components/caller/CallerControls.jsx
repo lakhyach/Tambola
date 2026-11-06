@@ -95,7 +95,8 @@ const CallerControls = ({
         type="button"
         className={"oh-callbtn" + (primary.action === "game:call-next" ? " oh-callbtn--call" : "")}
         data-enabled={String(Boolean(primary.enabled))}
-        disabled={!primary.enabled}
+        disabled={!primary.enabled || busy || pendingCall}
+        aria-busy={pendingCall}
         onClick={() => primary.action && onAction(primary.action)}
         aria-keyshortcuts={primary.action === "game:call-next" ? "c" : undefined}
         title={primary.reason || primary.hint}

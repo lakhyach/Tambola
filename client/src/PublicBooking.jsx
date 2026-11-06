@@ -79,10 +79,14 @@ export default function PublicBooking() {
   const [catalogError, setCatalogError] = useState("");
   const [selectedTicketIds, setSelectedTicketIds] = useState([]);
   const [selectedTicketDetails, setSelectedTicketDetails] = useState({});
+  const [clockNow, setClockNow] = useState(Date.now());
+  const serverOffset = useRef(0);
   const requestSignal = useRef(null);
   const catalogSequence = useRef(0);
   const reservationIntent = useRef("");
   const focusedSessionId = useRef(sessionId);
+
+  useEffect(() => { const timer = window.setInterval(() => setClockNow(Date.now() + serverOffset.current), 1000); return () => window.clearInterval(timer); }, []);
 
   useEffect(() => {
     if (focusedSessionId.current !== sessionId) {
@@ -109,6 +113,8 @@ export default function PublicBooking() {
     call(`/api/public/sessions/${encodeURIComponent(sessionId)}`, undefined, abort.signal, language)
       .then((data) => {
         if (!data.session) throw new Error("This session is unavailable.");
+        const serverTime = Date.parse(data.session.serverTime);
+        if (Number.isFinite(serverTime)) serverOffset.current = serverTime - Date.now();
         setSession(data.session);
         setLoadState("ready");
       }).catch((failure) => {
@@ -279,6 +285,10 @@ export default function PublicBooking() {
   }
 
   const activeSession = session?.sessionId === sessionId ? session : null;
+  const bookingOpenNow = Boolean(activeSession && activeSession.status === "open"
+    && Date.parse(activeSession.bookingOpensAt) <= clockNow
+    && Date.parse(activeSession.bookingClosesAt) > clockNow
+    && Date.parse(activeSession.startsAt) > clockNow);
   const sessionCapacity = Math.max(0, Number(activeSession?.ticketCapacity) || Number(activeSession?.ticketLimit) || 0);
   const maxTickets = numberedInventory
     ? Math.min(sessionCapacity, Math.max(0, Number(activeSession?.available) || 0))
@@ -319,11 +329,13 @@ export default function PublicBooking() {
                 <h2 id="session-facts-title">{t("sessionDetails")}</h2>
                 <dl className="booking-session__facts">
                   <div><dt>{t("starts")}</dt><dd>{formatBookingDate(activeSession.startsAt, language)}</dd></div>
+                  <div><dt>Bookings open</dt><dd>{formatBookingDate(activeSession.bookingOpensAt, language)}</dd></div>
                   <div><dt>{t("bookingCloses")}</dt><dd>{formatBookingDate(activeSession.bookingClosesAt, language)}</dd></div>
                   <div><dt>{t("ticketsAvailable")}</dt><dd>{formatBookingNumber(Math.max(0, Number(activeSession.available) || 0), language)} / {formatBookingNumber(Number(activeSession.capacity) || 0, language)}</dd></div>
                 </dl>
                 <p className="booking-hint">{t("bookingHint")}</p>
                 {Number(activeSession.available) < 1 ? <p className="booking-alert" role="status">{t("full")}</p> : null}
+                {!bookingOpenNow && Number(activeSession.available) > 0 ? <p className="booking-notice" role="status">{activeSession.status === "paused" ? "Bookings are paused by the game organizer." : Date.parse(activeSession.bookingOpensAt) > clockNow ? "Bookings have not opened yet." : "The booking window is closed."}</p> : null}
               </section>
 
               <section className="booking-panel" aria-labelledby="reserve-title">
@@ -365,7 +377,7 @@ export default function PublicBooking() {
                     {selectedTicketIds.length ? <ul>{selectedTicketIds.map((id) => <li key={id}>{selectedTicketDetails[id]?.serial || id}</li>)}</ul> : null}
                   </div>
                 </section> : null}
-                {!hold && !confirmed ? (
+                {!hold && !confirmed && bookingOpenNow ? (
                   <form className="booking-form" onSubmit={createHold}>
                     <label className="booking-field">{t("playerName")}
                     <input autoComplete="nickname" maxLength={20} minLength={3} required disabled={Boolean(reservationIntent.current)} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />

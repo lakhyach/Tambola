@@ -76,6 +76,18 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal(publicList.sessions[0].sessionId, created.sessionId);
     assert.equal((await (await fetch(`${base}/api/public/sessions/${created.sessionId}`)).json()).session.available, 5);
 
+    const scheduledOnly = await service.createSession({ instanceId: "regular", actor: "owner", title: "Scheduled listing check", startsAt: future(40), bookingOpensAt: future(10), bookingClosesAt: future(35), capacity: 4 });
+    await service.updateSession({ instanceId: "regular", sessionId: scheduledOnly.session.sessionId, actor: "owner", patch: { status: "open" } });
+    const scheduledPublic = await service.getPublicSession(scheduledOnly.session.sessionId);
+    assert.equal(scheduledPublic.bookingStatus, "not_open", "published future sessions are listed before booking opens");
+    assert.equal((await service.listPublicSessions("regular")).some((session) => session.sessionId === scheduledOnly.session.sessionId), true);
+    assert.equal((await service.reserve({ sessionId: scheduledOnly.session.sessionId, displayName: "Early Guest", ticketCount: 1 })).error, "SESSION_UNAVAILABLE", "listing a scheduled session does not open booking early");
+
+    const bookingClosed = await service.createSession({ instanceId: "regular", actor: "owner", title: "Closed booking listing check", startsAt: future(40), bookingOpensAt: future(-10), bookingClosesAt: future(-1), capacity: 4 });
+    await service.updateSession({ instanceId: "regular", sessionId: bookingClosed.session.sessionId, actor: "owner", patch: { status: "open" } });
+    assert.equal((await service.getPublicSession(bookingClosed.session.sessionId)).bookingStatus, "closed", "future games remain visible after their booking window closes");
+    assert.equal((await service.reserve({ sessionId: bookingClosed.session.sessionId, displayName: "Late Guest", ticketCount: 1 })).error, "BOOKING_CLOSED");
+
     const idempotencyToken = "c".repeat(64);
     const holdResponse = await fetch(`${base}/api/public/sessions/${created.sessionId}/reservations`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ displayName: "  Guest   One ", ticketCount: 2, bookingToken: idempotencyToken }),

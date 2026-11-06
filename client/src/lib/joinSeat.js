@@ -35,11 +35,14 @@ const JOIN_PATH = "/player";
  *   `offer`  — show the choice for `seat` and stay on the join form;
  *   `none`   — show the join form, with `code` prefilled when an invite gave one.
  */
-export function planJoinEntry({ pathname = JOIN_PATH, searchTerm = null, own = null, pending = null } = {}) {
+export function planJoinEntry({ pathname = JOIN_PATH, searchTerm = null, roomCode = null, instanceSlug = null, resumeRequested = false, own = null, pending = null } = {}) {
   if (pathname !== JOIN_PATH) return { action: "none" };
 
-  const code = typeof searchTerm === "string" && searchTerm.trim() ? searchTerm.trim().toUpperCase() : "";
-  if (code) return { action: "none", code };
+  const code = (typeof roomCode === "string" && roomCode.trim() ? roomCode : searchTerm)
+    ?.trim().toUpperCase() || "";
+  // A shared invite or a hall-specific join is an intentional new-game flow.
+  // Never pull a different seat or code from browser-wide storage into it.
+  if (code || (instanceSlug && !resumeRequested)) return { action: "none", ...(code ? { code } : {}) };
 
   // This tab's own seat may be resumed without asking — with one exception: a
   // host tab that wanders onto the player join page belongs on the host route.
@@ -47,10 +50,10 @@ export function planJoinEntry({ pathname = JOIN_PATH, searchTerm = null, own = n
   // holding the draw controls, so leave them the form and let /host resume.
   if (isSeat(own) && own.role !== "host") return { action: "resume", seat: own };
 
-  // Only a remembered PLAYER seat is worth offering here. A host seat belongs to
-  // the host tab; offering it on the join page would invite a stranger into the
-  // draw controls, and the host route resumes its own seat anyway.
-  if (isSeat(pending) && pending.role === "player") return { action: "offer", seat: pending };
+  // Only a deliberate resume action may inspect a device-wide copy. The
+  // caller verifies it with the server before displaying the offer.
+  if (resumeRequested && isSeat(pending) && pending.role === "player"
+    && (!instanceSlug || pending.instanceSlug === instanceSlug)) return { action: "offer", seat: pending };
 
   return { action: "none" };
 }

@@ -6,6 +6,7 @@ let app;
 try {
   app = await createApp({
     databaseUrl: process.env.TEST_DATABASE_URL,
+    allowPublicHosting: true,
     schema: process.env.TEST_DB_SCHEMA,
     origins: [],
     config: { autoCall: false, callIntervalMs: 60000 },

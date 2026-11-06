@@ -139,6 +139,15 @@ test("completedOnCall is the ordinal of the fifth hit, enabling a call window", 
   assert.equal(result.completedOnCall, 9);
 });
 
+test("a reused append-only call history refreshes its O(1) indexes after each call", () => {
+  const history = [3, 24, 31, 50];
+  assert.equal(evaluateClaim("earlyFive", TICKET_A, history).valid, false);
+  history.push(11);
+  const completed = evaluateClaim("earlyFive", TICKET_A, history);
+  assert.equal(completed.valid, true);
+  assert.equal(completed.completedOnCall, 5);
+});
+
 test("an optional early-five window can be switched on by config", () => {
   const history = [1, 2, 4, 5, 3, 24, 31, 50, 11];
   const config = { earlyFiveMaxCalls: 5 };

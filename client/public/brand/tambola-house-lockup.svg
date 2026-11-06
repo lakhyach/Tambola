@@ -1,1 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 128" role="img" aria-labelledby="title"><title id="title">Tambola House — multiplayer festival game</title><defs><linearGradient id="gold" x2=".2" y2="1"><stop stop-color="#fff5ad"/><stop offset=".5" stop-color="#ffd34d"/><stop offset="1" stop-color="#e28b20"/></linearGradient><radialGradient id="plum"><stop stop-color="#82235f"/><stop offset="1" stop-color="#23052f"/></radialGradient></defs><g transform="translate(4 8)"><path d="M20 38 15 19 34 31 52 8 70 31 89 19 84 38Z" fill="url(#gold)" stroke="#fff2ac" stroke-width="1.3"/><circle cx="15" cy="18" r="4" fill="#ffe88a"/><circle cx="52" cy="8" r="4" fill="#fff3b5"/><circle cx="89" cy="18" r="4" fill="#ffe88a"/><path d="M24 43h56" stroke="url(#gold)" stroke-width="4" stroke-linecap="round"/><path d="M16 53h72v9a7 7 0 0 0 0 14v22H16V76a7 7 0 0 0 0-14Z" fill="url(#plum)" stroke="url(#gold)" stroke-width="3"/><path d="M28 63h48v25H28Zm0 12h48M40 63v25M52 63v25M64 63v25" fill="none" stroke="#ffd369" stroke-width="1.8"/><circle cx="34" cy="69" r="3.4" fill="#ff7db9"/><circle cx="58" cy="82" r="3.4" fill="#ff7db9"/><circle cx="70" cy="69" r="3.4" fill="#ff7db9"/></g><text x="119" y="72" fill="#4b062d" stroke="#4b062d" stroke-width="5" paint-order="stroke" font-family="Georgia,serif" font-size="59" font-weight="700" font-style="italic" letter-spacing="-2">Tambola House</text><text x="117" y="69" fill="url(#gold)" font-family="Georgia,serif" font-size="59" font-weight="700" font-style="italic" letter-spacing="-2">Tambola House</text><text x="126" y="100" fill="#fff0d8" font-family="Arial,sans-serif" font-size="17" font-weight="600" letter-spacing="2.6">MULTIPLAYER FESTIVAL GAME</text><path d="m604 23 3-8 3 8 8 3-8 3-3 8-3-8-8-3Zm20 24 2-5 2 5 5 2-5 2-2 5-2-5-5-2Z" fill="url(#gold)"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 104" role="img" aria-labelledby="title">
+  <title id="title">Ninety Club — a fresh table for every game</title>
+  <defs>
+    <linearGradient id="ticket" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#ffdc8a"/>
+      <stop offset="1" stop-color="#ffbe4d"/>
+    </linearGradient>
+    <radialGradient id="ball" cx="34%" cy="28%" r="74%">
+      <stop stop-color="#fffdf7"/>
+      <stop offset=".72" stop-color="#ffeac3"/>
+      <stop offset="1" stop-color="#e7a941"/>
+    </radialGradient>
+  </defs>
+  <g transform="translate(4 4)">
+    <rect width="96" height="96" rx="27" fill="#1b1027" stroke="#684b70" stroke-width="2"/>
+    <path d="M14 23a7 7 0 0 1 7-7h48a7 7 0 0 1 7 7v8a7 7 0 0 0 0 14v8a7 7 0 0 1-7 7H21a7 7 0 0 1-7-7v-8a7 7 0 0 0 0-14v-8Z" fill="#392342" stroke="url(#ticket)" stroke-width="2.5"/>
+    <path d="M66 22v35" stroke="#b8935a" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 4"/>
+    <circle cx="41" cy="40" r="18" fill="url(#ball)" stroke="#fff7e9" stroke-width="1.5"/>
+    <circle cx="35" cy="33" r="4" fill="#fff" opacity=".78"/>
+    <text x="41" y="46" text-anchor="middle" fill="#38203c" font-family="Arial,sans-serif" font-size="14" font-weight="800">90</text>
+    <path d="m20 68 3 5 5 1-4 4 1 5-5-3-5 3 1-5-4-4 5-1 3-5Z" fill="#ff7187"/>
+    <path d="m70 65 2 3 3 1-3 2v4l-2-2-3 2 1-4-3-2 4-1 1-3Z" fill="#56d5c5"/>
+  </g>
+  <text x="122" y="53" fill="#fff7e9" font-family="Georgia,serif" font-size="34" font-weight="700" letter-spacing=".5">NINETY CLUB</text>
+  <text x="124" y="79" fill="#ffcf70" font-family="Arial,sans-serif" font-size="11" font-weight="700" letter-spacing="3.2">A FRESH TABLE FOR EVERY GAME</text>
+</svg>

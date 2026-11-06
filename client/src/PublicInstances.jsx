@@ -39,13 +39,7 @@ export default function PublicInstances() {
             <p className="public-lede">Each hall has its own rooms and game history. To join a live room, use the code shared by its host.</p>
           </div>
           <div className="public-hero__art" aria-hidden="true">
-            <div className="public-hero__ticket">
-              <span className="public-hero__ticket-label">TAMBOLA</span>
-              <div className="public-hero__ticket-grid">{[7, 14, 22, 31, 39, 46, 54, 63, 71, 80, 88, 90].map((number, index) => <span className={index % 4 === 1 ? "is-marked" : ""} key={number}>{number}</span>)}</div>
-              <span className="public-hero__ticket-note">ONE MORE ROUND</span>
-            </div>
-            <span className="public-hero__ball public-hero__ball--one">90</span>
-            <span className="public-hero__ball public-hero__ball--two">7</span>
+            <img className="public-hero__brand-mark" src="/brand/ninety-club-mark.svg" alt="" />
             <span className="public-hero__orbit" />
           </div>
         </section>
@@ -67,7 +61,6 @@ export default function PublicInstances() {
               <article className="instance-card" key={instance.slug} style={instanceBrandingStyles(instance.branding)}>
                 <div className="instance-card__mark" aria-hidden="true">{safeInstanceLogo(instance.branding?.logo) ? <img src={safeInstanceLogo(instance.branding.logo)} alt="" /> : "90"}</div>
                 <div className="instance-card__body">
-                  <p className="oh-eyebrow">{instance.branding?.tagline || "Game instance"}</p>
                   <h2>{instance.display_name}</h2>
                   <p>{instance.description || "A free-to-play Tambola game hall."}</p>
                   <Link className="public-link-button public-link-button--primary" to={`/games/${encodeURIComponent(instance.slug)}`}>

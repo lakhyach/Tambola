@@ -16,8 +16,6 @@ import { formatDateTime, formatNumber, formatRelative, statusLabel } from "./for
 import { Badge, Empty, ErrorNote, Field, Loading, Pagination, Section, StatusPill, Table } from "./ui.jsx";
 
 const PAGE = 25;
-const PATTERN_IDS = Object.keys(PATTERN_META);
-const ALL_PATTERN_IDS = [...PATTERN_IDS, ...OPTIONAL_PATTERNS.map((pattern) => pattern.id)];
 const PATTERN_POINTS = { ...PATTERN_META, ...Object.fromEntries(OPTIONAL_PATTERNS.map((pattern) => [pattern.id, pattern])) };
 const STATES = [
   { value: "open", label: "Open rooms" },
@@ -70,9 +68,9 @@ export default function AdminGames() {
 
   const [form, setForm] = useState({
     name: "Operator Table",
-    seconds: 8,
+    seconds: 3,
     autoCall: false,
-    patterns: ALL_PATTERN_IDS,
+    patterns: [],
     instanceId: "regular",
   });
   const [creating, setCreating] = useState(false);

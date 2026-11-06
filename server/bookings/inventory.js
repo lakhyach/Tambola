@@ -23,7 +23,7 @@ function publicTicket(row, { publicOnly = false } = {}) {
     serialOrdinal: Number(row.serial_ordinal),
     grid: row.grid,
     status: row.inventory_status,
-    playerName: row.player_name || null,
+    ...(!publicOnly ? { playerName: row.player_name || null } : {}),
     ...(!publicOnly ? { reservationId: row.reservation_id || null } : {}),
     expiresAt: iso(row.reservation_expires_at),
   };
@@ -201,7 +201,12 @@ export function createTicketInventoryService({ db, now = () => new Date(), gener
     const projectedStatus = `CASE WHEN r.status='held' AND r.expires_at>now() THEN 'reserved'
       WHEN r.status='confirmed' AND r.player_id IS NOT NULL THEN 'assigned'
       WHEN r.status='confirmed' THEN 'booked' ELSE 'available' END`;
-    if (wantedStatus) {
+    if (publicOnly) {
+      // The public catalog is a booking surface, not an inventory or player
+      // directory. Never disclose ticket grids/names for held or owned seats,
+      // even when a caller supplies a crafted status filter.
+      filters.push(`${projectedStatus}='available'`);
+    } else if (wantedStatus) {
       params.push(wantedStatus);
       filters.push(`${projectedStatus}=$${params.length}`);
     }
@@ -220,13 +225,7 @@ export function createTicketInventoryService({ db, now = () => new Date(), gener
     );
     const total = Number(count.rows[0]?.total || 0);
     const inventoryCount = publicOnly
-      ? await db.query(
-        `SELECT count(*)::int AS total FROM session_tickets t JOIN game_sessions s USING(session_id)
-          JOIN game_instances i USING(instance_id)
-         WHERE s.session_id=$1 AND s.inventory_mode='numbered' AND s.inventory_state='ready'
-           AND i.status='active' AND i.public_visible AND s.status='open' AND s.booking_opens_at<=now() AND s.booking_closes_at>now() AND s.starts_at>now()
-           AND (s.room_code IS NULL OR EXISTS(SELECT 1 FROM rooms br WHERE br.room_code=s.room_code AND br.status='WAITING' AND br.game_number=0 AND NOT EXISTS(SELECT 1 FROM games bg WHERE bg.room_code=br.room_code)))`, [sessionId]
-      )
+      ? { rows: [{ total }] }
       : await db.query("SELECT count(*)::int AS total FROM session_tickets WHERE session_id=$1", [sessionId]);
     params.push(safePageSize, (safePage - 1) * safePageSize);
     const rows = await db.query(

@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { assetUrl, usePlatformBranding } from "./platform-branding.js";
 import { useBookingLanguage } from "./i18n/booking-language.js";
 
 const HEADER_COPY = {
-  en: { skip: "Skip to main content", menu: "Menu", close: "Close", navigation: "Primary navigation", instances: "Instances", themes: "Themes", host: "Host", join: "Join" },
-  hi: { skip: "मुख्य सामग्री पर जाएँ", menu: "मेनू", close: "मेनू बंद करें", navigation: "मुख्य नेविगेशन", instances: "इंस्टेंस", themes: "थीम", host: "होस्ट", join: "जुड़ें" },
+  en: { skip: "Skip to main content", menu: "Menu", close: "Close", navigation: "Primary navigation", instances: "Games", join: "Join" },
+  hi: { skip: "मुख्य सामग्री पर जाएँ", menu: "मेनू", close: "मेनू बंद करें", navigation: "मुख्य नेविगेशन", instances: "खेल", join: "जुड़ें" },
 };
 
 /**
@@ -15,7 +15,6 @@ const HEADER_COPY = {
  * uses the owner-managed platform mark. A failed image falls back to the dot.
  */
 const Header = () => {
-  const location = useLocation();
   const platformBrand = usePlatformBranding();
   const language = useBookingLanguage();
   const t = (key) => HEADER_COPY[language]?.[key] || HEADER_COPY.en[key];
@@ -35,7 +34,6 @@ const Header = () => {
   }, [menuOpen]);
   const logo = instanceBrand.active ? instanceBrand.logoUrl : assetUrl(platformBrand.logo);
   const name = instanceBrand.active ? instanceBrand.name : platformBrand.name;
-  const isPlayerFlow = location.pathname === "/player" || location.pathname.startsWith("/player/");
 
   return (
     <header className="public-site-header">
@@ -59,15 +57,12 @@ const Header = () => {
           />
         )}
         <span className="oh-display public-site-brand__name">{name}</span>
-        <span className="oh-eyebrow public-site-brand__mark">{platformBrand.mark}</span>
       </Link>
       <button className="public-menu-toggle" type="button" aria-expanded={menuOpen} aria-controls="public-primary-navigation" onClick={() => setMenuOpen((open) => !open)}>
         <span aria-hidden="true">{menuOpen ? "×" : "☰"}</span><span>{menuOpen ? t("close") : t("menu")}</span>
       </button>
       <nav id="public-primary-navigation" className="public-site-nav" aria-label={t("navigation")} data-open={menuOpen ? "true" : "false"}>
         <Link to="/games" onClick={() => setMenuOpen(false)}>{t("instances")}</Link>
-        {!isPlayerFlow ? <Link to="/themes" onClick={() => setMenuOpen(false)}>{t("themes")}</Link> : null}
-        <Link to="/host" onClick={() => setMenuOpen(false)}>{t("host")}</Link>
         <Link to="/player" onClick={() => setMenuOpen(false)}>{t("join")}</Link>
       </nav>
       </div>

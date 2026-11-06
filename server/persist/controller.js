@@ -58,7 +58,7 @@ function publicConfig(config = {}) {
 const PERSIST_MESSAGE =
   "the server could not save that, so it did not happen. Nothing was announced - try again in a moment.";
 
-export function createGameController({ store, sessions, registry: initialRegistry, log = () => {}, now = () => Date.now() } = {}) {
+export function createGameController({ store, sessions, registry: initialRegistry, log = () => {}, now = () => Date.now(), allowPublicHostSessions = false } = {}) {
   const chains = new Map();
   const frozen = new Map();
   const durable = Boolean(store);
@@ -577,6 +577,10 @@ export function createGameController({ store, sessions, registry: initialRegistr
   async function resume({ roomId, sessionToken, socketId }) {
     const verified = await sessions.verify({ sessionToken, roomId });
     if (!verified.ok) return verified;
+    if (verified.role === "host" && !allowPublicHostSessions) {
+      await sessions.revoke({ sessionId: verified.sessionId, roomId, reason: "public-hosting-disabled" }).catch(() => {});
+      return { ok: false, code: "NOT_ALLOWED", error: "host sessions are no longer allowed; use an authorized management panel" };
+    }
     const target = verified.roomId;
     const blocked = refuseFrozen(target);
     if (blocked) return blocked;
@@ -646,6 +650,26 @@ export function createGameController({ store, sessions, registry: initialRegistr
         snapshot: attached.snapshot,
       };
     });
+  }
+
+  /** Validate a remembered seat without attaching a socket or replaying state. */
+  async function checkSession({ roomId, sessionToken, instanceSlug = null } = {}) {
+    const verified = await sessions.verify({ sessionToken, roomId });
+    if (!verified.ok) return verified;
+    if (verified.role !== "player") return { ok: false, code: "NOT_PLAYER", error: "this saved seat is not a player seat" };
+    const target = verified.roomId;
+    const ensured = await ensureRoom({ roomId: target });
+    if (!ensured.ok) return ensured;
+    const room = ensured.room;
+    if (![GameState.WAITING, GameState.RUNNING, GameState.PAUSED].includes(room.state)
+      || !room.players.has(verified.playerId)) {
+      return { ok: false, code: "ROOM_CLOSED", error: "that game is no longer active" };
+    }
+    const actualInstanceSlug = durable ? await store.instanceSlugForRoom({ roomId: target }) : null;
+    if (durable && (!actualInstanceSlug || (instanceSlug && actualInstanceSlug !== instanceSlug))) {
+      return { ok: false, code: "SESSION_INVALID", error: "this saved seat belongs to a different game hall" };
+    }
+    return { ok: true, roomId: target, playerId: verified.playerId, instanceSlug: actualInstanceSlug };
   }
 
   /**
@@ -1235,6 +1259,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
     removeParticipant,
     joinRoom,
     resume,
+    checkSession,
     rotateSession,
     state,
     leave,

@@ -48,7 +48,6 @@ export default function PublicInstance() {
             </div>
             <div className="instance-feature__copy">
               {safeInstanceLogo(instance.branding?.logo) ? <img className="instance-feature__logo" src={safeInstanceLogo(instance.branding.logo)} alt={`${instance.display_name} logo`} /> : null}
-              <p className="oh-eyebrow">{instance.branding?.tagline || "Free-to-play game hall"}</p>
               <h1 className="oh-display">{instance.display_name}</h1>
               <p className="public-lede">{instance.description || "Join a host’s room and play live Tambola with friends."}</p>
               <ul className="instance-points">
@@ -59,9 +58,6 @@ export default function PublicInstance() {
               <div className="instance-feature__actions">
                 <Link className="public-link-button public-link-button--primary" to={`/player?instance=${encodeURIComponent(instance.slug)}`}>
                   Join with a room code
-                </Link>
-                <Link className="public-link-button" to={`/host?instance=${encodeURIComponent(instance.slug)}`}>
-                  Host in this hall
                 </Link>
                 <Link className="public-link-button" to={`/games/${encodeURIComponent(instance.slug)}/sessions`}>
                   Browse scheduled sessions

@@ -742,10 +742,10 @@ test("the default config is a frozen template, rooms get copies", () => {
   assert.equal(Object.isFrozen(DEFAULT_CONFIG), true);
   const h = makeRoom();
   h.room.config.callIntervalMs = 1234;
-  assert.equal(DEFAULT_CONFIG.callIntervalMs, 8000, "the shared default was not mutated");
+  assert.equal(DEFAULT_CONFIG.callIntervalMs, 3000, "the shared default was not mutated");
   assert.equal(h.room.config.maxPlayers, DEFAULT_CONFIG.maxPlayers);
   const other = makeRoom({ roomId: "OTHERROOM" });
-  assert.equal(other.room.config.callIntervalMs, 8000, "another room is unaffected");
+  assert.equal(other.room.config.callIntervalMs, 3000, "another room is unaffected");
 });
 
 test("the state view advertises only the enabled patterns", () => {

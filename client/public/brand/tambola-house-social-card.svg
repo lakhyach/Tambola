@@ -1,1 +1,41 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title"><title id="title">Ninety Club — Play. Book. Host. Celebrate.</title><defs><radialGradient id="bg" cx=".5" cy=".25" r=".9"><stop stop-color="#7a165c"/><stop offset="1" stop-color="#160520"/></radialGradient><linearGradient id="gold" x2=".4" y2="1"><stop stop-color="#fff4b1"/><stop offset=".5" stop-color="#ffd14a"/><stop offset="1" stop-color="#d7831e"/></linearGradient></defs><rect width="1200" height="630" fill="url(#bg)"/><rect x="22" y="22" width="1156" height="586" rx="40" fill="none" stroke="url(#gold)" stroke-width="3"/><rect x="33" y="33" width="1134" height="564" rx="32" fill="none" stroke="#b22e84"/><g fill="none" stroke="url(#gold)" stroke-width="4"><path d="m65 77 32 20-10-37 33 20 25-44 25 44 33-20-10 37 32-20-15 55H80Z"/><path d="M83 143h124"/><path d="M60 180h166v20a16 16 0 0 0 0 32v61H60v-61a16 16 0 0 0 0-32Z"/><path d="M82 202h122v67H82Zm0 33h122M112 202v67M143 202v67M174 202v67"/></g><circle cx="96" cy="218" r="8" fill="#ff65a5"/><circle cx="159" cy="252" r="8" fill="#ff65a5"/><text x="600" y="315" text-anchor="middle" fill="url(#gold)" font-family="Georgia,serif" font-weight="700" font-style="italic" font-size="100" letter-spacing="-4">Ninety Club</text><text x="600" y="385" text-anchor="middle" fill="#fff2dc" font-family="Arial,sans-serif" font-size="30" letter-spacing="5">PLAY · BOOK · HOST · CELEBRATE</text><text x="600" y="454" text-anchor="middle" fill="#ffd777" font-family="Arial,sans-serif" font-size="22">Your people. Your tickets. One joyful game night.</text><g fill="url(#gold)"><path d="m1040 86 8-23 8 23 23 8-23 8-8 23-8-23-23-8Zm56 68 5-15 5 15 15 5-15 5-5 15-5-15-15-5Z"/><circle cx="103" cy="530" r="5"/><circle cx="1095" cy="530" r="5"/><circle cx="600" cy="90" r="5"/></g><path d="M265 529h670" stroke="url(#gold)" stroke-width="2"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title">
+  <title id="title">Ninety Club — a fresh table for every game</title>
+  <defs>
+    <radialGradient id="back" cx="5%" cy="0%" r="110%">
+      <stop stop-color="#482849"/>
+      <stop offset=".52" stop-color="#21142f"/>
+      <stop offset="1" stop-color="#100b19"/>
+    </radialGradient>
+    <linearGradient id="ticket" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#ffdc8a"/><stop offset="1" stop-color="#ffbe4d"/>
+    </linearGradient>
+    <radialGradient id="ball" cx="34%" cy="28%" r="74%">
+      <stop stop-color="#fffdf7"/><stop offset=".72" stop-color="#ffeac3"/><stop offset="1" stop-color="#e7a941"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" rx="30" fill="url(#back)"/>
+  <circle cx="1050" cy="120" r="250" fill="#ffbe4d" opacity=".12"/>
+  <circle cx="1000" cy="600" r="300" fill="#56d5c5" opacity=".10"/>
+  <path d="M820 70 895 27l75 43v86l-75 43-75-43V70Zm127 345 43-25 43 25v50l-43 25-43-25v-50Zm-744-273 30-17 30 17v34l-30 17-30-17V142Z" fill="none" stroke="#ffdc8a" stroke-width="3" opacity=".38"/>
+  <g transform="translate(92 186) scale(2.25)">
+    <rect x="3" y="3" width="90" height="90" rx="27" fill="#1b1027" stroke="#684b70" stroke-width="2"/>
+    <path d="M17 26a7 7 0 0 1 7-7h48a7 7 0 0 1 7 7v8a7 7 0 0 0 0 14v8a7 7 0 0 1-7 7H24a7 7 0 0 1-7-7v-8a7 7 0 0 0 0-14v-8Z" fill="#392342" stroke="url(#ticket)" stroke-width="2.5"/>
+    <path d="M69 25v35" stroke="#b8935a" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 4"/>
+    <circle cx="44" cy="43" r="18" fill="url(#ball)" stroke="#fff7e9" stroke-width="1.5"/>
+    <circle cx="38" cy="36" r="4" fill="#fff" opacity=".78"/>
+    <text x="44" y="49" text-anchor="middle" fill="#38203c" font-family="Arial,sans-serif" font-size="14" font-weight="800">90</text>
+    <path d="m23 71 3 5 5 1-4 4 1 5-5-3-5 3 1-5-4-4 5-1 3-5Z" fill="#ff7187"/>
+    <path d="m73 68 2 3 3 1-3 2v4l-2-2-3 2 1-4-3-2 4-1 1-3Z" fill="#56d5c5"/>
+  </g>
+  <text x="365" y="260" fill="#fff7e9" font-family="Georgia,serif" font-size="80" font-weight="700" letter-spacing="1">Ninety Club</text>
+  <text x="372" y="325" fill="#ffcf70" font-family="Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="6">A FRESH TABLE FOR EVERY GAME</text>
+  <text x="372" y="382" fill="#d3c4d6" font-family="Arial,sans-serif" font-size="24">Free, friendly, real-time Tambola with people you know.</text>
+  <g transform="translate(372 450)">
+    <rect width="112" height="112" rx="24" fill="#382342" stroke="#ffbe4d" stroke-width="3"/>
+    <text x="56" y="73" text-anchor="middle" fill="#ffdc8a" font-family="Arial,sans-serif" font-size="50" font-weight="700">12</text>
+    <rect x="132" width="112" height="112" rx="24" fill="#382342" stroke="#684b70" stroke-width="3"/>
+    <text x="188" y="73" text-anchor="middle" fill="#fff7e9" font-family="Arial,sans-serif" font-size="50" font-weight="700">47</text>
+    <rect x="264" width="112" height="112" rx="24" fill="#382342" stroke="#684b70" stroke-width="3"/>
+    <text x="320" y="73" text-anchor="middle" fill="#fff7e9" font-family="Arial,sans-serif" font-size="50" font-weight="700">83</text>
+  </g>
+</svg>

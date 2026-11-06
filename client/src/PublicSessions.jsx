@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Header from "./Header.jsx";
 import BookingLanguageSelect from "./i18n/BookingLanguageSelect.jsx";
@@ -9,24 +9,40 @@ export default function PublicSessions() {
   const { slug = "" } = useParams();
   const [sessions, setSessions] = useState([]);
   const [state, setState] = useState("loading");
+  const [now, setNow] = useState(Date.now());
+  const serverOffset = useRef(0);
   const language = useBookingLanguage();
 
   useEffect(() => {
-    const abort = new AbortController();
-    fetch(`/api/public/instances/${encodeURIComponent(slug)}/sessions`, {
-      signal: abort.signal, headers: { Accept: "application/json" }, cache: "no-store",
-    }).then(async (response) => {
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.ok || !Array.isArray(data.sessions)) throw new Error("Sessions are unavailable.");
-      return data.sessions;
-    }).then((rows) => {
-      setSessions(rows);
-      setState("ready");
-    }).catch((error) => {
-      if (error.name !== "AbortError") setState("error");
-    });
-    return () => abort.abort();
+    let active = true;
+    let pending = false;
+    const controllers = new Set();
+    const load = async () => {
+      if (pending) return;
+      pending = true;
+      const abort = new AbortController(); controllers.add(abort);
+      try {
+        const response = await fetch(`/api/public/instances/${encodeURIComponent(slug)}/sessions`, {
+          signal: abort.signal, headers: { Accept: "application/json" }, cache: "no-store",
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.ok || !Array.isArray(data.sessions)) throw new Error("Sessions are unavailable.");
+        if (!active) return;
+        const serverTime = Date.parse(data.sessions[0]?.serverTime);
+        if (Number.isFinite(serverTime)) serverOffset.current = serverTime - Date.now();
+        setSessions(data.sessions); setState("ready");
+      } catch (error) {
+        if (active && error.name !== "AbortError") setState("error");
+      } finally { pending = false; controllers.delete(abort); }
+    };
+    load();
+    const interval = window.setInterval(load, 30_000);
+    const visible = () => { if (document.visibilityState === "visible") load(); };
+    document.addEventListener("visibilitychange", visible);
+    return () => { active = false; window.clearInterval(interval); document.removeEventListener("visibilitychange", visible); controllers.forEach((controller) => controller.abort()); };
   }, [slug]);
+
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now() + serverOffset.current), 1000); return () => window.clearInterval(timer); }, []);
 
   const instanceName = sessions[0]?.instanceName;
 
@@ -51,24 +67,31 @@ export default function PublicSessions() {
         ) : null}
         {state === "ready" && sessions.length > 0 ? (
           <div className="booking-session-grid">
-            {sessions.map((session) => (
-              <article className="booking-session" key={session.sessionId}>
+            {sessions.map((session) => {
+              const current = Number.isFinite(now) ? now : Date.now();
+              const opens = Date.parse(session.bookingOpensAt); const closes = Date.parse(session.bookingClosesAt); const starts = Date.parse(session.startsAt);
+              const bookingOpen = session.status === "open" && opens <= current && closes > current && starts > current && Number(session.available) > 0;
+              const bookingLabel = session.status === "paused" ? "Bookings paused" : starts <= current ? "Bookings closed" : opens > current ? "Bookings not open" : closes <= current ? "Bookings closed" : Number(session.available) <= 0 ? "Sold out" : "Bookings open";
+              const gameLabel = session.gameStatus === "live" ? "Live" : starts > current ? "Upcoming" : session.gameStatus;
+              return <article className="booking-session" key={session.sessionId}>
                 <div className="booking-session__topline">
-                  <span className="booking-session__badge">{bookingCopy(language, "freePlay")}</span>
-                  <span className="booking-session__availability">{Math.max(0, Number(session.available) || 0) ? bookingCopy(language, "ticketsOpen", { count: formatBookingNumber(Math.max(0, Number(session.available) || 0), language) }) : bookingCopy(language, "soldOut")}</span>
+                  <span className="booking-session__badge">{gameLabel} · {bookingLabel}</span>
+                  <span className="booking-session__availability">{bookingOpen ? bookingCopy(language, "ticketsOpen", { count: formatBookingNumber(Number(session.available), language) }) : `${formatBookingNumber(Math.max(0, Number(session.available) || 0), language)} available`}</span>
                 </div>
                 <h2>{session.title}</h2>
                 <dl className="booking-session__facts">
                   <div><dt>{bookingCopy(language, "starts")}</dt><dd>{formatBookingDate(session.startsAt, language)}</dd></div>
+                  <div><dt>Bookings open</dt><dd>{formatBookingDate(session.bookingOpensAt, language)}</dd></div>
                   <div><dt>{bookingCopy(language, "bookingCloses")}</dt><dd>{formatBookingDate(session.bookingClosesAt, language)}</dd></div>
+                  <div><dt>Game status</dt><dd>{session.gameStatus === "live" ? "Live" : session.gameStatus === "upcoming" ? "Upcoming" : session.gameStatus}</dd></div>
                   <div><dt>{bookingCopy(language, "ticketsAvailable")}</dt><dd>{formatBookingNumber(Math.max(0, Number(session.available) || 0), language)} / {formatBookingNumber(Number(session.capacity) || 0, language)}</dd></div>
                 </dl>
                 <p className="booking-timezone-note">{bookingCopy(language, "localTime")}</p>
-                {Number(session.available) > 0 ? <Link className="public-link-button public-link-button--primary" to={`/sessions/${encodeURIComponent(session.sessionId)}?instance=${encodeURIComponent(slug)}`}>
+                {bookingOpen ? <Link className="public-link-button public-link-button--primary" to={`/sessions/${encodeURIComponent(session.sessionId)}?instance=${encodeURIComponent(slug)}`}>
                   {bookingCopy(language, "reserveTickets")} <span aria-hidden="true">→</span>
-                </Link> : <button className="public-link-button" disabled type="button">{bookingCopy(language, "noCapacity")}</button>}
+                </Link> : <Link className="public-link-button" to={`/sessions/${encodeURIComponent(session.sessionId)}?instance=${encodeURIComponent(slug)}`}>View session</Link>}
               </article>
-            ))}
+            })}
           </div>
         ) : null}
         <p className="booking-legal">{bookingCopy(language, "sessionLegal")}</p>

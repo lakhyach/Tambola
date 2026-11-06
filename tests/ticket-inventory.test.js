@@ -101,7 +101,11 @@ test("numbered ticket inventory generates atomically, pages real grids, and allo
     assert.ok(differentTickets.every((result) => !result.error), "different tickets can be allocated concurrently");
     const idempotent = await inventory.allocateToReservation({ sessionId, reservationId: winner, ticketIds: [pageTickets[0].ticketId] });
     assert.equal(idempotent.idempotent, true);
-    assert.equal((await inventory.listPublicCatalog({ sessionId, status: "reserved", pageSize: 100 })).total, 3);
+    const publicAfterHolds = await inventory.listPublicCatalog({ sessionId, status: "reserved", pageSize: 100 });
+    assert.equal(publicAfterHolds.total, 197, "public inventory omits held tickets even if the caller requests reserved status");
+    assert.equal(publicAfterHolds.inventoryTotal, 197);
+    assert.ok(publicAfterHolds.tickets.every((ticket) => ticket.status === "available"));
+    assert.equal("playerName" in publicAfterHolds.tickets[0], false, "public inventory does not expose reservation names");
 
     await env.db.query("UPDATE ticket_reservations SET status='confirmed',confirmed_at=now() WHERE reservation_id=$1", [winner]);
     await inventory.markReservationEvent({ sessionId, reservationId: winner, action: "confirmed", actor: { type: "system", label: "test" } });
@@ -178,7 +182,8 @@ test("numbered booking tickets persist into the game and survive process recover
     const confirmed = await booking.lookupOrTransition({ reservationId: reservation.reservation.reservationId, bookingToken: reservation.reservation.bookingToken, action: "confirm" });
     assert.equal(confirmed.reservation.status, "confirmed");
     const updatedCatalog = await inventory.listPublicCatalog({ sessionId: made.session.sessionId, page: 8, pageSize: 25 });
-    assert.equal(updatedCatalog.tickets.find((ticket) => ticket.ticketId === selected[0].ticketId).status, "booked");
+    assert.equal(updatedCatalog.total, 199, "a confirmed ticket is removed from the public booking catalog");
+    assert.equal(updatedCatalog.tickets.some((ticket) => ticket.ticketId === selected[0].ticketId), false);
     const joined = await controller.joinRoom({
       roomId: created.roomId, name: "Synthetic Player", socketId: "inventory-player",
       instanceSlug: "regular", reservationId: reservation.reservation.reservationId,
@@ -188,7 +193,8 @@ test("numbered booking tickets persist into the game and survive process recover
     assert.deepEqual(joined.snapshot.tickets.map((ticket) => ticket.inventoryTicketId), selected.map((ticket) => ticket.ticketId));
     assert.deepEqual(joined.snapshot.tickets.map((ticket) => ticket.grid), selected.map((ticket) => ticket.grid));
     const afterAssignment = await inventory.listPublicCatalog({ sessionId: made.session.sessionId, page: 8, pageSize: 25 });
-    assert.equal(afterAssignment.tickets.find((ticket) => ticket.ticketId === selected[0].ticketId).status, "assigned");
+    assert.equal(afterAssignment.total, 199, "assigned tickets remain private from the public catalog");
+    assert.equal(afterAssignment.tickets.some((ticket) => ticket.ticketId === selected[0].ticketId), false);
     const adminInventory = await inventory.listAdminInventory({ instanceId: "regular", sessionId: made.session.sessionId, status: "assigned", search: "TKT-0200" });
     assert.equal(adminInventory.tickets[0].playerName, "Synthetic Player");
     const inventoryCounts = await env.db.query(

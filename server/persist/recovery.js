@@ -384,6 +384,7 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
         draw,
         cursor: calls.length,
         calledNumbers: calls.map((call) => call.number),
+        calledAt: calls.map((call) => asMillis(call.called_at)),
         awards: storedAwards.map((award) => ({
           pattern: award.pattern,
           playerId: award.player_id,
@@ -446,6 +447,7 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
     draw: resetToWaiting ? [] : draw,
     cursor: resetToWaiting ? 0 : calls.length,
     calledNumbers: resetToWaiting ? [] : calls.map((call) => call.number),
+    calledAt: resetToWaiting ? [] : calls.map((call) => asMillis(call.called_at)),
     awards: (resetToWaiting ? [] : storedAwards).map((award) => ({
       pattern: award.pattern,
       playerId: award.player_id,
