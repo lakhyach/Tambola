@@ -1,6 +1,8 @@
 export const INSTANCE_LOGO_FILES = Object.freeze([
   "ninety-club-mark.svg",
   "ninety-club-lockup.svg",
+  "ninety-club-crown-controller.svg",
+  "ninety-club-wordmark.svg",
   "regular-mark.svg",
   "bumper-mark.svg",
 ]);

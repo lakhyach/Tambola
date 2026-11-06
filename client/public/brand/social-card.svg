@@ -1,41 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-labelledby="title">
-  <title id="title">Ninety Club — a fresh table for every game</title>
-  <defs>
-    <radialGradient id="back" cx="5%" cy="0%" r="110%">
-      <stop stop-color="#482849"/>
-      <stop offset=".52" stop-color="#21142f"/>
-      <stop offset="1" stop-color="#100b19"/>
-    </radialGradient>
-    <linearGradient id="ticket" x1="0" y1="0" x2="1" y2="1">
-      <stop stop-color="#ffdc8a"/><stop offset="1" stop-color="#ffbe4d"/>
-    </linearGradient>
-    <radialGradient id="ball" cx="34%" cy="28%" r="74%">
-      <stop stop-color="#fffdf7"/><stop offset=".72" stop-color="#ffeac3"/><stop offset="1" stop-color="#e7a941"/>
-    </radialGradient>
-  </defs>
-  <rect width="1200" height="630" rx="30" fill="url(#back)"/>
-  <circle cx="1050" cy="120" r="250" fill="#ffbe4d" opacity=".12"/>
-  <circle cx="1000" cy="600" r="300" fill="#56d5c5" opacity=".10"/>
-  <path d="M820 70 895 27l75 43v86l-75 43-75-43V70Zm127 345 43-25 43 25v50l-43 25-43-25v-50Zm-744-273 30-17 30 17v34l-30 17-30-17V142Z" fill="none" stroke="#ffdc8a" stroke-width="3" opacity=".38"/>
-  <g transform="translate(92 186) scale(2.25)">
-    <rect x="3" y="3" width="90" height="90" rx="27" fill="#1b1027" stroke="#684b70" stroke-width="2"/>
-    <path d="M17 26a7 7 0 0 1 7-7h48a7 7 0 0 1 7 7v8a7 7 0 0 0 0 14v8a7 7 0 0 1-7 7H24a7 7 0 0 1-7-7v-8a7 7 0 0 0 0-14v-8Z" fill="#392342" stroke="url(#ticket)" stroke-width="2.5"/>
-    <path d="M69 25v35" stroke="#b8935a" stroke-width="2" stroke-linecap="round" stroke-dasharray="2 4"/>
-    <circle cx="44" cy="43" r="18" fill="url(#ball)" stroke="#fff7e9" stroke-width="1.5"/>
-    <circle cx="38" cy="36" r="4" fill="#fff" opacity=".78"/>
-    <text x="44" y="49" text-anchor="middle" fill="#38203c" font-family="Arial,sans-serif" font-size="14" font-weight="800">90</text>
-    <path d="m23 71 3 5 5 1-4 4 1 5-5-3-5 3 1-5-4-4 5-1 3-5Z" fill="#ff7187"/>
-    <path d="m73 68 2 3 3 1-3 2v4l-2-2-3 2 1-4-3-2 4-1 1-3Z" fill="#56d5c5"/>
-  </g>
-  <text x="365" y="260" fill="#fff7e9" font-family="Georgia,serif" font-size="80" font-weight="700" letter-spacing="1">Ninety Club</text>
-  <text x="372" y="325" fill="#ffcf70" font-family="Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="6">A FRESH TABLE FOR EVERY GAME</text>
-  <text x="372" y="382" fill="#d3c4d6" font-family="Arial,sans-serif" font-size="24">Free, friendly, real-time Tambola with people you know.</text>
-  <g transform="translate(372 450)">
-    <rect width="112" height="112" rx="24" fill="#382342" stroke="#ffbe4d" stroke-width="3"/>
-    <text x="56" y="73" text-anchor="middle" fill="#ffdc8a" font-family="Arial,sans-serif" font-size="50" font-weight="700">12</text>
-    <rect x="132" width="112" height="112" rx="24" fill="#382342" stroke="#684b70" stroke-width="3"/>
-    <text x="188" y="73" text-anchor="middle" fill="#fff7e9" font-family="Arial,sans-serif" font-size="50" font-weight="700">47</text>
-    <rect x="264" width="112" height="112" rx="24" fill="#382342" stroke="#684b70" stroke-width="3"/>
-    <text x="320" y="73" text-anchor="middle" fill="#fff7e9" font-family="Arial,sans-serif" font-size="50" font-weight="700">83</text>
-  </g>
+ <title id="title">Ninety Club</title>
+ <defs><linearGradient id="bg" x2="1" y2="1"><stop stop-color="#321541"/><stop offset="1" stop-color="#100b1a"/></linearGradient></defs>
+ <rect width="1200" height="630" fill="url(#bg)"/><circle cx="1010" cy="105" r="240" fill="#d7a642" opacity=".08"/><circle cx="1010" cy="625" r="280" fill="#7f367c" opacity=".12"/>
+ <g transform="translate(104 105) scale(3.5)"><path d="M19 36 12 14l20 12L48 8l16 18 20-12-7 22H19Z" fill="#d7a642" stroke="#f3d27e" stroke-width="2" stroke-linejoin="round"/><path d="M19 37h58v5H19z" fill="#b98127" stroke="#f3d27e" stroke-width="1.5"/><path d="M19 47c-6 0-9 5-10 12L6 75c-1 8 4 13 12 13 7 0 12-5 15-12h30c3 7 8 12 15 12 8 0 13-5 12-13l-3-16c-1-7-4-12-10-12H19Z" fill="#24152d" stroke="#d7a642" stroke-width="4" stroke-linejoin="round"/><path d="M20 60h17M28.5 51.5v17" fill="none" stroke="#f0c96b" stroke-width="5" stroke-linecap="square"/><circle cx="64" cy="57" r="3.5" fill="#f0c96b"/><circle cx="75" cy="63" r="3.5" fill="#f0c96b"/><circle cx="64" cy="69" r="3.5" fill="#f0c96b"/><circle cx="53" cy="63" r="3.5" fill="#f0c96b"/></g>
+ <text x="550" y="280" fill="#f8efd9" font-family="Georgia,serif" font-size="88" font-weight="700" letter-spacing="2">NINETY</text><text x="550" y="385" fill="#d7a642" font-family="Georgia,serif" font-size="70" font-weight="700" letter-spacing="8">CLUB</text><path d="M555 425h470" stroke="#d7a642" stroke-width="3" opacity=".7"/><text x="555" y="480" fill="#dbcfe0" font-family="Arial,sans-serif" font-size="28">A better seat for game night.</text>
 </svg>

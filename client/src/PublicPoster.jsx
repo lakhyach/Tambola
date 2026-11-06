@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Header from "./Header.jsx";
+import PublicBack from "./components/PublicBack.jsx";
 import PosterArt from "./admin/PosterArt.jsx";
 import { applyInstanceBranding, applyRuntimeTheme, clearRuntimeTheme } from "./theme-runtime.js";
 import "./admin/posters.css";
@@ -62,8 +63,8 @@ export default function PublicPoster() {
     catch (error) { if (error.name !== "AbortError") setShareMessage("Sharing could not be opened."); }
   }
 
-  if (state === "loading") return <div className="public-page"><Header /><main id="main-content" tabIndex="-1" className="public-poster-page"><p>Loading published poster…</p></main></div>;
-  if (state === "error" || !poster || !template) return <div className="public-page"><Header /><main id="main-content" tabIndex="-1" className="public-poster-page"><section className="public-error"><h1>Poster unavailable</h1><p>This poster may have been unpublished or the link may be incorrect.</p><Link to="/games">Browse games</Link></section></main></div>;
+  if (state === "loading") return <div className="public-page"><Header /><main id="main-content" tabIndex="-1" className="public-poster-page"><PublicBack to="/games">← Back to games</PublicBack><p>Loading published poster…</p></main></div>;
+  if (state === "error" || !poster || !template) return <div className="public-page"><Header /><main id="main-content" tabIndex="-1" className="public-poster-page"><PublicBack to="/games">← Back to games</PublicBack><section className="public-error"><h1>Poster unavailable</h1><p>This poster may have been unpublished or the link may be incorrect.</p></section></main></div>;
 
   const joinPath = eventFacts?.sessionId ? `/sessions/${encodeURIComponent(eventFacts.sessionId)}?instance=${encodeURIComponent(poster.instanceSlug)}` : `/games/${encodeURIComponent(poster.instanceSlug)}`;
   const bookingHref = poster.data.bookingUrl || joinPath;
@@ -74,7 +75,7 @@ export default function PublicPoster() {
   const whatsapp = `https://wa.me/?text=${encodeURIComponent(`${announcement}\n\n${shareUrl}`)}`;
   const telegram = `https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(announcement)}`;
   const facebook = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
-  return <div className="public-page"><Header /><main id="main-content" tabIndex="-1" className="public-poster-page"><section className="public-poster-head"><p className="oh-eyebrow">{poster.instanceName} · {eventFacts?.gameType || "Free-to-play Tambola"}</p><h1 className="oh-display">{poster.data.title}</h1><p>{poster.data.schedule} · {poster.templateName}</p></section><div className="public-poster-art"><PosterArt template={template} poster={poster.data} instance={{ display_name: poster.instanceName }} /></div>
+  return <div className="public-page"><Header /><main id="main-content" tabIndex="-1" className="public-poster-page"><PublicBack to={`/games/${encodeURIComponent(poster.instanceSlug)}`}>← Back to {poster.instanceName}</PublicBack><section className="public-poster-head"><p className="oh-eyebrow">{poster.instanceName} · {eventFacts?.gameType || "Free-to-play Tambola"}</p><h1 className="oh-display">{poster.data.title}</h1><p>{poster.data.schedule} · {poster.templateName}</p></section><div className="public-poster-art"><PosterArt template={template} poster={poster.data} instance={{ display_name: poster.instanceName }} /></div>
     {hasEventDetails ? <section className="public-poster-event" aria-labelledby="event-facts-title"><h2 id="event-facts-title">Event details</h2><p>{poster.data.details}</p>{poster.data.eventDetails ? <p>{poster.data.eventDetails}</p> : null}<p>{poster.data.schedule}{poster.data.venue ? ` · ${poster.data.venue}` : ""}</p>{poster.data.organizerName ? <p>Hosted by {poster.data.organizerName}{poster.data.contactInfo ? ` · ${poster.data.contactInfo}` : ""}</p> : poster.data.contactInfo ? <p>{poster.data.contactInfo}</p> : null}{eventFacts ? <><p>{eventFacts.roomCode ? `Room code ${eventFacts.roomCode} · ` : ""}{eventFacts.ticketAvailability}</p><h3>Winning patterns · game points</h3><ul>{(eventFacts.winningPatterns || []).map((item) => <li key={item.id}><span>{item.label}</span><strong>{item.points} points</strong></li>)}</ul></> : null}<p>Free to play · no cash prizes.</p></section> : null}
     <div className="public-poster-actions">{externalBooking ? <a className="public-event-join" href={bookingHref} target="_blank" rel="noreferrer noopener">{bookingLabel}</a> : <Link className="public-event-join" to={bookingHref}>{bookingLabel}</Link>}<button type="button" onClick={() => copy(shareUrl, "Event link")}>Copy event link</button><button type="button" onClick={() => copy(announcement, "Announcement")}>Copy announcement</button><button type="button" onClick={nativeShare}>Share…</button><a href={whatsapp} target="_blank" rel="noreferrer noopener">WhatsApp</a><a href={telegram} target="_blank" rel="noreferrer noopener">Telegram</a><a href={facebook} target="_blank" rel="noreferrer noopener">Facebook</a></div>
     {shareMessage ? <p role="status" className="public-poster-share-status">{shareMessage}</p> : null}<p className="public-poster-link"><Link to={`/games/${poster.instanceSlug}`}>Explore {poster.instanceName}</Link></p></main></div>;

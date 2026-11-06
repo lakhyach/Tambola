@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Header from "./Header.jsx";
+import PublicBack from "./components/PublicBack.jsx";
 import { APP_NAME } from "./brand.js";
 import { instanceBrandingStyles, safeInstanceLogo } from "./theme-runtime.js";
 
@@ -32,6 +33,7 @@ export default function PublicInstances() {
     <div className="public-page">
       <Header />
       <main id="main-content" tabIndex="-1" className="public-container">
+        <PublicBack className="public-back public-back--prominent" to="/">← Back</PublicBack>
         <section className="public-hero" aria-labelledby="games-title">
           <div className="public-hero__copy">
             <p className="oh-eyebrow public-kicker"><span className="public-kicker__spark" aria-hidden="true" /> Play by instance</p>

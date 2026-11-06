@@ -20,6 +20,7 @@ import { getNumberCallout } from "../lib/number-callouts.js";
 import { canClaim, claimNote, ticketPanel } from "../lib/playerview.js";
 import { callAnnouncement } from "../lib/ticketview.js";
 import { bookingClaimNote, bookingCopy, formatBookingNumber, useBookingLanguage } from "../i18n/booking-locale.js";
+import PublicBack from "./PublicBack.jsx";
 
 /** Ticket absence has two real meanings; neither should produce a fake grid. */
 const TicketNotice = ({ spectator, language }) => (
@@ -49,6 +50,7 @@ const GameShell = ({ role, view, sessionResumeCount }) => {
       <a className="public-skip-link" href="#main-content">{t("skipToGame")}</a>
       <GameHeader roomId={view.roomId} state={view.state} playerCount={view.players.length} language={language} sound={view.sound} onToggleSound={view.onToggleSound} onToggleSpeech={view.onToggleSpeech} onToggleSpeechLang={view.onToggleSpeechLang} />
       <main id="main-content" tabIndex="-1" className="player-game-main">
+        <PublicBack to="/player/room">← Back to room</PublicBack>
         <h1 className="oh-sr-only">{t("liveGameHeading")}</h1>
         <Toast message={view.message} />
         <div className="oh-sr-only" role="status" aria-live="polite" aria-atomic="true" data-call-announcer="true">{callAnnouncement(view.lastCall, view.remaining)}</div>

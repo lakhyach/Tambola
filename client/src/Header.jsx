@@ -34,12 +34,16 @@ const Header = () => {
   }, [menuOpen]);
   const logo = instanceBrand.active ? instanceBrand.logoUrl : assetUrl(platformBrand.logo);
   const name = instanceBrand.active ? instanceBrand.name : platformBrand.name;
+  const isPlatformBrand = !instanceBrand.active && name === "Ninety Club";
 
   return (
     <header className="public-site-header">
       <a className="public-skip-link" href="#main-content">{t("skip")}</a>
       <div className="public-site-header__inner">
-      <Link to="/" className="public-site-brand" onClick={() => setMenuOpen(false)}>
+      <Link to="/" className="public-site-brand" onClick={() => setMenuOpen(false)} aria-label={`${name} home`}>
+        {isPlatformBrand && !logoFailed ? (
+          <img className="public-site-brand__lockup" src={assetUrl(platformBrand.horizontalLogo)} alt="Ninety Club" width="240" height="64" onError={() => setLogoFailed(true)} />
+        ) : <>
         {logoFailed || !logo ? (
           <span
             aria-hidden="true"
@@ -50,13 +54,14 @@ const Header = () => {
             src={logo}
             alt=""
             aria-hidden="true"
-            width={22}
-            height={22}
+            width={38}
+            height={38}
             onError={() => setLogoFailed(true)}
-            style={{ width: 22, height: 22, borderRadius: 6, objectFit: "contain", display: "block" }}
+            style={{ width: 38, height: 38, objectFit: "contain", display: "block" }}
           />
         )}
         <span className="oh-display public-site-brand__name">{name}</span>
+        </>}
       </Link>
       <button className="public-menu-toggle" type="button" aria-expanded={menuOpen} aria-controls="public-primary-navigation" onClick={() => setMenuOpen((open) => !open)}>
         <span aria-hidden="true">{menuOpen ? "×" : "☰"}</span><span>{menuOpen ? t("close") : t("menu")}</span>

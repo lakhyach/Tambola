@@ -3,7 +3,8 @@ import { config } from "./config.js";
 import { DEFAULT_BRAND, normalizeManifestAccent } from "./brand-defaults.js";
 
 const assets = new Set([
-  "ninety-club-mark.svg", "ninety-club-lockup.svg", "regular-mark.svg",
+  "ninety-club-mark.svg", "ninety-club-lockup.svg", "ninety-club-crown-controller.svg",
+  "ninety-club-wordmark.svg", "ninety-club-crown-controller-icon.svg", "ninety-club-social-card.svg", "regular-mark.svg",
   "bumper-mark.svg", "icon.svg", "social-card.svg", "tambola-house-mark.svg",
   "tambola-house-lockup.svg", "tambola-house-icon.svg", "tambola-house-social-card.svg",
 ]);
@@ -95,7 +96,7 @@ export function applyPlatformBranding(value = current) {
   const icon = document.querySelector('link[rel="icon"]');
   if (icon) icon.setAttribute("href", `/brand/${value.icon}`);
   const appleIcon = document.querySelector('link[rel="apple-touch-icon"]');
-  if (appleIcon) appleIcon.setAttribute("href", `/brand/${value.icon}`);
+  if (appleIcon) appleIcon.setAttribute("href", ["icon.svg", "tambola-house-icon.svg", "ninety-club-crown-controller-icon.svg"].includes(value.icon) ? "/icon/ninety-club-180.png" : `/brand/${value.icon}`);
   const manifest = document.querySelector('link[rel="manifest"]');
   if (manifest) {
     const query = new URLSearchParams({ fallbackName: value.name, fallbackSubtitle: value.subtitle, fallbackIcon: value.icon, fallbackAccent: normalizeManifestAccent(value.accent) });

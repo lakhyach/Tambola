@@ -22,7 +22,7 @@ const FONTS = Object.freeze({
   serif: '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, ui-serif, "Times New Roman", serif',
   system: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
 });
-const INSTANCE_LOGOS = new Set(["ninety-club-mark.svg", "ninety-club-lockup.svg", "tambola-house-mark.svg", "tambola-house-lockup.svg", "regular-mark.svg", "bumper-mark.svg"]);
+const INSTANCE_LOGOS = new Set(["ninety-club-mark.svg", "ninety-club-lockup.svg", "ninety-club-crown-controller.svg", "ninety-club-wordmark.svg", "tambola-house-mark.svg", "tambola-house-lockup.svg", "regular-mark.svg", "bumper-mark.svg"]);
 const BRAND_COLOR_VARS = Object.freeze({ accent: "--oh-gold", accentBright: "--oh-gold-bright", accentDeep: "--oh-gold-deep", coral: "--oh-brand-coral" });
 const LEGACY_OBSIDIAN_DEFAULT = Object.freeze({
   gold: "#42c98a", goldBright: "#9cf0c5", goldDeep: "#178354",

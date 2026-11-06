@@ -31,10 +31,16 @@ test("the installed-app manifest follows the configured platform name, icon and 
     start_url: "/",
     scope: "/",
     display: "standalone",
-    icons: [{ src: `/brand/${validBrand.icon}`, sizes: "any", type: "image/svg+xml", purpose: "any maskable" }],
+    icons: [
+      { src: `/brand/${validBrand.icon}`, sizes: "any", type: "image/svg+xml", purpose: "any" },
+      { src: "/icon/ninety-club-192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
+      { src: "/icon/ninety-club-512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" },
+    ],
     theme_color: validBrand.accent,
     background_color: "#07110f",
   });
+  const customIcon = publicPlatformManifest({ ...validBrand, icon: "regular-mark.svg" });
+  assert.deepEqual(customIcon.icons, [{ src: "/brand/regular-mark.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }]);
   assert.equal(publicPlatformManifest(null, { name: "<script>", subtitle: "bad > copy" }).name, DEFAULT_PLATFORM_BRANDING.name);
   assert.equal(publicPlatformManifest(null, { name: "Safe Name", subtitle: "<script>" }).description, DEFAULT_PLATFORM_BRANDING.subtitle);
   assert.equal(publicPlatformManifest(null, null).name, DEFAULT_PLATFORM_BRANDING.name);

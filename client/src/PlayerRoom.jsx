@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { call, clearSession, isSeatGone, on, resumeSession } from "./net.js";
 import Header from "./Header";
+import PublicBack from "./components/PublicBack.jsx";
 import Panel from "./components/Panel.jsx";
 import ConnectionIndicator from "./components/ConnectionIndicator.jsx";
 import PlayerRoster from "./components/PlayerRoster.jsx";
@@ -114,6 +115,7 @@ const PlayerRoom = () => {
         className="player-room-page flex-1 w-full"
         style={{ maxWidth: 980, marginInline: "auto", padding: "12px 20px 40px" }}
       >
+        <PublicBack to="/games">← Back to games</PublicBack>
         <div
           data-oh-room-grid="true"
           style={{ display: "grid", gap: 16, gridTemplateColumns: "minmax(0, 1fr)", alignItems: "start" }}

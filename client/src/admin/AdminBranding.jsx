@@ -6,6 +6,10 @@ import { useAdmin } from "./useAdmin.js";
 import { Banner, ErrorNote, Field, Loading, Section } from "./ui.jsx";
 
 const ASSETS = (platformName) => [
+  ["ninety-club-crown-controller.svg", `${platformName} crown and controller mark`],
+  ["ninety-club-wordmark.svg", `${platformName} premium wordmark`],
+  ["ninety-club-crown-controller-icon.svg", `${platformName} favicon and app icon`],
+  ["ninety-club-social-card.svg", `${platformName} social card`],
   ["tambola-house-mark.svg", `${platformName} compact mark`],
   ["tambola-house-lockup.svg", `${platformName} horizontal lockup`],
   ["tambola-house-icon.svg", "Existing app icon"],

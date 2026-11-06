@@ -3,10 +3,10 @@
 export const DEFAULT_BRAND = Object.freeze({
   name: "Ninety Club",
   subtitle: "Gather your friends for free, joyful live Tambola.",
-  logo: "ninety-club-mark.svg",
-  horizontalLogo: "ninety-club-lockup.svg",
-  icon: "ninety-club-mark.svg",
-  socialCard: "social-card.svg",
+  logo: "ninety-club-crown-controller.svg",
+  horizontalLogo: "ninety-club-wordmark.svg",
+  icon: "ninety-club-crown-controller-icon.svg",
+  socialCard: "ninety-club-social-card.svg",
   accent: "#ffbe4d",
 });
 

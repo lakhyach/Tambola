@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Header from "./Header.jsx";
+import PublicBack from "./components/PublicBack.jsx";
 import { instanceBrandingStyles, safeInstanceLogo } from "./theme-runtime.js";
 
 export default function PublicInstance() {
@@ -30,14 +31,13 @@ export default function PublicInstance() {
     <div className="public-page">
       <Header />
       <main id="main-content" tabIndex="-1" className="public-container public-instance">
-        <Link className="public-back" to="/games">← All game halls</Link>
+        <PublicBack to="/games">← All game halls</PublicBack>
         {state === "loading" ? <p className="public-state" role="status">Loading game hall…</p> : null}
         {state === "error" ? (
           <section className="public-empty" role="alert">
             <p className="oh-eyebrow">Unavailable</p>
             <h1>This game hall is not available</h1>
             <p>It may be private, paused, or archived.</p>
-            <Link className="public-link-button" to="/games">Return to game halls</Link>
           </section>
         ) : null}
         {state === "ready" && instance ? (

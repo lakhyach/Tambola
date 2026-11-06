@@ -362,3 +362,15 @@
   .fest-final-cta { width: 100%; margin: 0; padding: 70px 20px; border: 0; border-radius: 0; }
   .fest-footer { padding: 30px 20px; }
 }
+
+/* Final responsive overrides: the full-bleed landing rules must not restore
+   a viewport-tall image stage after the responsive layout is set. */
+@media (min-width: 701px) and (max-width: 980px) {
+  .fest-hero { min-height: 0; padding-block: 46px; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); }
+  .fest-hero__stage { min-height: 0; height: auto; align-self: center; }
+  .fest-hero__host { width: min(100%, 430px); max-height: none; }
+}
+@media (max-width: 700px) {
+  .fest-hero__stage { min-height: 0; height: auto; }
+  .fest-hero__host { width: min(100%, 430px); max-height: none; }
+}

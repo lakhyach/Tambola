@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, Outlet, useSearchParams } from "react-r
 import { call, clearPendingSession, clearSession, isSeatGone, loadOwnSession, loadPendingSession, saveSession, socket } from "./net.js";
 import { offeredSeatLabel, planJoinEntry } from "./lib/joinSeat.js";
 import Header from "./Header";
+import PublicBack from "./components/PublicBack.jsx";
 import Panel from "./components/Panel.jsx";
 import Button from "./components/Button.jsx";
 import ConnectionIndicator from "./components/ConnectionIndicator.jsx";
@@ -151,7 +152,7 @@ const Player = () => {
       <Header />
       <main id="main-content" lang={language === "hi" ? "hi" : "en"} tabIndex="-1" className="player-entry-main flex-1 flex items-center justify-center" style={{ padding: 20 }}>
         <Panel className="player-entry-panel p-6 sm:p-8" style={{ width: "100%", maxWidth: 460 }}>
-          <Link className="public-back" to={instanceSlug ? `/games/${encodeURIComponent(instanceSlug)}` : "/games"}>← Back to game hall</Link>
+          <PublicBack to={instanceSlug ? `/games/${encodeURIComponent(instanceSlug)}` : "/games"}>← Back to game hall</PublicBack>
           <div className="player-entry-art" aria-hidden="true"><span className="player-entry-art__ball">90</span><span className="player-entry-art__label">YOUR NEXT GREAT GAME</span><span className="player-entry-art__spark player-entry-art__spark--one" /><span className="player-entry-art__spark player-entry-art__spark--two" /></div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
             <h1 className="oh-display" style={{ fontSize: 30, margin: 0 }}>

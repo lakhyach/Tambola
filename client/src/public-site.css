@@ -30,6 +30,7 @@
   width: min(100%, 1180px); min-height: 70px; margin: 0 auto; padding: 12px clamp(16px, 5vw, 40px);
 }
 .public-site-brand { display: flex; align-items: center; gap: 9px; min-width: 0; color: var(--oh-ivory); text-decoration: none; }
+.public-site-brand__lockup { display: block; width: clamp(158px, 20vw, 210px); height: auto; max-height: 48px; object-fit: contain; object-position: left center; }
 .public-site-brand__name { overflow: hidden; max-width: min(40vw, 280px); font-size: 18px; letter-spacing: .08em; text-overflow: ellipsis; white-space: nowrap; }
 .public-site-brand__mark { margin-left: 2px; white-space: nowrap; }
 .public-site-nav { display: flex; align-items: center; gap: clamp(14px, 2.6vw, 28px); }
@@ -230,6 +231,8 @@
 .public-empty p { color: var(--oh-text-muted); line-height: 1.6; }
 
 .public-back { display: inline-block; margin-bottom: 36px; color: var(--oh-gold-bright); text-decoration: none; }
+.public-back:hover { color: var(--oh-ivory); text-decoration: underline; text-underline-offset: 4px; }
+.public-back--prominent { margin: 0 0 20px; padding: 9px 13px; border: 1px solid var(--oh-line-gold); border-radius: 999px; background: color-mix(in srgb, var(--oh-panel) 78%, transparent); font-weight: 700; }
 .public-instance { padding-top: 28px; }
 .instance-feature { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .9fr); gap: clamp(24px, 6vw, 70px); align-items: center; }
 .instance-feature__art { position: relative; min-height: 390px; display: grid; place-items: center; overflow: hidden; border-radius: 32px; border: 1px solid var(--oh-line-gold); background: linear-gradient(140deg, #171a1b, #25241e 55%, #171713); }
@@ -266,6 +269,7 @@
 @media (max-width: 720px) {
   .public-site-header__inner { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
   .public-site-brand__name { max-width: 48vw; font-size: 15px; letter-spacing: .04em; }
+  .public-site-brand__lockup { width: clamp(150px, 48vw, 190px); max-height: 44px; }
   .public-site-brand__mark { display: none; }
   .public-menu-toggle {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 13px;

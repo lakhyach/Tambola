@@ -1,14 +1,11 @@
 {
   "name": "Ninety Club",
   "short_name": "Ninety Club",
-  "description": "Free, friendly, real-time Tambola with people you know.",
+  "description": "Gather your friends for free, joyful live Tambola.",
   "icons": [
-    {
-      "src": "/brand/tambola-house-icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
+    { "src": "/brand/ninety-club-crown-controller-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon/ninety-club-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon/ninety-club-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
   "theme_color": "#30072f",
   "background_color": "#18051f",
