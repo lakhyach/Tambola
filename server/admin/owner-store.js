@@ -189,6 +189,12 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
     return { ok: true, username: result.rows[0].username };
   }
 
+  async function replaceMfa({ ownerId, secretEnc, step } = {}) {
+    const result = await db.query(`UPDATE owner_accounts SET totp_secret_enc=$2,totp_confirmed_at=now(),totp_last_step=$3
+      WHERE owner_id=$1 AND totp_confirmed_at IS NOT NULL RETURNING username`, [ownerId, secretEnc, Number(step)]);
+    return result.rows.length ? { ok: true, username: result.rows[0].username } : { ok: false, code: "MFA_NOT_ENROLLED" };
+  }
+
   /**
    * Record an accepted time step and report whether it was still fresh. The
    * comparison happens in SQL, so two concurrent sign-ins with the same code
@@ -208,16 +214,19 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
 
   /** Disable the second factor (CLI recovery). The secret is destroyed, not kept. */
   async function clearMfa({ ownerId } = {}) {
-    const result = await db.query(
-      `UPDATE owner_accounts
-          SET totp_secret_enc = NULL, totp_confirmed_at = NULL, totp_last_step = NULL
-        WHERE owner_id = $1
-        RETURNING username`,
-      [ownerId]
-    );
-    if (!result.rows.length) return { ok: false, code: "OWNER_NOT_FOUND" };
-    log("owner second factor cleared", result.rows[0].username);
-    return { ok: true, username: result.rows[0].username };
+    return db.withTransaction(async (client) => {
+      const result = await client.query(
+        `UPDATE owner_accounts
+            SET totp_secret_enc = NULL, totp_confirmed_at = NULL, totp_last_step = NULL
+          WHERE owner_id = $1
+          RETURNING username`,
+        [ownerId]
+      );
+      if (!result.rows.length) return { ok: false, code: "OWNER_NOT_FOUND" };
+      await client.query("DELETE FROM owner_mfa_recovery_codes WHERE owner_id=$1", [ownerId]);
+      log("owner second factor cleared", result.rows[0].username);
+      return { ok: true, username: result.rows[0].username };
+    });
   }
 
   async function list() {
@@ -289,6 +298,7 @@ export function createOwnerStore({ db, log = () => {} } = {}) {
     touchLogin,
     beginMfaEnrollment,
     confirmMfa,
+    replaceMfa,
     advanceMfaStep,
     clearMfa,
     list,
@@ -408,6 +418,15 @@ export function createMemoryOwnerStore({ log = () => {} } = {}) {
     return { ok: true, username: account.username };
   }
 
+  async function replaceMfa({ ownerId, secretEnc, step } = {}) {
+    const account = byId.get(ownerId);
+    if (!account || !account.totpConfirmedAt || typeof secretEnc !== "string") return { ok: false, code: "MFA_NOT_ENROLLED" };
+    account.totpSecretEnc = secretEnc;
+    account.totpLastStep = Number.isFinite(Number(step)) ? Number(step) : null;
+    account.totpConfirmedAt = new Date();
+    return { ok: true, username: account.username };
+  }
+
   async function advanceMfaStep({ ownerId, step } = {}) {
     const account = byId.get(ownerId);
     if (!account || !Number.isFinite(Number(step))) return { ok: false, code: "MFA_STEP_INVALID" };
@@ -473,6 +492,7 @@ export function createMemoryOwnerStore({ log = () => {} } = {}) {
     touchLogin,
     beginMfaEnrollment,
     confirmMfa,
+    replaceMfa,
     advanceMfaStep,
     clearMfa,
     list,

@@ -23,13 +23,14 @@
 import express from "express";
 import { createHash } from "node:crypto";
 import QRCode from "qrcode";
-import { readOwnerToken, setOwnerCookie, clearOwnerCookie, ensureCsrfToken, verifyCsrf } from "./cookies.js";
+import { readOwnerToken, setOwnerCookie, clearOwnerCookie, ensureCsrfToken, verifyCsrf, readMfaRecoveryToken, setMfaRecoveryCookie, clearMfaRecoveryCookie } from "./cookies.js";
 import { ADMIN_ACTIONS } from "./audit.js";
 import { PATTERNS, enabledPatternIds } from "../game/patterns.js";
 import { resolvePublicOrigin, createInvitation } from "./invites.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import { decryptSecret, describeMfa, encryptSecret, generateSecret, provisioningUri, verifyCode } from "./mfa.js";
 import { CHALLENGE_CODES } from "./mfa-challenges.js";
+import { generateRecoveryCodes, hashRecoveryCode } from "./mfa-recovery.js";
 import { createModeratorAdminRouter } from "./moderators.js";
 import { createAdminThemeRouter } from "../themes/routes.js";
 import { createAdminPosterRouter } from "../posters/routes.js";
@@ -128,6 +129,7 @@ export function createAdminRouter({
   publicOrigin = null,
   throttle,
   challenges,
+  mfaRecovery = null,
   mfa = { configured: false, key: null, issuer: "Ninety Club" },
   production = false,
   themeService = null,
@@ -476,6 +478,124 @@ export function createAdminRouter({
     }
   }
 
+  async function recordMfaRecovery(action, metadata = {}) {
+    await audit.record({ actor: null, action, targetType: "owner_mfa_recovery", metadata });
+  }
+
+  // Recovery is intentionally a separate, narrowly scoped pre-auth session.
+  // It cannot access admin routes and is minted only after both the existing
+  // password and a host-issued, one-use authorization are verified.
+  router.post("/mfa/recovery/authorize", wrap(async (req, res) => {
+    if (!mfaRecovery || !mfa.configured || !mfa.key) return res.status(503).json({ ok: false, code: "MFA_UNAVAILABLE", error: "secure authenticator recovery is unavailable" });
+    const body = req.body || {};
+    const username = typeof body.username === "string" ? body.username.trim().toLowerCase() : "";
+    const password = typeof body.password === "string" ? body.password : "";
+    const authorization = typeof body.authorization === "string" ? body.authorization : "";
+    const ip = ipFingerprint(req);
+    const key = `${username}|${ip}`;
+    const addressKey = `ip:${ip}`;
+    const [gate, addressGate] = await Promise.all([
+      checkLimiter(throttle.mfa, `recovery:${key}`),
+      checkLimiter(throttle.signinIp, addressKey),
+    ]);
+    if (gate.unavailable || addressGate.unavailable) return throttleUnavailable(res);
+    const blocked = !gate.allowed ? gate : !addressGate.allowed ? addressGate : null;
+    if (blocked) {
+      await record(req, ADMIN_ACTIONS.SIGNIN_RATE_LIMITED, { metadata: { stage: "mfa-recovery", ip } });
+      return tooMany(res, blocked.retryAfterMs);
+    }
+    let verified;
+    try { verified = await ownerStore.verifyLogin({ username, password }); }
+    catch { return res.status(503).json({ ok: false, code: "ADMIN_UNAVAILABLE", error: "the control centre cannot verify owner credentials right now" }); }
+    const account = verified.ok ? await ownerStore.getForMfa({ ownerId: verified.ownerId }) : null;
+    const started = mfaRecovery && mfa.configured && account?.totpConfirmedAt && authorization.length >= 32
+      ? await mfaRecovery.begin({ ownerId: account.ownerId, authorization, username: account.username, ipHash: ip })
+      : { ok: false };
+    if (!started.ok) {
+      const failures = await Promise.all([
+        spendLimiter(throttle.mfa, `recovery:${key}`),
+        spendLimiter(throttle.signinIp, addressKey),
+      ]);
+      if (failures.some((failure) => failure.unavailable)) return throttleUnavailable(res);
+      await recordMfaRecovery("owner.mfa.recovery-failure", { ip });
+      return res.status(401).json({ ok: false, code: "RECOVERY_AUTH_FAILED", error: "credentials or recovery authorization were not accepted" });
+    }
+    await Promise.all([clearLimiter(throttle.mfa, `recovery:${key}`), clearLimiter(throttle.signinIp, addressKey)]);
+    setMfaRecoveryCookie(res, started.token);
+    if (mfaRecovery.backend === "memory") await record(req, "owner.mfa.recovery-start", { metadata: { username: account.username, ip } });
+    res.json({ ok: true, expiresAt: started.expiresAt, csrfToken: ensureCsrfToken(req, res) });
+  }));
+
+  router.post("/mfa/recovery/enroll", wrap(async (req, res) => {
+    const flowToken = readMfaRecoveryToken(req);
+    const flow = flowToken && mfaRecovery ? await mfaRecovery.flow({ token: flowToken }) : { ok: false };
+    if (!flow.ok) { clearMfaRecoveryCookie(res); return res.status(401).json({ ok: false, code: "RECOVERY_EXPIRED", error: "recovery authorization expired; start again" }); }
+    if (!mfa.configured || !mfa.key) return res.status(503).json({ ok: false, code: "MFA_UNAVAILABLE", error: "secure authenticator setup is unavailable" });
+    const account = await ownerStore.getForMfa({ ownerId: flow.ownerId });
+    if (!account?.totpConfirmedAt) return res.status(409).json({ ok: false, code: "MFA_NOT_ENROLLED", error: "this account has no active factor to replace" });
+    let sealed = flow.secretEnc;
+    if (!sealed) {
+      const secret = generateSecret();
+      sealed = encryptSecret({ secret, ownerId: account.ownerId, key: mfa.key });
+      const saved = await mfaRecovery.setPending({ flowId: flow.flowId, secretEnc: sealed });
+      if (!saved.ok) return res.status(409).json({ ok: false, code: "RECOVERY_EXPIRED", error: "recovery authorization expired; start again" });
+    }
+    const secret = decryptSecret({ envelope: sealed, ownerId: account.ownerId, key: mfa.key });
+    if (!secret) return res.status(503).json({ ok: false, code: "MFA_UNAVAILABLE", error: "authenticator setup is unavailable" });
+    const revealed = await mfaRecovery.revealQr({ flowId: flow.flowId });
+    if (!revealed.ok) return res.status(409).json({ ok: false, code: "QR_ALREADY_REVEALED", error: "this setup QR has already been displayed; restart recovery to generate another" });
+    const uri = provisioningUri({ secret, username: account.username, issuer: mfa.issuer });
+    const qr = await QRCode.toDataURL(uri, { errorCorrectionLevel: "M", margin: 1, width: 320 });
+    res.json({ ok: true, secret, uri, qr, digits: 6, periodSeconds: 30, issuer: mfa.issuer, account: account.username });
+  }));
+
+  router.post("/mfa/recovery/confirm", wrap(async (req, res) => {
+    const flowToken = readMfaRecoveryToken(req);
+    const flow = flowToken && mfaRecovery ? await mfaRecovery.flow({ token: flowToken }) : { ok: false };
+    if (!flow.ok) { clearMfaRecoveryCookie(res); return res.status(401).json({ ok: false, code: "RECOVERY_EXPIRED", error: "recovery authorization expired; start again" }); }
+    const account = await ownerStore.getForMfa({ ownerId: flow.ownerId });
+    const secret = flow.secretEnc && account ? decryptSecret({ envelope: flow.secretEnc, ownerId: account.ownerId, key: mfa.key }) : null;
+    if (!secret || !flow.qrRevealedAt) return res.status(409).json({ ok: false, code: "RECOVERY_NOT_READY", error: "start authenticator setup first" });
+    let attempt;
+    try { attempt = await mfaRecovery.consumeAttempt({ flowId: flow.flowId }); }
+    catch { return res.status(503).json({ ok: false, code: "ADMIN_UNAVAILABLE", error: "recovery could not check its attempt limit right now" }); }
+    if (!attempt.ok) {
+      clearMfaRecoveryCookie(res);
+      return res.status(401).json({ ok: false, code: "RECOVERY_ATTEMPTS_EXHAUSTED", error: "this recovery attempt has expired; start again" });
+    }
+    const verified = verifyCode({ secret, code: req.body?.code });
+    if (!verified.ok) {
+      await recordMfaRecovery("owner.mfa.recovery-confirm-failure", { reason: verified.reason });
+      return secondFactorFailure(res, "MFA_INVALID_CODE");
+    }
+    const recoveryCodes = generateRecoveryCodes();
+    const replaced = await mfaRecovery.complete({ flowId: flow.flowId, ownerId: account.ownerId, secretEnc: flow.secretEnc, step: verified.step, codes: recoveryCodes.hashes, username: account.username, ipHash: ipFingerprint(req) });
+    if (!replaced.ok) return res.status(409).json({ ok: false, code: "RECOVERY_EXPIRED", error: "recovery could not be completed; start again" });
+    if (mfaRecovery.backend === "memory") {
+      const updated = await ownerStore.replaceMfa({ ownerId: account.ownerId, secretEnc: flow.secretEnc, step: verified.step });
+      if (!updated.ok) return res.status(409).json({ ok: false, code: "MFA_NOT_ENROLLED", error: "this account no longer has an active factor" });
+      const [sessions, outstanding] = await Promise.all([
+        ownerSessions.revokeAllForOwner({ ownerId: account.ownerId, reason: "mfa-replaced" }),
+        challenges.revokeAllForOwner({ ownerId: account.ownerId }),
+      ]);
+      replaced.sessionsRevoked = sessions.revoked;
+      replaced.challengesRevoked = outstanding.revoked;
+    }
+    clearMfaRecoveryCookie(res);
+    if (mfaRecovery.backend === "memory") await record(req, "owner.mfa.recovery-complete", { metadata: { username: account.username, sessionsRevoked: replaced.sessionsRevoked, challengesRevoked: replaced.challengesRevoked, recoveryCodes: recoveryCodes.values.length } });
+    res.json({ ok: true, recoveryCodes: recoveryCodes.values, shownOnce: true });
+  }));
+
+  router.post("/mfa/recovery/cancel", wrap(async (req, res) => {
+    const token = readMfaRecoveryToken(req);
+    if (token && mfaRecovery) {
+      const flow = await mfaRecovery.flow({ token });
+      if (flow.ok) await mfaRecovery.cancel({ flowId: flow.flowId });
+    }
+    clearMfaRecoveryCookie(res);
+    res.json({ ok: true });
+  }));
+
   function operatorAuth(room) {
     return { hostToken: room.hostCredential() };
   }
@@ -710,7 +830,15 @@ export function createAdminRouter({
       const account = await ownerStore.getForMfa({ ownerId: challenge.ownerId });
       if (!account) return expired();
 
-      const accepted = await acceptSecondFactor(account, body.code);
+      let accepted = await acceptSecondFactor(account, body.code);
+      let usedRecoveryCode = false;
+      if (!accepted.ok && mfaRecovery) {
+        const codeHash = hashRecoveryCode(body.code);
+        if (codeHash) {
+          const consumedCode = await mfaRecovery.consumeCode({ ownerId: account.ownerId, codeHash });
+          if (consumedCode.ok) { accepted = { ok: true, recoveryCode: true }; usedRecoveryCode = true; }
+        }
+      }
       if (!accepted.ok) {
         const failed = await challenges.fail({ challengeId: challenge.challengeId });
         await spendLimiter(throttle.mfa, addressKey);
@@ -729,7 +857,7 @@ export function createAdminRouter({
       await ownerStore.touchLogin({ ownerId: account.ownerId }).catch(() => {});
       const session = await ownerSessions.issue({ ownerId: account.ownerId, ipHash: ip });
       setOwnerCookie(res, session.token);
-      await record(req, ADMIN_ACTIONS.SIGNIN_MFA_SUCCESS, { metadata: { username: account.username, ip, mfa: true } });
+      await record(req, ADMIN_ACTIONS.SIGNIN_MFA_SUCCESS, { metadata: { username: account.username, ip, mfa: true, recoveryCode: usedRecoveryCode } });
       res.json({
         ok: true,
         authenticated: true,
@@ -1536,6 +1664,7 @@ export function createAdminRouter({
         return secondFactorFailure(res, accepted.code);
       }
       await ownerStore.clearMfa({ ownerId: account.ownerId });
+      if (mfaRecovery?.backend === "memory") await mfaRecovery.clearCodes({ ownerId: account.ownerId });
       await record(req, ADMIN_ACTIONS.MFA_DISABLED, { metadata: { username: account.username, via: "dashboard" } });
       res.json({ ok: true, mfa: { state: "not-enrolled", enrolled: false, pending: false, keyConfigured: mfa.configured } });
     })

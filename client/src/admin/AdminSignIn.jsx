@@ -61,6 +61,11 @@ export default function AdminSignIn() {
   const [checking, setChecking] = useState(false);
   const [challenge, setChallenge] = useState(null);
   const [code, setCode] = useState("");
+  const [recoveryStage, setRecoveryStage] = useState(null);
+  const [recoveryAuthorization, setRecoveryAuthorization] = useState("");
+  const [recoveryEnrollment, setRecoveryEnrollment] = useState(null);
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState(null);
   const codeRef = useRef(null);
 
   const remembered = location.state && typeof location.state.from === "string" ? location.state.from : null;
@@ -130,6 +135,64 @@ export default function AdminSignIn() {
     setFailure(null);
   }
 
+  function generateRecoveryAuthorization() {
+    if (!window.crypto?.getRandomValues) {
+      setFailure(new Error("This browser cannot safely generate a recovery code. Use a current browser over HTTPS."));
+      return;
+    }
+    const bytes = new Uint8Array(32);
+    window.crypto.getRandomValues(bytes);
+    setRecoveryAuthorization(Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(""));
+    setFailure(null);
+  }
+
+  async function copyRecoveryAuthorization() {
+    if (!recoveryAuthorization) return;
+    await navigator.clipboard.writeText(recoveryAuthorization);
+  }
+
+  async function beginRecovery(event) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true); setFailure(null);
+    try {
+      await api.mfaRecoveryAuthorize(username.trim(), password, recoveryAuthorization.trim());
+      setPassword(""); setRecoveryAuthorization("");
+      const result = await api.mfaRecoveryEnroll();
+      setRecoveryEnrollment(result); setRecoveryStage("setup");
+    } catch (error) { setFailure(error); }
+    finally { setBusy(false); }
+  }
+
+  async function confirmRecovery(event) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true); setFailure(null);
+    try {
+      const result = await api.mfaRecoveryConfirm(recoveryCode.trim());
+      setRecoveryCodes(result.recoveryCodes); setRecoveryEnrollment(null); setRecoveryCode(""); setRecoveryStage("codes");
+    } catch (error) { setFailure(error); }
+    finally { setBusy(false); }
+  }
+
+  async function cancelRecovery() {
+    try { await api.mfaRecoveryCancel(); } catch { /* short-lived server flow also expires */ }
+    setRecoveryStage(null); setRecoveryEnrollment(null); setRecoveryCodes(null); setRecoveryCode(""); setFailure(null);
+  }
+
+  async function copyRecoveryCodes() {
+    if (!recoveryCodes) return;
+    await navigator.clipboard.writeText(recoveryCodes.join("\n"));
+  }
+
+  function downloadRecoveryCodes() {
+    if (!recoveryCodes) return;
+    const blob = new Blob([`Ninety Club owner recovery codes\nKeep private. Each code works once.\n\n${recoveryCodes.join("\n")}\n`], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); link.href = url; link.download = "ninety-club-recovery-codes.txt"; link.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="adm-signin">
       <main id="adm-content" tabIndex="-1" className="adm-signin__panel oh-panel">
@@ -143,7 +206,7 @@ export default function AdminSignIn() {
 
         <hr className="oh-rule" />
 
-        <h1 className="oh-display adm-signin__title">{challenge ? "Confirm it is you" : "Sign in"}</h1>
+        <h1 className="oh-display adm-signin__title">{recoveryStage === "setup" ? "Set up your new authenticator" : recoveryStage === "codes" ? "Save your recovery codes" : recoveryStage === "start" ? "Recover owner access" : challenge ? "Confirm it is you" : "Sign in"}</h1>
         <p className="adm-signin__lede">
           {requestedSuperAdmin
             ? "Platform-wide operations require a separately provisioned Super Admin account and a confirmed second factor."
@@ -164,7 +227,42 @@ export default function AdminSignIn() {
         {bootError ? <ErrorNote title="The control centre is unavailable" error={bootError} /> : null}
         {failure ? <ErrorNote title={challenge ? "The code was not accepted" : "Sign-in refused"} error={refusalMessage(failure)} /> : null}
 
-        {challenge ? (
+        {recoveryStage === "start" ? (
+          <form className="adm-form" onSubmit={beginRecovery} noValidate>
+            <p>Generate a one-time code here, then paste it into the interactive owner recovery command on the server. The code is not active until that command verifies your password and confirmation.</p>
+            <Field label="Owner username" htmlFor="adm-recovery-username"><input id="adm-recovery-username" className="oh-field" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required disabled={busy} /></Field>
+            <Field label="Current owner password" htmlFor="adm-recovery-password"><input id="adm-recovery-password" className="oh-field" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={busy} /></Field>
+            <div className="adm-actions">
+              <Button type="button" variant="ghost" block onClick={generateRecoveryAuthorization} disabled={busy}>Generate one-time code</Button>
+              {recoveryAuthorization ? <Button type="button" variant="ghost" block onClick={copyRecoveryAuthorization} disabled={busy}>Copy code for the server terminal</Button> : null}
+            </div>
+            <Field label="One-time recovery authorization" htmlFor="adm-recovery-auth" hint="Paste this code into the interactive server command. It expires 15 minutes after registration and works once.">
+              <input id="adm-recovery-auth" className="oh-field" autoComplete="off" spellCheck="false" value={recoveryAuthorization} onChange={(e) => setRecoveryAuthorization(e.target.value)} required disabled={busy} />
+            </Field>
+            <Button type="submit" variant="gold" block disabled={busy || !username || !password || !/^[0-9a-f]{64}$/.test(recoveryAuthorization)}>{busy ? "Verifying…" : "Verify and continue"}</Button>
+            <Button type="button" variant="ghost" block onClick={() => { setRecoveryStage(null); setPassword(""); setRecoveryAuthorization(""); setFailure(null); }} disabled={busy}>Back to sign in</Button>
+          </form>
+        ) : recoveryStage === "setup" && recoveryEnrollment ? (
+          <div className="adm-form">
+            <p>Scan this genuine one-time setup QR in Google Authenticator. The original factor remains active until this replacement is confirmed.</p>
+            <p><strong>Issuer:</strong> {recoveryEnrollment.issuer}<br /><strong>Account:</strong> {recoveryEnrollment.account}</p>
+            <img src={recoveryEnrollment.qr} alt="One-time Google Authenticator enrollment QR code" width="240" height="240" />
+            <details><summary>Enter setup key manually</summary><code>{recoveryEnrollment.secret}</code></details>
+            <form onSubmit={confirmRecovery}>
+              <Field label="Six-digit authenticator code" htmlFor="adm-recovery-code"><input id="adm-recovery-code" className="oh-field adm-mfa-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} required disabled={busy} /></Field>
+              <Button type="submit" variant="gold" block disabled={busy || recoveryCode.replace(/\D/g, "").length !== 6}>{busy ? "Confirming…" : "Confirm replacement"}</Button>
+            </form>
+            <Button type="button" variant="ghost" block onClick={cancelRecovery} disabled={busy}>Cancel recovery</Button>
+          </div>
+        ) : recoveryStage === "codes" && recoveryCodes ? (
+          <div className="adm-form">
+            <p>These codes are shown once. Store them in a secure place. Each can be used once in place of an authenticator code.</p>
+            <pre>{recoveryCodes.join("\n")}</pre>
+            <Button type="button" variant="gold" block onClick={copyRecoveryCodes}>Copy recovery codes</Button>
+            <Button type="button" variant="ghost" block onClick={downloadRecoveryCodes}>Download recovery codes</Button>
+            <Button type="button" variant="ghost" block onClick={cancelRecovery}>Continue to sign in</Button>
+          </div>
+        ) : challenge ? (
           <form className="adm-form" onSubmit={handleCodeSubmit} noValidate>
             <Field label="Authenticator code" htmlFor="adm-mfa-code" hint="Six digits from your authenticator app.">
               <input
@@ -228,6 +326,7 @@ export default function AdminSignIn() {
             <Button type="submit" variant="gold" block disabled={busy}>
               {busy ? "Signing in…" : "Sign in"}
             </Button>
+            {!requestedSuperAdmin ? <Button type="button" variant="ghost" block onClick={() => { setRecoveryStage("start"); setFailure(null); }} disabled={busy}>Lost access to your authenticator?</Button> : null}
           </form>
         )}
 

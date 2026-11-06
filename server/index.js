@@ -501,6 +501,7 @@ export async function createApp(options = {}) {
     rateLimiter: options.loginRateLimiter || null,
     throttle: options.throttle || null,
     challenges: options.mfaChallenges || null,
+    mfaRecovery: options.mfaRecovery || null,
     mfaKey: ownerMfaConfig,
     mfaIssuer: options.mfaIssuer || process.env.MFA_ISSUER || "Tambola",
     healthProbe: options.healthProbe || health,

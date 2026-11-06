@@ -2,7 +2,7 @@
  * Owner cookies: the transport for the owner session token and the CSRF token.
  *
  * No cookie-parser dependency is added. This is a deliberately small, focused
- * reader/writer for exactly the two cookies the admin app uses:
+ * reader/writer for the admin app's three narrowly scoped cookies:
  *
  *   tambola_owner  HttpOnly, SameSite=Strict, Secure in production, Path=/api/admin.
  *                  Carries the owner session token. Never readable by page
@@ -18,6 +18,11 @@
  *                  lock. The value is an anti-forgery token, not a credential,
  *                  so leaving it script-readable is safe.
  *
+ *   tambola_mfa_recovery  HttpOnly, SameSite=Strict, Secure in production,
+ *                  Path=/api/admin/mfa/recovery. Carries only the short-lived,
+ *                  pre-auth recovery flow token; it cannot authenticate an owner
+ *                  session or reach other admin API routes.
+ *
  * A CSRF token is never a secret session value and a session token is never
  * placed in a URL, a header the client reads, or a log line.
  */
@@ -27,6 +32,7 @@ import { randomBytes } from "node:crypto";
 export const OWNER_COOKIE = "tambola_owner";
 export const CSRF_COOKIE = "tambola_csrf";
 export const CSRF_HEADER = "x-csrf-token";
+export const MFA_RECOVERY_COOKIE = "tambola_mfa_recovery";
 export const COOKIE_PATH = "/api/admin";
 
 function isProduction() {
@@ -75,6 +81,19 @@ export function setOwnerCookie(res, token) {
 
 export function clearOwnerCookie(res) {
   appendSetCookie(res, serializeCookie(OWNER_COOKIE, "", { httpOnly: true, maxAgeSeconds: 0 }));
+}
+
+export function setMfaRecoveryCookie(res, token) {
+  appendSetCookie(res, serializeCookie(MFA_RECOVERY_COOKIE, token, { httpOnly: true, maxAgeSeconds: 15 * 60, path: `${COOKIE_PATH}/mfa/recovery` }));
+}
+
+export function clearMfaRecoveryCookie(res) {
+  appendSetCookie(res, serializeCookie(MFA_RECOVERY_COOKIE, "", { httpOnly: true, maxAgeSeconds: 0, path: `${COOKIE_PATH}/mfa/recovery` }));
+}
+
+export function readMfaRecoveryToken(req) {
+  const token = parseCookies(req.headers.cookie)[MFA_RECOVERY_COOKIE];
+  return typeof token === "string" && /^[0-9a-f]{64}$/.test(token) ? token : null;
 }
 
 /** Ensure a CSRF cookie exists; return the value the SPA must echo back. */
