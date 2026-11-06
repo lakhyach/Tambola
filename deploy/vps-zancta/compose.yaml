@@ -24,10 +24,10 @@
 # Rollback = `docker compose -p ninetyclub down`. That removes the labels from
 # Traefik's view immediately. ZANCTA never depends on anything in this file.
 #
-# Image tags are immutable build outputs, never `latest`. nc-86c34cb was the
-# previous production image. nc-1f51b34 is built from source commit
-# 1f51b349f4fa695648a63870b691703be7d3826d. Roll back by setting both tags to
-# nc-86c34cb and force-recreating only this app.
+# Image tags are immutable build outputs, never `latest`. nc-1f51b34 was the
+# previous production image. nc-d9f8c3d is built from source commit
+# d9f8c3dec349040f554d5a778ba312a1d58a0376. Roll back by setting both tags to
+# nc-1f51b34 and force-recreating only this app.
 #
 # Secrets live in ./ninetyclub.env (mode 600), never in this file.
 
@@ -35,7 +35,7 @@ name: ninetyclub
 
 services:
   app:
-    image: ninetyclub:nc-1f51b34
+    image: ninetyclub:nc-d9f8c3d
     container_name: ninetyclub-app
     restart: unless-stopped
     init: true
@@ -123,7 +123,7 @@ services:
   # that changes schema, and it is always an operator decision.
   migrate:
     profiles: ["ops"]
-    image: ninetyclub:nc-1f51b34
+    image: ninetyclub:nc-d9f8c3d
     container_name: ninetyclub-migrate
     restart: "no"
     env_file:
