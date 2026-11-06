@@ -4,6 +4,7 @@ import { call, clearPendingSession, clearSession, isSeatGone, loadOwnSession, lo
 import { offeredSeatLabel, planJoinEntry } from "./lib/joinSeat.js";
 import Header from "./Header";
 import PublicBack from "./components/PublicBack.jsx";
+import { hallMark } from "./lib/hall-mark.js";
 import Panel from "./components/Panel.jsx";
 import Button from "./components/Button.jsx";
 import ConnectionIndicator from "./components/ConnectionIndicator.jsx";
@@ -18,6 +19,7 @@ const Player = () => {
   const t = (key, variables) => bookingCopy(language, key, variables);
   const searchTerm = searchParams.get("id");
   const instanceSlug = searchParams.get("instance");
+  const joinHallMark = hallMark(instanceSlug);
   const roomParam = searchParams.get("room") || "";
   const resumeRequested = searchParams.get("resume") === "1";
   const pendingSeat = loadPendingSession();
@@ -153,7 +155,7 @@ const Player = () => {
       <main id="main-content" lang={language === "hi" ? "hi" : "en"} tabIndex="-1" className="player-entry-main flex-1 flex items-center justify-center" style={{ padding: 20 }}>
         <Panel className="player-entry-panel p-6 sm:p-8" style={{ width: "100%", maxWidth: 460 }}>
           <PublicBack to={instanceSlug ? `/games/${encodeURIComponent(instanceSlug)}` : "/games"}>← Back to game hall</PublicBack>
-          <div className="player-entry-art" aria-hidden="true"><span className="player-entry-art__ball">90</span><span className="player-entry-art__label">YOUR NEXT GREAT GAME</span><span className="player-entry-art__spark player-entry-art__spark--one" /><span className="player-entry-art__spark player-entry-art__spark--two" /></div>
+          <div className="player-entry-art" aria-hidden="true">{joinHallMark ? <img className="player-entry-art__hall-mark" src={joinHallMark.src} alt="" /> : <span className="player-entry-art__ball">90</span>}<span className="player-entry-art__label">YOUR NEXT GREAT GAME</span><span className="player-entry-art__spark player-entry-art__spark--one" /><span className="player-entry-art__spark player-entry-art__spark--two" /></div>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 10 }}>
             <h1 className="oh-display" style={{ fontSize: 30, margin: 0 }}>
               {instanceSlug ? t("playerJoinInstance", { name: instanceName || instanceSlug.replaceAll("-", " ") }) : t("playerJoinTitle")}

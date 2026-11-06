@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Header from "./Header.jsx";
 import PublicBack from "./components/PublicBack.jsx";
+import { hallMark } from "./lib/hall-mark.js";
 import BookingLanguageSelect from "./i18n/BookingLanguageSelect.jsx";
 import { bookingCopy, formatBookingDate, formatBookingNumber, setBookingLanguage, useBookingLanguage } from "./i18n/booking-locale.js";
 import "./booking.css";
@@ -46,13 +47,14 @@ export default function PublicSessions() {
   useEffect(() => { const timer = window.setInterval(() => setNow(Date.now() + serverOffset.current), 1000); return () => window.clearInterval(timer); }, []);
 
   const instanceName = sessions[0]?.instanceName;
+  const mark = hallMark(slug);
 
   return (
     <div className="public-page">
       <Header />
       <main id="main-content" lang={language === "hi" ? "hi" : "en"} tabIndex="-1" className="public-container booking-page">
         <div className="booking-topbar"><PublicBack to={`/games/${encodeURIComponent(slug)}`}>← {bookingCopy(language, "allSessions")}</PublicBack><BookingLanguageSelect language={language} onChange={setBookingLanguage} /></div>
-        <p className="oh-eyebrow public-kicker">{bookingCopy(language, "upcomingGames")}</p>
+        <p className="oh-eyebrow public-kicker booking-hall-kicker">{mark ? <img src={mark.src} alt={mark.alt} /> : null}{bookingCopy(language, "upcomingGames")}</p>
         <h1 className="oh-display public-title">{instanceName ? bookingCopy(language, "sessionsTitle", { name: instanceName }) : bookingCopy(language, "findSession")}</h1>
         <p className="public-lede">{bookingCopy(language, "sessionsLede")}</p>
 

@@ -9,32 +9,25 @@ const HEADER_COPY = {
 };
 
 /**
- * Slim brand bar for the marketing / entry screens.
- *
- * The mark follows the active instance identity when present and otherwise
- * uses the owner-managed platform mark. A failed image falls back to the dot.
+ * Shared public brand bar. Hall marks belong to each hall's content; the
+ * navigation always carries the platform identity so the logo stays stable
+ * while visitors move between halls, booking, and player entry.
  */
 const Header = () => {
   const platformBrand = usePlatformBranding();
   const language = useBookingLanguage();
   const t = (key) => HEADER_COPY[language]?.[key] || HEADER_COPY.en[key];
   const [logoFailed, setLogoFailed] = useState(false);
-  const [instanceBrand, setInstanceBrand] = useState({ active: false, name: "", logoUrl: "" });
   const [menuOpen, setMenuOpen] = useState(false);
-  useEffect(() => {
-    const update = (event) => { setInstanceBrand(event.detail || { active: false, name: "", logoUrl: "" }); setLogoFailed(false); };
-    document.addEventListener("instance-branding-change", update);
-    return () => document.removeEventListener("instance-branding-change", update);
-  }, []);
   useEffect(() => {
     if (!menuOpen) return undefined;
     const closeOnEscape = (event) => { if (event.key === "Escape") setMenuOpen(false); };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [menuOpen]);
-  const logo = instanceBrand.active ? instanceBrand.logoUrl : assetUrl(platformBrand.logo);
-  const name = instanceBrand.active ? instanceBrand.name : platformBrand.name;
-  const isPlatformBrand = !instanceBrand.active && name === "Ninety Club";
+  const logo = assetUrl(platformBrand.logo);
+  const name = platformBrand.name;
+  const isPlatformBrand = name === "Ninety Club";
 
   return (
     <header className="public-site-header">
@@ -42,7 +35,7 @@ const Header = () => {
       <div className="public-site-header__inner">
       <Link to="/" className="public-site-brand" onClick={() => setMenuOpen(false)} aria-label={`${name} home`}>
         {isPlatformBrand && !logoFailed ? (
-          <img className="public-site-brand__lockup" src={assetUrl(platformBrand.horizontalLogo)} alt="Ninety Club" width="240" height="64" onError={() => setLogoFailed(true)} />
+          <img className="public-site-brand__lockup" src={assetUrl(platformBrand.horizontalLogo)} alt={name} width="240" height="64" onError={() => setLogoFailed(true)} />
         ) : <>
         {logoFailed || !logo ? (
           <span
