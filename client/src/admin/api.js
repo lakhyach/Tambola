@@ -205,6 +205,10 @@ export const api = {
   mfaEnroll: () => request("POST", "/settings/mfa/enroll", {}),
   mfaConfirm: (code) => request("POST", "/settings/mfa/confirm", { code }),
   mfaDisable: (code) => request("POST", "/settings/mfa/disable", { code }),
+  mfaRecoveryAuthorize: (username, password, authorization) => request("POST", "/mfa/recovery/authorize", { username, password, authorization }),
+  mfaRecoveryEnroll: () => request("POST", "/mfa/recovery/enroll", {}),
+  mfaRecoveryConfirm: (code) => request("POST", "/mfa/recovery/confirm", { code }),
+  mfaRecoveryCancel: () => request("POST", "/mfa/recovery/cancel", {}),
 
   health: () => request("GET", "/health"),
   backupStatus: () => request("GET", "/backups/status"),

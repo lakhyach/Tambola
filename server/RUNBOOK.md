@@ -245,6 +245,7 @@ prompt over an environment variable so a password never lands in shell history.
 | `npm run owner:create` | Create the single owner account. Refuses if one already exists. |
 | `npm run owner:list` | List owner usernames with their MFA state. Never prints a secret. |
 | `npm run owner:reset -- <username>` | Rotate a password and revoke every live session for that owner. |
+| `npm run owner:mfa-recovery-issue -- <username>` | Register a browser-generated one-use replacement authorization after current-password verification and typed confirmation. |
 | `npm run owner:mfa-reset -- <username>` | Destroy a lost second factor (see below). |
 | `npm run owner:remove -- <username>` | Delete an owner and cascade its sessions/challenges. |
 
@@ -262,7 +263,30 @@ Once enrolled, a correct password alone buys only a short-lived single-use
 challenge; the authenticator code completes the sign-in. The base32 secret is
 sealed with `OWNER_MFA_KEY` and only ever the ciphertext reaches the database.
 
-**"I lost my authenticator."** From the server host:
+**"I lost my authenticator."** Prefer the replacement flow from the server host:
+
+```bash
+npm run owner:mfa-recovery-issue -- <username>
+```
+
+From `/admin/signin`, generate a one-time code and keep it in that browser. Run
+the command from an interactive server terminal after migration
+`032_owner_mfa_recovery.sql` is installed. It verifies the existing owner
+password, verifies that `OWNER_MFA_KEY` decrypts the active factor, asks for the
+browser-generated code through a masked prompt, and requires an exact typed
+confirmation. It registers the code for 15 minutes without printing it. Return
+to the same browser and submit the code with the current password, scan the
+genuine TOTP QR in Google Authenticator, and confirm with a current six-digit
+code. The old factor remains active unless that confirmation succeeds. On
+success, owner sessions and outstanding challenges are revoked and ten one-time
+recovery codes are presented once; store them securely. Only hashes of
+authorizations and recovery codes are persisted. The new setup QR, TOTP secret,
+authorization, and plaintext recovery codes are not audited or logged.
+
+Use the destructive `owner:mfa-reset` procedure only as a separate break-glass
+decision; it destroys the active factor before a replacement is confirmed.
+
+Legacy destructive procedure:
 
 ```bash
 npm run owner:mfa-reset -- <username>

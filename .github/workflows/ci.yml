@@ -205,6 +205,11 @@ jobs:
           docker run --rm --network "$NETWORK" \
             -e DATABASE_URL="$DB_URL" -e DATABASE_PRIVATE_NETWORK=1 \
             "$IMAGE" npm run migrate
+          # The next smoke process uses its own durable schema and explicitly
+          # enables public room creation only for this isolated CI game.
+          docker run --rm --network "$NETWORK" \
+            -e DATABASE_URL="$DB_URL" -e DATABASE_PRIVATE_NETWORK=1 -e DB_SCHEMA=ci_smoke \
+            "$IMAGE" npm run migrate
 
       - name: image boots durably and passes the deployment smoke test
         run: |
@@ -231,15 +236,38 @@ jobs:
           # in-memory server, and its / check requires the built client bundle -
           # which is the multi-stage Dockerfile actually working.
           docker exec nc-ci-app node scripts/smoke-deploy.mjs --url http://127.0.0.1:4000
-          # Then from outside with two real sockets, one real call and one real
-          # game end, so the image's WebSocket path and its Postgres writes are
-          # covered and not just its HTTP handlers. The room is created in this
-          # throwaway CI database and is named SmokeHost/SmokeGuest.
-          node scripts/smoke-deploy.mjs --url http://127.0.0.1:4000 --full
+          # A public host is intentionally disabled in the production process.
+          # Run a second copy from the exact image on a CI-only schema, with the
+          # createApp test option enabled, to exercise the real multiplayer
+          # path without adding a production environment switch or weakening it.
+          docker run -d --name nc-ci-smoke --network "$NETWORK" -p 127.0.0.1:4001:4000 \
+            -e DATABASE_URL="$DB_URL" -e DATABASE_PRIVATE_NETWORK=1 -e DB_SCHEMA=ci_smoke \
+            -e PUBLIC_ORIGIN=https://ninetyclub.invalid -e TRUST_PROXY=1 \
+            -e OWNER_MFA_KEY="$MFA_KEY" -e PORT=4000 "$IMAGE" \
+            node --input-type=module -e 'import { createApp } from "./server/index.js"; const app = await createApp({ allowPublicHosting: true }); await app.listen(4000); process.once("SIGTERM", () => app.closeServer().then(() => process.exit(0)));'
+          ready=no
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:4001/readyz > /dev/null 2>&1; then ready=yes; break; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' nc-ci-smoke)" != true ]; then break; fi
+            sleep 1
+          done
+          if [ "$ready" != yes ]; then
+            echo "::error::CI-only multiplayer instance never became ready"
+            docker logs nc-ci-smoke || true
+            exit 1
+          fi
+          node scripts/smoke-deploy.mjs --url http://127.0.0.1:4001 --full
 
       - name: graceful shutdown drains, closes rooms and exits 0
         run: |
           set -euo pipefail
+          docker stop -t 60 nc-ci-smoke > /dev/null
+          smoke_code=$(docker inspect -f '{{.State.ExitCode}}' nc-ci-smoke)
+          if [ "$smoke_code" != 0 ]; then
+            docker logs --tail 40 nc-ci-smoke || true
+            echo "::error::CI-only multiplayer instance did not stop cleanly"
+            exit 1
+          fi
           docker inspect -f '{{.State.Running}}' nc-ci-app | grep -q true
           docker stop -t 60 nc-ci-app > /dev/null
           code=$(docker inspect -f '{{.State.ExitCode}}' nc-ci-app)

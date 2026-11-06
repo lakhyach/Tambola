@@ -74,11 +74,24 @@ need the game server to be stopped.
 ```bash
 npm run owner:list                    # usernames, creation and last sign-in times
 npm run owner:reset -- operator       # set a new password, revoke every session
+npm run owner:mfa-recovery-issue -- operator # register a browser-generated recovery code
 npm run owner:mfa-reset -- operator   # destroy a lost second factor, revoke every session
 npm run owner:remove -- operator      # delete the account and its sessions
 ```
 
-`owner:mfa-reset` is the documented answer to "I lost my authenticator". It
+`owner:mfa-recovery-issue` is the preferred answer to "I lost my authenticator".
+On `/admin/signin`, generate a one-time code and keep it in that browser. Run the
+command from an interactive server terminal, paste the code at its masked prompt,
+enter the current owner password, and type the exact confirmation phrase. The
+CLI verifies the active MFA key and registers only a hash; it never prints the
+code. Return to the same browser and submit the code with the current password.
+The code expires after 15 minutes and works once. Scan the one-time QR and confirm
+with a fresh TOTP. The old factor stays active until that confirmation succeeds;
+completion revokes owner sessions and outstanding challenges. Ten one-time
+recovery codes are then shown once. Store them privately.
+
+`owner:mfa-reset` remains a destructive host-only fallback and must not be used
+for routine authenticator replacement. It
 requires `OWNER_MFA_KEY` to be set to the same value the server uses and refuses
 to run without it, because a half-done reset could leave an account that cannot
 sign in at all. On success it destroys the sealed secret, clears the confirmation,

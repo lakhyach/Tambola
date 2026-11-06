@@ -165,6 +165,9 @@ async function main() {
   process.env.HTTP_REQUEST_TIMEOUT_MS = "1500";
   const main = await createApp({
     memoryOnly: true,
+    // This isolated probe creates rooms over sockets; public hosting is safe
+    // here because the instance exists only inside this process and is torn down.
+    allowPublicHosting: true,
     origins: [ALLOWED],
     publicOrigin: "https://hall.example",
     // A probe fires far more events than a player: the budget is proved

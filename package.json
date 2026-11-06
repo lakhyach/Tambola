@@ -14,6 +14,7 @@
     "owner:list": "node --env-file-if-exists=.env scripts/owner.js list",
     "owner:reset": "node --env-file-if-exists=.env scripts/owner.js reset",
     "owner:mfa-reset": "node --env-file-if-exists=.env scripts/owner.js mfa-reset",
+    "owner:mfa-recovery-issue": "node --env-file-if-exists=.env scripts/owner.js mfa-recovery-issue",
     "owner:remove": "node --env-file-if-exists=.env scripts/owner.js remove",
     "db:backup": "node --env-file-if-exists=.env scripts/backup.js",
     "db:restore-check": "node --env-file-if-exists=.env scripts/restore-check.js",
