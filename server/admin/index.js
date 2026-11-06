@@ -30,6 +30,7 @@ import { createAdminAudit, createMemoryAdminAudit } from "./audit.js";
 import { createAdminQueries } from "./queries.js";
 import { createThrottleSet } from "./rate-limit.js";
 import { createMfaChallengeStore, createMemoryMfaChallengeStore } from "./mfa-challenges.js";
+import { createMfaRecoveryStore } from "./mfa-recovery.js";
 import { mfaKeyFromEnv } from "./mfa.js";
 import { createThemeService } from "../themes/service.js";
 import { createPosterService } from "../posters/service.js";
@@ -52,6 +53,7 @@ export function createAdmin({
   rateLimiter = null,
   throttle = null,
   challenges = null,
+  mfaRecovery = null,
   mfaKey = undefined,
   mfaIssuer = process.env.MFA_ISSUER || "Ninety Club",
   challengeTtlMs = undefined,
@@ -75,6 +77,7 @@ export function createAdmin({
 
   const challengeStore =
     challenges || (hasDatabase ? createMfaChallengeStore({ db, ttlMs: challengeTtlMs }) : createMemoryMfaChallengeStore({ ttlMs: challengeTtlMs }));
+  const recoveryStore = mfaRecovery || (hasDatabase ? createMfaRecoveryStore({ db }) : null);
 
   // Throws MFA_KEY_INVALID when OWNER_MFA_KEY is present but malformed: a typo
   // must stop the server, not quietly disable the second factor.
@@ -92,6 +95,7 @@ export function createAdmin({
     publicOrigin: publicOrigin || null,
     throttle: throttleSet,
     challenges: challengeStore,
+    mfaRecovery: recoveryStore,
     mfa: { configured: Boolean(mfa && mfa.configured), key: (mfa && mfa.key) || null, issuer: mfaIssuer },
     production,
     themeService,
@@ -109,6 +113,7 @@ export function createAdmin({
     queries: readQueries,
     throttle: throttleSet,
     challenges: challengeStore,
+    mfaRecovery: recoveryStore,
     mfa: { configured: Boolean(mfa && mfa.configured), issuer: mfaIssuer },
     durable: Boolean(readQueries),
     themeService,

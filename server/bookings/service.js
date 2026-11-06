@@ -118,22 +118,32 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
     return result.rows[0] || null;
   }
 
+  function roomEligible(row) {
+    return !row.room_code
+      || (row.room_status === "WAITING" && Number(row.room_game_number) === 0 && !row.room_has_games)
+      || (row.room_status === "RUNNING" && row.room_has_games);
+  }
+
   function windowOpen(row, at = now()) {
     const time = at instanceof Date ? at.getTime() : new Date(at).getTime();
     return row.status === "open" && row.instance_status === "active" && row.public_visible &&
-      (!row.room_code || (row.room_status === "WAITING" && Number(row.room_game_number) === 0 && !row.room_has_games)) &&
+      roomEligible(row) &&
       new Date(row.booking_opens_at).getTime() <= time && new Date(row.booking_closes_at).getTime() > time &&
+      new Date(row.starts_at).getTime() > time;
+  }
+
+  function bookingWindowClosed(row, at = now()) {
+    const time = at instanceof Date ? at.getTime() : new Date(at).getTime();
+    return row.status === "open" && row.instance_status === "active" && row.public_visible && roomEligible(row) &&
+      new Date(row.booking_opens_at).getTime() <= time && new Date(row.booking_closes_at).getTime() <= time &&
       new Date(row.starts_at).getTime() > time;
   }
 
   function publicSessionVisible(row, at = now()) {
     const time = at instanceof Date ? at.getTime() : new Date(at).getTime();
     const scheduledOrLive = new Date(row.starts_at).getTime() > time || row.room_status === "RUNNING";
-    const roomEligible = !row.room_code
-      || (row.room_status === "WAITING" && Number(row.room_game_number) === 0 && !row.room_has_games)
-      || (row.room_status === "RUNNING" && row.room_has_games);
     return row.instance_status === "active" && row.public_visible
-      && ["open", "paused"].includes(row.status) && scheduledOrLive && roomEligible;
+        && ["open", "paused"].includes(row.status) && scheduledOrLive && roomEligible(row);
   }
 
   async function listPublicSessions(slug) {
@@ -250,7 +260,11 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
       if (roomCode !== null && !/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6,12}$/.test(roomCode)) return { error: "INVALID_ROOM_CODE" };
       const transitions = { draft: ["draft", "open", "paused", "cancelled"], open: ["open", "paused", "cancelled", "completed"], paused: ["paused", "open", "cancelled", "completed"], cancelled: ["cancelled"], completed: ["completed"] };
       if (!transitions[row.status]?.includes(status)) return { error: "INVALID_TRANSITION" };
-      if (status === "open" && (row.instance_status !== "active" || new Date(starts) <= now() || new Date(closes) <= now())) return { error: "SESSION_NOT_OPENABLE" };
+      // Publishing a scheduled session remains useful after its booking window
+      // closes: the public page can show that bookings are closed. Reservations
+      // still require windowOpen(), and a session cannot be published after it
+      // has started.
+      if (status === "open" && (row.instance_status !== "active" || new Date(starts) <= now())) return { error: "SESSION_NOT_OPENABLE" };
       if (status === "open" && row.inventory_mode === "numbered" && row.inventory_state !== "ready") return { error: "INVENTORY_NOT_READY" };
       if (row.inventory_state === "ready" && capacity !== Number(row.ticket_capacity)) return { error: "INVENTORY_CAPACITY_LOCKED" };
       if (roomCode && roomCode !== row.room_code) {
@@ -332,7 +346,10 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
       } else if (selectedTicketIds) return { error: "TICKET_SELECTION_REQUIRES_INVENTORY" };
       if (ticketCount > Number(row.ticket_capacity)) return { error: "TICKET_LIMIT", maxTickets: Number(row.ticket_capacity) };
       const instance = await client.query("SELECT status,public_visible FROM game_instances WHERE instance_id=$1", [row.instance_id]);
-      if (!instance.rowCount || instance.rows[0].status !== "active" || !instance.rows[0].public_visible || !windowOpen({ ...row, instance_status: instance.rows[0].status, public_visible: instance.rows[0].public_visible })) return { error: "SESSION_UNAVAILABLE" };
+      const bookingContext = { ...row, instance_status: instance.rows[0]?.status, public_visible: instance.rows[0]?.public_visible };
+      if (!instance.rowCount || instance.rows[0].status !== "active" || !instance.rows[0].public_visible) return { error: "SESSION_UNAVAILABLE" };
+      if (bookingWindowClosed(bookingContext)) return { error: "BOOKING_CLOSED" };
+      if (!windowOpen(bookingContext)) return { error: "SESSION_UNAVAILABLE" };
       const usage = await client.query(
         `SELECT COALESCE(sum(ticket_count),0)::int AS used FROM ticket_reservations
          WHERE session_id=$1 AND (status='confirmed' OR (status='held' AND expires_at>now()))`, [sessionId]

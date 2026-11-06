@@ -44,6 +44,7 @@ import { createMfaChallengeStore } from "../server/admin/mfa-challenges.js";
 import { createAdminAudit, ADMIN_ACTIONS } from "../server/admin/audit.js";
 import { hashPassword } from "../server/admin/password.js";
 import { parseMfaKey, MFA_KEY_ENV } from "../server/admin/mfa.js";
+import { createMfaRecoveryStore } from "../server/admin/mfa-recovery.js";
 
 const MIN_PASSWORD = 8;
 
@@ -58,6 +59,7 @@ function usage(code = 0) {
     "  list                   list owner usernames (never passwords)",
     "  reset   <username>     rotate a password and revoke its sessions",
     "  mfa-reset <username>   destroy a lost second factor and revoke its sessions",
+    "  mfa-recovery-issue <username>  issue a one-use, 15-minute authenticator replacement authorization",
     "  remove  <username>     delete an owner account and its sessions",
     "",
     "Environment:",
@@ -113,11 +115,16 @@ async function readPassword(label, envValue) {
 async function main() {
   const command = process.argv[2];
   const argUser = process.argv[3];
-  if (!["create", "super-admin:create", "super-admin:promote", "super-admin:demote", "list", "reset", "mfa-reset", "remove"].includes(command)) return usage(command ? 1 : 0);
+  if (!["create", "super-admin:create", "super-admin:promote", "super-admin:demote", "list", "reset", "mfa-reset", "mfa-recovery-issue", "remove"].includes(command)) return usage(command ? 1 : 0);
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
     console.error("DATABASE_URL is not set. The owner control centre needs durable storage; set DATABASE_URL (see .env.example).");
+    process.exitCode = 1;
+    return;
+  }
+  if (command === "mfa-recovery-issue" && !process.stdin.isTTY) {
+    console.error("MFA recovery authorization must be issued from an interactive terminal.");
     process.exitCode = 1;
     return;
   }
@@ -153,11 +160,57 @@ async function main() {
       return;
     }
 
-    await migrate({ db });
+    if (command === "mfa-recovery-issue") {
+      const initialized = await db.query("SELECT to_regclass($1) IS NOT NULL AS present", [`${assertSchemaName(schema)}.owner_mfa_recovery_authorizations`]);
+      if (!initialized.rows[0]?.present) {
+        console.error("The MFA recovery schema is not installed. Apply the reviewed application migration before issuing recovery authorizations.");
+        process.exitCode = 1;
+        return;
+      }
+    } else {
+      await migrate({ db });
+    }
     const store = createOwnerStore({ db });
     const sessions = createOwnerSessionStore({ db });
     const challenges = createMfaChallengeStore({ db });
     const audit = createAdminAudit({ db });
+
+    if (command === "mfa-recovery-issue") {
+      const username = normalizeUsername(argUser || (await ask("Existing owner username: ")));
+      const account = await store.getByUsername(username);
+      if (!account || !account.totpConfirmedAt) {
+        console.error("No active MFA-protected owner matches that username.");
+        process.exitCode = 1;
+        return;
+      }
+      let password = await askHidden("Current owner password: ");
+      const verified = await store.verifyLogin({ username, password });
+      password = "";
+      if (!verified.ok) {
+        console.error("Owner credentials were not accepted.");
+        process.exitCode = 1;
+        return;
+      }
+      let recoveryKey;
+      try { recoveryKey = parseMfaKey(process.env[MFA_KEY_ENV]); }
+      catch { console.error(`${MFA_KEY_ENV} is invalid; no authorization was issued.`); process.exitCode = 1; return; }
+      if (!recoveryKey.configured) {
+        console.error(`${MFA_KEY_ENV} is not configured; no authorization was issued.`);
+        process.exitCode = 1;
+        return;
+      }
+      const answer = await ask(`This authorizes replacement of the authenticator for '${account.username}' for 15 minutes. The current factor remains active until a new one is verified. Type 'authorize mfa recovery ${account.username}': `);
+      if (answer !== `authorize mfa recovery ${account.username}`) {
+        console.log("aborted; no recovery authorization was issued");
+        return;
+      }
+      const recovery = createMfaRecoveryStore({ db });
+      const issued = await recovery.issueAuthorization({ ownerId: account.ownerId, username: account.username });
+      console.log("One-time recovery authorization (valid for 15 minutes):");
+      console.log(issued.token);
+      console.log("Enter it only on the Ninety Club owner sign-in recovery screen. Do not share or save it.");
+      return;
+    }
 
     if (command === "create" || command === "super-admin:create") {
       const existing = await store.count();

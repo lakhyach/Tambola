@@ -120,7 +120,8 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal(confirmResponse.status, 200);
     assert.equal((await confirmResponse.json()).reservation.status, "confirmed");
     assert.equal(Number((await env.db.query("SELECT count(*)::int AS n FROM auth_throttle WHERE scope='booking-public'")).rows[0].n), 0, "valid booking actions do not accumulate authentication failure strikes");
-    assert.equal((await (await fetch(`${base}/api/admin/instances/regular/sessions`, { headers: { cookie: `tambola_owner=${token}` } })).json()).sessions[0].confirmedTicketCount, 2);
+    const adminSessions = (await (await fetch(`${base}/api/admin/instances/regular/sessions`, { headers: { cookie: `tambola_owner=${token}` } })).json()).sessions;
+    assert.equal(adminSessions.find((session) => session.sessionId === created.sessionId)?.confirmedTicketCount, 2);
     const cancelResponse = await fetch(`${base}/api/public/reservations/${held.reservationId}/cancel`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bookingToken: held.bookingToken }),
     });
@@ -186,7 +187,11 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal((await env.db.query("SELECT status FROM ticket_reservations WHERE reservation_id=$1", [staleHold.reservation.reservationId])).rows[0].status, "expired", "session closure preserves an elapsed hold as expired");
     const staleAudit = await env.db.query("SELECT action FROM ticket_reservation_audit WHERE reservation_id=$1 ORDER BY event_id", [staleHold.reservation.reservationId]);
     assert.deepEqual(staleAudit.rows.map((row) => row.action), ["hold.create", "hold.expire"], "expired holds do not receive a misleading hold.cancel event");
-    assert.deepEqual((await service.listPublicSessions("regular")).map((s) => s.sessionId), [created.sessionId]);
+    assert.deepEqual(
+      (await service.listPublicSessions("regular")).map((session) => session.sessionId).sort(),
+      [created.sessionId, scheduledOnly.session.sessionId, bookingClosed.session.sessionId].sort(),
+      "published future sessions stay public before booking opens and after booking closes",
+    );
     await env.db.query("UPDATE game_instances SET status='archived',public_visible=false WHERE instance_id='regular'");
     assert.deepEqual(await service.listPublicSessions("regular"), []);
     const audit = await env.db.query("SELECT action FROM ticket_reservation_audit WHERE session_id=$1 ORDER BY event_id", [created.sessionId]);

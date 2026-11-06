@@ -116,6 +116,8 @@ export function createSessionStore({
 
     const found = await db.query(
       `SELECT session_id, room_code, player_id, role, expires_at, absolute_expires_at,
+              expires_at <= now() AS idle_expired,
+              absolute_expires_at <= now() AS hard_expired,
               revoked_at, revoke_reason, rotated_at
          FROM sessions WHERE token_hash = $1`,
       [hash]
@@ -124,11 +126,11 @@ export function createSessionStore({
     if (!row) return failing(SESSION_CODES.UNKNOWN, "this session is not known");
     if (row.rotated_at) return failing(SESSION_CODES.ROTATED, "this session was rotated");
     if (row.revoked_at) return failing(SESSION_CODES.REVOKED, "this session was revoked");
-    if (Date.parse(row.absolute_expires_at) <= now()) {
+    if (row.hard_expired) {
       await revoke({ sessionId: row.session_id, reason: "expired" });
       return failing(SESSION_CODES.EXPIRED, "this session has expired");
     }
-    if (Date.parse(row.expires_at) <= now()) {
+    if (row.idle_expired) {
       await revoke({ sessionId: row.session_id, reason: "idle-expired" });
       return failing(SESSION_CODES.EXPIRED, "this session has expired");
     }
@@ -137,11 +139,13 @@ export function createSessionStore({
     }
 
     const touched = await db.query(
-      `UPDATE sessions SET last_used_at = now(), expires_at = now() + ($2 * interval '1 millisecond')
-        WHERE session_id = $1 AND revoked_at IS NULL
+        `UPDATE sessions SET last_used_at = now(), expires_at = LEAST(now() + ($2 * interval '1 millisecond'), absolute_expires_at)
+          WHERE session_id = $1 AND revoked_at IS NULL
+            AND expires_at > now() AND absolute_expires_at > now()
         RETURNING expires_at`,
       [row.session_id, Math.round(idleMs)]
     );
+    if (!touched.rows.length) return failing(SESSION_CODES.EXPIRED, "this session has expired");
     return {
       ok: true,
       sessionId: row.session_id,

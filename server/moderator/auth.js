@@ -39,13 +39,21 @@ export function createModeratorAuth({ db, mfaKey = null } = {}) {
   async function verifySession({ token, sessionId } = {}) {
     if (token && !TOKEN_RE.test(token)) return null;
     const result = await db.query(`SELECT s.session_id,s.moderator_id,s.expires_at,s.absolute_expires_at,s.revoked_at,
+        s.expires_at <= now() AS idle_expired,s.absolute_expires_at <= now() AS hard_expired,
         a.username,a.status,a.totp_confirmed_at
       FROM moderator_sessions s JOIN moderator_accounts a USING(moderator_id)
       WHERE ${sessionId ? "s.session_id=$1" : "s.token_hash=$1"}`, [sessionId || digest(token)]);
     const row = result.rows[0];
-    if (!row || row.revoked_at || row.status !== "active" || Date.parse(row.expires_at) <= Date.now() || Date.parse(row.absolute_expires_at) <= Date.now()) return null;
-    await db.query(`UPDATE moderator_sessions SET last_used_at=now(),expires_at=LEAST(now()+($2 * interval '1 millisecond'),absolute_expires_at)
-      WHERE session_id=$1 AND revoked_at IS NULL`, [row.session_id, IDLE_MS]);
+    if (!row || row.revoked_at || row.status !== "active") return null;
+    if (row.idle_expired || row.hard_expired) {
+      await db.query(`UPDATE moderator_sessions SET revoked_at=COALESCE(revoked_at,now()),revoke_reason=COALESCE(revoke_reason,'expired')
+        WHERE session_id=$1 AND revoked_at IS NULL`, [row.session_id]);
+      return null;
+    }
+    const touched = await db.query(`UPDATE moderator_sessions SET last_used_at=now(),expires_at=LEAST(now()+($2 * interval '1 millisecond'),absolute_expires_at)
+      WHERE session_id=$1 AND revoked_at IS NULL AND expires_at>now() AND absolute_expires_at>now()
+      RETURNING session_id`, [row.session_id, IDLE_MS]);
+    if (!touched.rowCount) return null;
     return { sessionId: row.session_id, moderatorId: row.moderator_id, username: row.username, mfaEnrolled: Boolean(row.totp_confirmed_at) };
   }
 
