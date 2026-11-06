@@ -28,7 +28,7 @@ function refusalMessage(error) {
   if (code === "INVALID_CREDENTIALS") return "That username and password did not match.";
   if (code === "INVALID_INPUT") return "Enter your username and a password of at least 8 characters.";
   if (code === "OWNER_NOT_CONFIGURED") {
-    return "No owner account exists yet. Create one on the server with: npm run owner:create";
+    return "Owner sign-in is not available right now. Please contact platform support.";
   }
   if (code === "MFA_INVALID_CODE") return "That code is not valid right now. Check the device and start again.";
   if (code === "MFA_REPLAY") return "That code has already been used. Wait for a new one and start again.";
@@ -36,7 +36,7 @@ function refusalMessage(error) {
     return "This sign-in attempt has expired. Enter your password again.";
   }
   if (code === "MFA_UNAVAILABLE") {
-    return "This account needs a second factor, but the server has no OWNER_MFA_KEY configured. See server/RUNBOOK.md.";
+    return "This account’s secure sign-in is temporarily unavailable. Please contact platform support.";
   }
   if (code === "RATE_LIMITED") {
     const seconds = Math.ceil(Number(error.payload && error.payload.retryAfterMs) / 1000);
@@ -151,10 +151,8 @@ export default function AdminSignIn() {
         </p>
 
         {setupRequired && !challenge ? (
-          <Banner tone="warn" title="No owner account yet">
-            An owner account can only be created on the server. Run <code className="adm-code">npm run owner:create</code>{" "}
-            with <code className="adm-code">OWNER_USERNAME</code> and <code className="adm-code">OWNER_PASSWORD</code> set,
-            then check again.
+          <Banner tone="warn" title="Owner sign-in unavailable">
+            Please contact platform support for assistance.
             <div className="adm-actions adm-actions--tight">
               <Button variant="ghost" size="sm" onClick={handleRecheck} disabled={checking}>
                 {checking ? "Checking…" : "Check again"}
@@ -235,16 +233,9 @@ export default function AdminSignIn() {
 
         {mfa && mfa.state === "unavailable" && !challenge ? (
           <p className="adm-signin__note">
-            Two-factor protection is not configured on this server. Set <code className="adm-code adm-code--inline">OWNER_MFA_KEY</code>{" "}
-            to enable it under Settings.
+            Secure sign-in is temporarily unavailable. Please contact platform support.
           </p>
         ) : null}
-
-        <p className="adm-signin__note">
-          Sessions expire after a period of inactivity. If you have lost the password, reset it on the server with{" "}
-          <code className="adm-code">npm run owner:reset</code>. If you have lost the authenticator, use{" "}
-          <code className="adm-code">npm run owner:mfa-reset</code>.
-        </p>
 
         <Link to="/" className="adm-signin__back">
           Back to the game

@@ -374,3 +374,46 @@
   .fest-hero__stage { min-height: 0; height: auto; }
   .fest-hero__host { width: min(100%, 430px); max-height: none; }
 }
+
+/* Published-session empty state: keep the festive invitation entirely separate
+   from the data-driven cards, and only show it after a successful empty fetch. */
+.fest-announcement {
+  position: relative; isolation: isolate; overflow: hidden; padding: clamp(25px,4vw,42px) clamp(20px,4vw,48px) 0;
+  border: 1px solid rgba(255,218,132,.42); border-radius: 22px;
+  background: radial-gradient(ellipse at 50% 0,rgba(245,172,60,.15),transparent 52%),linear-gradient(125deg,rgba(53,24,69,.97),rgba(30,15,47,.98) 58%,rgba(42,19,55,.97));
+  box-shadow: inset 0 1px rgba(255,255,255,.08),0 17px 40px rgba(8,3,16,.2);
+  text-align: center;
+}
+.fest-announcement::before { position: absolute; z-index: -1; inset: 9px; border: 1px solid rgba(255,218,132,.14); border-radius: 15px; content: ""; pointer-events: none; }
+.fest-announcement__topline { display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 11px; }
+.fest-announcement__topline .fest-eyebrow { margin: 0; }
+.fest-announcement__seal { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid rgba(255,218,132,.62); border-radius: 50%; color: #43233b; background: linear-gradient(145deg,#fff0b3,#f0a941); box-shadow: 0 0 20px rgba(255,190,69,.2); font: 900 12px/1 var(--oh-font-num); }
+.fest-announcement__spark { color: var(--fest-gold); text-shadow: 0 0 14px rgba(255,201,87,.65); }
+.fest-announcement h3 { font-size: clamp(29px,4.2vw,48px); background: linear-gradient(180deg,#fff2c1,#ffd45e 62%,#eea33d); color: transparent; background-clip: text; }
+.fest-announcement > p { max-width: 630px; margin: 13px auto 18px; color: #e4d6e8; font-size: clamp(14px,1.5vw,17px); line-height: 1.65; }
+.fest-announcement__link { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; color: #ffe4a0; font-size: 13px; font-weight: 800; text-decoration: none; }
+.fest-announcement__link:focus-visible { outline: 3px solid #fff0a8; outline-offset: 4px; border-radius: 3px; }
+.fest-announcement__link span { color: var(--fest-gold); transition: transform .18s ease; }
+.fest-announcement__link:hover span { transform: translateX(3px); }
+.fest-announcement__marquee { overflow: hidden; margin: 17px calc(clamp(20px,4vw,48px) * -1) 0; padding: 12px 0; border-top: 1px solid rgba(255,218,132,.16); background: linear-gradient(90deg,rgba(255,201,87,.06),rgba(235,79,159,.08),rgba(78,204,186,.06)); }
+.fest-announcement__track { display: flex; width: max-content; animation: fest-marquee 31s linear infinite; }
+.fest-announcement__group { display: flex; flex: 0 0 auto; align-items: center; gap: clamp(18px,3vw,42px); padding: 0 clamp(18px,3vw,42px); color: #f5dfac; font-size: 10px; font-weight: 800; letter-spacing: .15em; white-space: nowrap; }
+.fest-announcement__group i { color: #f3ad49; font-style: normal; text-shadow: 0 0 12px rgba(255,189,72,.65); }
+.fest-hero__ticket-mini { animation: fest-ticket-float 7s ease-in-out infinite; }
+@keyframes fest-marquee { to { transform: translateX(-50%); } }
+@keyframes fest-ticket-float { 0%,100% { transform: translateY(0) rotate(-5deg); } 50% { transform: translateY(-7px) rotate(-2deg); } }
+@media (max-width: 700px) {
+  .fest-announcement { padding: 24px 18px 0; border-radius: 16px; }
+  .fest-announcement__topline { gap: 8px; }
+  .fest-announcement__topline .fest-eyebrow { font-size: 8px; letter-spacing: .14em; }
+  .fest-announcement__marquee { margin-inline: -18px; }
+  .fest-announcement__group { font-size: 9px; }
+  .fest-hero__ticket-mini { right: 0; bottom: 2%; transform: rotate(-3deg) scale(.78); transform-origin: bottom right; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fest-announcement__track, .fest-hero__ticket-mini { animation: none !important; }
+  .fest-announcement__marquee { overflow: visible; }
+  .fest-announcement__track { width: 100%; }
+  .fest-announcement__group { flex: 1 1 100%; justify-content: center; flex-wrap: wrap; white-space: normal; }
+  .fest-announcement__group + .fest-announcement__group { display: none; }
+}

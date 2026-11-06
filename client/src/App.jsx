@@ -75,6 +75,17 @@ function UpcomingSessions() {
   return <div className="fest-upcoming__content">
     {status === "loading" ? <p className="fest-state" role="status">Checking published game sessions…</p> : null}
     {status === "unavailable" ? <div className="fest-empty"><p>Published sessions could not be loaded right now.</p><Link className="fest-button fest-button--quiet" to="/games">Browse game halls</Link></div> : null}
+    {status === "ready" && sessions.length === 0 ? <article className="fest-announcement" aria-labelledby="fest-announcement-title">
+      <div className="fest-announcement__topline"><span className="fest-announcement__seal" aria-hidden="true">90</span><span className="fest-eyebrow">A LITTLE ANTICIPATION, A LOT OF JOY</span><span className="fest-announcement__spark" aria-hidden="true">✦</span></div>
+      <h3 id="fest-announcement-title" className="fest-display">Let the Good Times Roll!</h3>
+      <p>Your next Tambola night is just around the corner. Stay tuned for upcoming game sessions!</p>
+      <Link className="fest-announcement__link" to="/games">Explore our game halls <span aria-hidden="true">→</span></Link>
+      <div className="fest-announcement__marquee" aria-hidden="true"><div className="fest-announcement__track">
+        {[0, 1].map((copy) => <span className="fest-announcement__group" key={copy}>
+          <b>LET THE GOOD TIMES ROLL</b><i>✦</i><b>YOUR NEXT GAME NIGHT AWAITS</b><i>✦</i><b>NUMBERS, FRIENDS &amp; A LITTLE SPARKLE</b><i>✦</i>
+        </span>)}
+      </div></div>
+    </article> : null}
     {status === "ready" && sessions.length > 0 ? <div className="fest-session-grid">{sessions.map((session) => <article className="fest-session-card" key={session.sessionId}>
       {(() => { const countdown = countdownTarget(session, now); return <>
         <span className="fest-session-card__spark" aria-hidden="true">✦</span><p className="fest-eyebrow">{session.hallName} · {session.bookingStatus.replaceAll("_", " ")}</p><h3>{session.title}</h3>
@@ -101,7 +112,7 @@ function Landing() {
       <section className="fest-hero" aria-labelledby="festival-hero-title">
         <div className="fest-hero__lights" aria-hidden="true" />
         <div className="fest-hero__copy">
-          <p className="fest-eyebrow fest-hero__kicker">NINETY CLUB</p>
+          <p className="fest-eyebrow fest-hero__kicker">YOUR NEXT GAME NIGHT</p>
           <h1 id="festival-hero-title" className="fest-display">{brand.name}</h1>
           <p className="fest-hero__subtitle">A little sparkle. A lot of good company. Your next Tambola night starts here.</p>
           <div className="fest-hero__actions">
@@ -113,7 +124,11 @@ function Landing() {
         <div className="fest-hero__stage" aria-label="Original illustrated host and decorative Tambola number balls">
           <div className="fest-hero__halo" aria-hidden="true" />
           <span className="fest-diya fest-diya--left" aria-hidden="true">✺</span><span className="fest-diya fest-diya--right" aria-hidden="true">✺</span>
+          <span className="fest-ball fest-ball--45" aria-hidden="true">45</span>
+          <span className="fest-ball fest-ball--11" aria-hidden="true">11</span>
+          <span className="fest-ball fest-ball--67" aria-hidden="true">67</span>
           <img className="fest-hero__host" src="/brand/festival-host-illustration-v1.png" alt="Original illustration of a festive Tambola host holding a ticket" width="1312" height="1199" />
+          <div className="fest-hero__ticket-mini" aria-hidden="true"><span>YOUR LUCKY TICKET</span>{[7, 18, 24, 42, 13, 31, 56, 72, 5, 38, 61, 89].map((number, index) => <b key={index}>{number}</b>)}</div>
         </div>
         <a className="fest-scroll-cue" href="#choose-your-game">Explore the game night <span aria-hidden="true">↓</span></a>
       </section>
