@@ -83,10 +83,17 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal((await service.listPublicSessions("regular")).some((session) => session.sessionId === scheduledOnly.session.sessionId), true);
     assert.equal((await service.reserve({ sessionId: scheduledOnly.session.sessionId, displayName: "Early Guest", ticketCount: 1 })).error, "SESSION_UNAVAILABLE", "listing a scheduled session does not open booking early");
 
-    const bookingClosed = await service.createSession({ instanceId: "regular", actor: "owner", title: "Closed booking listing check", startsAt: future(40), bookingOpensAt: future(-10), bookingClosesAt: future(-1), capacity: 4 });
-    await service.updateSession({ instanceId: "regular", sessionId: bookingClosed.session.sessionId, actor: "owner", patch: { status: "open" } });
-    assert.equal((await service.getPublicSession(bookingClosed.session.sessionId)).bookingStatus, "closed", "future games remain visible after their booking window closes");
-    assert.equal((await service.reserve({ sessionId: bookingClosed.session.sessionId, displayName: "Late Guest", ticketCount: 1 })).error, "BOOKING_CLOSED");
+    const bookingClosed = await service.createSession({ instanceId: "regular", actor: "owner", title: "Closed booking listing check", startsAt: future(40), bookingOpensAt: future(-10), bookingClosesAt: future(5), capacity: 4 });
+    const publishedBeforeClose = await service.updateSession({ instanceId: "regular", sessionId: bookingClosed.session.sessionId, actor: "owner", patch: { status: "open" } });
+    assert.equal(publishedBeforeClose.session.status, "open", "publish the session while its booking window is still valid");
+    await env.db.query("UPDATE game_sessions SET booking_closes_at=clock_timestamp()-interval '1 second' WHERE session_id=$1", [bookingClosed.session.sessionId]);
+    const closedPublicSession = await service.getPublicSession(bookingClosed.session.sessionId);
+    assert.equal(closedPublicSession.bookingStatus, "closed", "future games remain visible after their booking window closes");
+    assert.equal((await service.reserve({ sessionId: bookingClosed.session.sessionId, displayName: "Late Guest", ticketCount: 1 })).error, "SESSION_UNAVAILABLE", "a request after the closed window is rejected by the availability guard");
+
+    const alreadyClosed = await service.createSession({ instanceId: "regular", actor: "owner", title: "Cannot publish after booking closes", startsAt: future(40), bookingOpensAt: future(-10), bookingClosesAt: future(-1), capacity: 4 });
+    assert.equal((await service.updateSession({ instanceId: "regular", sessionId: alreadyClosed.session.sessionId, actor: "owner", patch: { status: "open" } })).error, "SESSION_NOT_OPENABLE", "publishing after the booking window closes remains refused");
+    assert.equal(await service.getPublicSession(alreadyClosed.session.sessionId), null, "a draft cannot appear in public listings after a rejected publish");
 
     const idempotencyToken = "c".repeat(64);
     const holdResponse = await fetch(`${base}/api/public/sessions/${created.sessionId}/reservations`, {
@@ -120,7 +127,8 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal(confirmResponse.status, 200);
     assert.equal((await confirmResponse.json()).reservation.status, "confirmed");
     assert.equal(Number((await env.db.query("SELECT count(*)::int AS n FROM auth_throttle WHERE scope='booking-public'")).rows[0].n), 0, "valid booking actions do not accumulate authentication failure strikes");
-    assert.equal((await (await fetch(`${base}/api/admin/instances/regular/sessions`, { headers: { cookie: `tambola_owner=${token}` } })).json()).sessions[0].confirmedTicketCount, 2);
+    const ownerSessions = (await (await fetch(`${base}/api/admin/instances/regular/sessions`, { headers: { cookie: `tambola_owner=${token}` } })).json()).sessions;
+    assert.equal(ownerSessions.find((session) => session.sessionId === created.sessionId)?.confirmedTicketCount, 2);
     const cancelResponse = await fetch(`${base}/api/public/reservations/${held.reservationId}/cancel`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bookingToken: held.bookingToken }),
     });
@@ -186,7 +194,11 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal((await env.db.query("SELECT status FROM ticket_reservations WHERE reservation_id=$1", [staleHold.reservation.reservationId])).rows[0].status, "expired", "session closure preserves an elapsed hold as expired");
     const staleAudit = await env.db.query("SELECT action FROM ticket_reservation_audit WHERE reservation_id=$1 ORDER BY event_id", [staleHold.reservation.reservationId]);
     assert.deepEqual(staleAudit.rows.map((row) => row.action), ["hold.create", "hold.expire"], "expired holds do not receive a misleading hold.cancel event");
-    assert.deepEqual((await service.listPublicSessions("regular")).map((s) => s.sessionId), [created.sessionId]);
+    const stillPublic = (await service.listPublicSessions("regular")).map((session) => session.sessionId);
+    assert.ok(stillPublic.includes(created.sessionId), "the active created session remains public");
+    for (const hiddenId of [raceCreate.session.sessionId, retryCreate.session.sessionId, staleSession.session.sessionId]) {
+      assert.equal(stillPublic.includes(hiddenId), false, "cancelled sessions are removed from public listings");
+    }
     await env.db.query("UPDATE game_instances SET status='archived',public_visible=false WHERE instance_id='regular'");
     assert.deepEqual(await service.listPublicSessions("regular"), []);
     const audit = await env.db.query("SELECT action FROM ticket_reservation_audit WHERE session_id=$1 ORDER BY event_id", [created.sessionId]);

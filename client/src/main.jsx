@@ -46,6 +46,9 @@ if (typeof document !== "undefined") {
 const Player = React.lazy(() => import("./Player.jsx"));
 const PlayerRoom = React.lazy(() => import("./PlayerRoom.jsx"));
 const PlayerGame = React.lazy(() => import("./PlayerGame.jsx"));
+const Host = React.lazy(() => import("./Host.jsx"));
+const HostRoom = React.lazy(() => import("./HostRoom.jsx"));
+const HostGame = React.lazy(() => import("./HostGame.jsx"));
 const AdminRoot = React.lazy(() => import("./admin/AdminProvider.jsx").then((module) => ({ default: module.AdminRoot })));
 const AdminSignIn = React.lazy(() => import("./admin/AdminSignIn.jsx"));
 const AdminGate = React.lazy(() => import("./admin/AdminGate.jsx"));
@@ -195,6 +198,10 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <Route path="/moderator/bookings" element={<ModeratorBookings />} />
           <Route path="/moderator/accept" element={<ModeratorCredential kind="accept" />} />
           <Route path="/moderator/recovery" element={<ModeratorCredential kind="recovery" />} />
+          <Route path="/host" element={<Host />}>
+            <Route path="room" element={<HostRoom />} />
+            <Route path="game" element={<HostGame />} />
+          </Route>
           <Route path="/host/*" element={<Navigate to="/" replace />} />
           <Route path="/player" element={<Player />}>
             <Route path="room" element={<PlayerRoom />} />

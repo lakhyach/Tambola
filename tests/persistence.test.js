@@ -73,7 +73,7 @@ async function createDueAutoStartSession({ instanceId = "bumper", roomCode, time
   const bookings = createBookingService({ db });
   const future = (minutes) => new Date(Date.now() + minutes * 60_000).toISOString();
   const created = await bookings.createSession({
-    instanceId, actor: "owner-test", title: "Scheduled Bumper test", startsAt: future(30),
+    instanceId, actor: "owner-test", title: `Scheduled ${instanceId} test`, startsAt: future(30),
     bookingOpensAt: future(-10), bookingClosesAt: future(20), capacity: 12,
     roomCode, autoStartEnabled, timeZone,
   });
@@ -337,6 +337,41 @@ test("due Bumper session starts once from the server, persists audit times, and 
 
   const duplicate = await stores[1].claimDueScheduledStart({ claimToken: tokenB });
   assert.equal(duplicate.claimed, false, "a started game cannot be claimed a second time");
+});
+
+test("due Regular Tambola session uses the shared durable auto-start and caller path", { skip }, async () => {
+  const made = await makeDurableRoom({ instanceId: "regular", overrides: { autoCall: true, callIntervalMs: 8000 } });
+  const player = await made.controller.joinRoom({ roomId: made.roomId, name: "Regular player", socketId: "s-regular-player" });
+  assert.equal(player.ok, true, JSON.stringify(player));
+  const { sessionId } = await createDueAutoStartSession({ instanceId: "regular", roomCode: made.roomId, timeZone: "Asia/Kolkata" });
+
+  const firstToken = "88888888-8888-4888-8888-888888888888";
+  const secondToken = "99999999-9999-4999-8999-999999999999";
+  const stores = [store, createStore({ db, log: () => {} })];
+  const claims = await Promise.all(stores.map((candidate, index) => candidate.claimDueScheduledStart({ claimToken: index ? secondToken : firstToken })));
+  assert.equal(claims.filter((claim) => claim.claimed).length, 1, "multiple workers cannot start a Regular session twice");
+  const claim = claims.find((candidate) => candidate.claimed);
+  assert.equal(claim.instanceId, "regular");
+  const manual = await made.controller.start({ room: made.room, socketId: "s-host" });
+  assert.equal(manual.code, "AUTO_START_RESERVED", "Regular hosts cannot bypass the explicit scheduled start");
+
+  let armedState = null;
+  made.controller.bindScheduler({ arm(room) { armedState = room.state; return {}; }, cancel() {} });
+  const result = await made.controller.startScheduled({ sessionId, claimToken: claim.claimToken });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(made.room.state, GameState.RUNNING);
+  assert.equal(armedState, GameState.RUNNING, "the caller arms after the authoritative Regular transition");
+  assert.equal(made.room.playerSnapshot(player.playerId).state, GameState.RUNNING);
+  const callSchedule = await store.loadSchedule({ roomId: made.roomId });
+  assert.equal(callSchedule.auto_call, true, "the durable caller schedule is written for the Regular round");
+
+  const game = await db.query("SELECT status,start_source,scheduled_for,started_at FROM games WHERE room_code=$1", [made.roomId]);
+  assert.equal(game.rows.length, 1);
+  assert.equal(game.rows[0].status, "RUNNING");
+  assert.equal(game.rows[0].start_source, "scheduled");
+  assert.ok(new Date(game.rows[0].started_at) >= new Date(game.rows[0].scheduled_for));
+  const duplicate = await stores[1].claimDueScheduledStart({ claimToken: secondToken });
+  assert.equal(duplicate.claimed, false);
 });
 
 test("auto-start cancellation and invalid room association are terminal and never start gameplay", { skip }, async () => {
