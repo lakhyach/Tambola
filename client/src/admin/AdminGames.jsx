@@ -17,6 +17,7 @@ import { Badge, Empty, ErrorNote, Field, Loading, Pagination, Section, StatusPil
 
 const PAGE = 25;
 const PATTERN_POINTS = { ...PATTERN_META, ...Object.fromEntries(OPTIONAL_PATTERNS.map((pattern) => [pattern.id, pattern])) };
+const DEFAULT_ENABLED_PATTERNS = PATTERN_CATALOG.map((pattern) => pattern.id);
 const STATES = [
   { value: "open", label: "Open rooms" },
   { value: "all", label: "All rooms" },
@@ -68,9 +69,9 @@ export default function AdminGames() {
 
   const [form, setForm] = useState({
     name: "Operator Table",
-    seconds: 3,
-    autoCall: false,
-    patterns: [],
+    seconds: 8,
+    autoCall: true,
+    patterns: DEFAULT_ENABLED_PATTERNS,
     instanceId: "regular",
   });
   const [creating, setCreating] = useState(false);

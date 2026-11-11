@@ -37,6 +37,8 @@ const GameScreen = ({ role }) => {
   const language = useBookingLanguage();
 
   const [snap, setSnap] = useState(null);
+  const [scheduledSession, setScheduledSession] = useState(null);
+  const [clockNow, setClockNow] = useState(Date.now());
   const [serverRole, setServerRole] = useState(null);
   const [sessionResumeCount, setSessionResumeCount] = useState(0);
   // When THIS snapshot arrived. The caller console's elapsed clock ticks locally
@@ -60,6 +62,7 @@ const GameScreen = ({ role }) => {
   const claimPendingRef = useRef(false);
   const hostActionPendingRef = useRef(false);
   const roomIdRef = useRef("");
+  const serverClockOffset = useRef(0);
   const callCursorRef = useRef(0);
   const languageRef = useRef(language);
   useEffect(() => { languageRef.current = language; }, [language]);
@@ -289,6 +292,47 @@ const GameScreen = ({ role }) => {
     if (snap?.roomId) roomIdRef.current = snap.roomId;
   }, [snap?.roomId]);
 
+  // The game route can be opened while the room is still WAITING (for example,
+  // after ticket materialization). Keep scheduled status visible here too. The
+  // server remains the only authority that starts a game; this clock is display
+  // only and is corrected from the endpoint's serverTime on each refresh.
+  useEffect(() => {
+    if (isHost || !snap?.roomId) return undefined;
+    const roomId = snap.roomId;
+    const abort = new AbortController();
+    let active = true;
+    const refreshSchedule = async () => {
+      try {
+        const response = await fetch(`/api/public/rooms/${encodeURIComponent(roomId)}/session`, {
+          cache: "no-store", signal: abort.signal, headers: { Accept: "application/json" },
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!active) return;
+        if (!response.ok || !data.ok || !data.session) { setScheduledSession(null); return; }
+        const serverTime = Date.parse(data.session.serverTime);
+        if (Number.isFinite(serverTime)) serverClockOffset.current = serverTime - Date.now();
+        setScheduledSession(data.session);
+        setClockNow(Date.now() + serverClockOffset.current);
+      } catch (error) {
+        if (active && error.name !== "AbortError") setScheduledSession(null);
+      }
+    };
+    refreshSchedule();
+    const stopReconnect = on("connect", refreshSchedule);
+    const timer = window.setInterval(() => setClockNow(Date.now() + serverClockOffset.current), 1000);
+    const refreshTimer = window.setInterval(refreshSchedule, 15_000);
+    const onVisible = () => { if (document.visibilityState === "visible") refreshSchedule(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      active = false;
+      abort.abort();
+      window.clearInterval(timer);
+      window.clearInterval(refreshTimer);
+      document.removeEventListener("visibilitychange", onVisible);
+      stopReconnect();
+    };
+  }, [isHost, snap?.roomId]);
+
   // A host route must be backed by real host authority. The server's resume
   // ack reports this seat's role; if it says "player" while someone is sitting
   // on the host screen, they are an ordinary player who forced the URL — send
@@ -475,6 +519,8 @@ const GameScreen = ({ role }) => {
   const sheets = ticketSheets(snap);
   const view = {
     roomId: snap?.roomId || "",
+    scheduledSession,
+    scheduleNow: clockNow,
     state: snap?.state || "WAITING",
     calledCount: snap?.calledCount ?? 0,
     remaining: snap?.remaining ?? null,

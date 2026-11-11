@@ -210,6 +210,11 @@ test("patterns can be disabled per room", () => {
   for (const id of optional) assert.equal(enabledPatternIds({}).includes(id), false, id + " is off by default");
 });
 
+test("a session-owned point value overrides the catalogue reward without changing its rule", () => {
+  assert.equal(getPattern("earlyFive", { patterns: { earlyFive: true }, patternPoints: { earlyFive: 77 } }).points, 77);
+  assert.equal(getPattern("earlyFive", { patterns: { earlyFive: true }, patternPoints: { earlyFive: -1 } }).points, PATTERNS.earlyFive.points);
+});
+
 // -------------------------------------------------------------- arbitration
 
 test("a claim is verified against the server history, not the client's word", () => {

@@ -136,9 +136,11 @@ export const api = {
   updateInstance: (instanceId, payload) => request("PATCH", `/instances/${encodeURIComponent(instanceId)}`, payload),
 
   sessions: (instanceId) => request("GET", `/instances/${encodeURIComponent(instanceId)}/sessions`),
+  bookingEventTicket: (instanceId) => request("POST", "/booking-events/ticket", { instanceId }),
   createSession: (instanceId, payload) => request("POST", `/instances/${encodeURIComponent(instanceId)}/sessions`, payload),
   generateSessionInventory: (instanceId, sessionId, payload) => request("POST", `/instances/${encodeURIComponent(instanceId)}/sessions/${encodeURIComponent(sessionId)}/inventory`, payload),
   sessionTickets: (instanceId, sessionId, params = {}) => request("GET", `/instances/${encodeURIComponent(instanceId)}/sessions/${encodeURIComponent(sessionId)}/tickets${queryString(params)}`),
+  bookOnBehalf: (instanceId, sessionId, payload) => request("POST", `/instances/${encodeURIComponent(instanceId)}/sessions/${encodeURIComponent(sessionId)}/reservations`, payload),
   updateSession: (instanceId, sessionId, payload) => request("PATCH", `/instances/${encodeURIComponent(instanceId)}/sessions/${encodeURIComponent(sessionId)}`, payload),
   reservations: (instanceId, params = {}) => request("GET", `/instances/${encodeURIComponent(instanceId)}/reservations${queryString(params)}`),
   reservation: (instanceId, reservationId) => request("GET", `/instances/${encodeURIComponent(instanceId)}/reservations/${encodeURIComponent(reservationId)}`),

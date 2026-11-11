@@ -21,7 +21,7 @@ export const INTERVAL_MAX_MS = 120000;
  * The cadences the console offers. All inside the server's accepted range, and
  * all slow enough for a human caller to be understood between calls.
  */
-export const INTERVAL_PRESETS = Object.freeze([3000, 5000, 8000, 10000, 15000, 20000, 30000]);
+export const INTERVAL_PRESETS = Object.freeze([8000, 10000, 12000, 18000, 20000, 60000]);
 
 /** Whole seconds a preset is worth on the wire. */
 export function clampInterval(ms) {

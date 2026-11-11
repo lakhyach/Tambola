@@ -97,6 +97,7 @@ const HostRoom = () => {
         const resumed = await resumeSession();
         if (!alive) return;
         if (resumed.ok) enter(resumed.snapshot);
+        else if (resumed.code === "NOT_PLAYER") navigate("/host", { replace: true });
         else if (isSeatGone(resumed.code)) {
           clearSession();
           navigate("/host");

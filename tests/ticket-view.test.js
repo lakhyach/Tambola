@@ -23,6 +23,7 @@ import {
   sheetsOf,
   tabTarget,
   ticketProgress,
+  ticketDisplayIdentity,
   ticketSummaries,
   writeTicketMemory,
 } from "../client/src/lib/ticketview.js";
@@ -63,6 +64,14 @@ test("the legacy single ticket field still reads as ticket 1", () => {
   const sheets = sheetsOf({ ticket: TICKET_A });
   assert.equal(sheets.length, 1);
   assert.equal(sheets[0].no, 1);
+});
+
+test("official ticket serial is retained for display without replacing the internal ticket number", () => {
+  const sheets = sheetsOf({ tickets: [{ no: 1, serial: "TKT-0087", grid: TICKET_A }] });
+  assert.equal(sheets[0].no, 1, "the engine and tab memory continue using the per-seat number");
+  assert.equal(sheets[0].serial, "TKT-0087");
+  assert.equal(ticketDisplayIdentity(sheets[0]), "TKT-0087");
+  assert.equal(ticketDisplayIdentity({ no: 2 }), 2, "legacy tickets keep their numeric display path");
 });
 
 /* ---------------------------------------------------------------- progress */

@@ -173,6 +173,24 @@ test("a claim from any ticket is awarded with that ticket's number on record", (
   assert.deepEqual(h.room.leaderboard()[0].claims, ["topLine"]);
 });
 
+test("an official serial follows its winning ticket into the award view", () => {
+  const h = makeRoom({ config: { maxTicketsPerPlayer: 2 } });
+  const host = h.host();
+  const alice = h.player("Alice", "sock-a");
+  h.room.start(HOST_AUTH(host));
+  h.room.players.get(alice.playerId).tickets = [
+    { no: 1, serial: "TKT-0087", grid: TICKET_A },
+    { no: 2, serial: "TKT-0091", grid: TICKET_B },
+  ];
+  callSpecific(h.room, TOP_LINE);
+  const claim = h.room.claim({ playerId: alice.playerId, playerToken: alice.playerToken, pattern: "topLine" });
+  assert.equal(claim.ok, true);
+  assert.equal(claim.ticketNo, 1, "claim rules retain the internal ticket number");
+  assert.equal(claim.ticketSerial, "TKT-0087", "the claim response names the issued ticket");
+  assert.equal(h.room.awardList()[0].ticketNo, 1);
+  assert.equal(h.room.awardList()[0].ticketSerial, "TKT-0087");
+});
+
 test("a claim refusals never award a different ticket's pattern", () => {
   const h = makeRoom({ config: { maxTicketsPerPlayer: 4 } });
   const host = h.host();

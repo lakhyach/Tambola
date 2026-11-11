@@ -256,6 +256,12 @@ export function validateEnv(env = {}, options = {}) {
     add("OWNER_MFA_KEY", "ok", "32-byte key");
   }
 
+  if (env.PHONE_LOOKUP_KEY && !isMfaKeyShape(env.PHONE_LOOKUP_KEY)) {
+    wrong("PHONE_LOOKUP_KEY", false, "must be 64 hex characters or base64 of 32 bytes; phone lookup would remain disabled");
+  } else if (env.PHONE_LOOKUP_KEY) {
+    add("PHONE_LOOKUP_KEY", "ok", "32-byte key; apply migration 040 before enabling phone collection");
+  }
+
   if (env.MFA_ISSUER === "Tambola") {
     add("MFA_ISSUER", "warn", "uses the legacy label shown in authenticator apps; new enrollments default to Ninety Club");
   }

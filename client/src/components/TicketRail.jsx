@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useEffect, useMemo, useRef, useState } from "react";
 import TambolaTicket from "./TambolaTicket.jsx";
-import { activeTicketNo, readTicketMemory, ticketProgress, writeTicketMemory } from "../lib/ticketview.js";
+import { activeTicketNo, readTicketMemory, ticketDisplayIdentity, ticketProgress, writeTicketMemory } from "../lib/ticketview.js";
 import { bookingCopy, formatBookingNumber } from "../i18n/booking-locale.js";
 
 /**
@@ -73,7 +73,7 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
         calledNumbers={calledNumbers}
         currentNumber={currentNumber}
         playerName={playerName}
-        ticketNo={list[0].no}
+        ticketNo={ticketDisplayIdentity(list[0])}
         language={language}
       />
     );
@@ -114,6 +114,8 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
           const index = pageStart + visibleIndex;
           const selected = ticket.no === shown.no;
           const progress = ticketProgress(ticket.grid, calledSet);
+          const identity = ticketDisplayIdentity(ticket);
+          const identityText = typeof identity === "string" ? identity : number(identity);
           return (
             <button
               key={`tk-${ticket.no}`}
@@ -125,14 +127,14 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
               id={tabId(ticket.no)}
               aria-selected={selected}
               aria-controls={panelId(ticket.no)}
-              aria-label={t("ticketTabLabel", { number: number(ticket.no), marked: number(progress.marked), total: number(progress.total) })}
+              aria-label={t("ticketTabLabel", { number: identityText, marked: number(progress.marked), total: number(progress.total) })}
               tabIndex={selected ? 0 : -1}
               onClick={() => setActiveNo(ticket.no)}
               onKeyDown={(event) => move(index, event.key)}
               className="oh-ticket-tab oh-num"
               data-selected={String(selected)}
             >
-              <span aria-hidden="true">{t("ticketTabText", { number: number(ticket.no) })}</span>
+              <span aria-hidden="true">{t("ticketTabText", { number: identityText })}</span>
               <span className="oh-ticket-tab__count" aria-hidden="true">
                 {number(progress.marked)}/{number(progress.total)}
               </span>
@@ -155,7 +157,7 @@ const TicketRail = ({ tickets = [], calledNumbers = [], currentNumber = null, pl
           calledNumbers={calledNumbers}
           currentNumber={currentNumber}
           playerName={playerName}
-          ticketNo={shown.no}
+          ticketNo={ticketDisplayIdentity(shown)}
           ticketTotal={list.length}
           language={language}
         />

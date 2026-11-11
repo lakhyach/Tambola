@@ -45,6 +45,7 @@ import { makeRoom, callThrough } from "./helpers.js";
 // ------------------------------------------------------- the calling interval
 
 test("every interval the console offers is one the server accepts", () => {
+  assert.deepEqual(INTERVAL_PRESETS, [8000, 10000, 12000, 18000, 20000, 60000], "match the observed MakeTambola caller cadence choices");
   assert.ok(INTERVAL_PRESETS.length >= 5, "a caller needs a real choice of pace");
   for (const ms of INTERVAL_PRESETS) {
     assert.equal(clampInterval(ms), ms, "preset outside the server's range: " + ms);

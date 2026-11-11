@@ -64,6 +64,8 @@
 .adm-poster-template { border-color: color-mix(in srgb, #ffd15c 24%, var(--oh-line)); background: linear-gradient(145deg, #321640, #21102e); }
 .adm-poster-template:focus-visible { outline: 3px solid #ffd15c; outline-offset: 3px; }
 .adm-poster-template:hover,.adm-poster-template.is-selected { border-color: #ffd15c; box-shadow: 0 0 0 2px rgba(255, 209, 92, .17), 0 12px 30px rgba(10, 3, 20, .24); }
+.adm-poster-template__art { display: grid; place-items: center; overflow: hidden; border: 1px solid rgba(255, 213, 112, .46); border-radius: 12px; background: #180a25; }
+.adm-poster-template__art .poster-art { display: block; width: 100%; height: 100%; object-fit: contain; }
 .adm-poster-template__sample {
   border: 1px solid rgba(255, 213, 112, .46);
   background:

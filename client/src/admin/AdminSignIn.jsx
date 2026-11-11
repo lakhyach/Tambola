@@ -22,6 +22,7 @@ import { api } from "./api.js";
 import { useAdmin } from "./useAdmin.js";
 import { Banner, Boot, ErrorNote, Field } from "./ui.jsx";
 import { assetUrl, usePlatformBranding } from "../platform-branding.js";
+import "./signin.css";
 
 function refusalMessage(error) {
   const code = error && error.code;

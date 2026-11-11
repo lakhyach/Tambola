@@ -13,6 +13,7 @@ import { useAdmin } from "./useAdmin.js";
 import {
   formatDateTime,
   formatNumber,
+  awardTicketLabel,
   formatRelative,
   formatInterval,
   healthLabel,
@@ -180,7 +181,7 @@ export default function AdminOverview() {
             <Stat label="Waiting" value={formatNumber(countOf(counts, "waiting"))} hint="Rooms open for players" tone="info" />
             <Stat label="Live" value={formatNumber(countOf(counts, "running"))} hint="Rounds in progress" tone="danger" />
             <Stat label="Paused" value={formatNumber(countOf(counts, "paused"))} hint="Rounds on hold" tone="warn" />
-            <Stat label="Open rooms" value={formatNumber(countOf(counts, "openTotal"))} hint="Not yet closed" tone="gold" />
+            <Stat label="Active rooms" value={formatNumber(countOf(counts, "openTotal"))} hint="Waiting, live or paused" tone="gold" />
             <Stat label="Total games" value={formatNumber(countOf(counts, "total_games", "totalGames"))} hint="All recorded rounds" tone="silver" />
             <Stat
               label="Completed"
@@ -216,7 +217,7 @@ export default function AdminOverview() {
           <div className="adm-columns">
             <Section
               eyebrow="In the hall"
-              title="Open rooms"
+              title="Unclosed room records"
               actions={<Badge tone="muted">{rooms.length}</Badge>}
             >
               {rooms.length ? (
@@ -244,7 +245,7 @@ export default function AdminOverview() {
                         <td>
                           <div className="adm-inline">
                             <StatusPill status={room.status} />
-                            {room.liveInProcess ? <Badge tone="info">in process</Badge> : null}
+                            {room.liveInProcess ? <Badge tone="info">not closed</Badge> : null}
                           </div>
                         </td>
                         <td className="oh-num">{formatNumber(room.gameNumber)}</td>
@@ -256,7 +257,7 @@ export default function AdminOverview() {
                   </tbody>
                 </Table>
               ) : (
-                <Empty title="No open rooms">New rooms appear here as soon as they are created.</Empty>
+                <Empty title="No unclosed room records">New rooms appear here as soon as they are created.</Empty>
               )}
             </Section>
 
@@ -338,6 +339,7 @@ export default function AdminOverview() {
                   <thead>
                     <tr>
                       <th scope="col">Player</th>
+                      <th scope="col">Ticket</th>
                       <th scope="col">Pattern</th>
                       <th scope="col">Room</th>
                       <th scope="col">Points</th>
@@ -348,6 +350,7 @@ export default function AdminOverview() {
                     {winners.map((award, index) => (
                       <tr key={`${award.roomId}-${award.gameNumber}-${award.playerId}-${award.pattern}-${index}`}>
                         <td>{award.displayName || award.playerId}</td>
+                        <td className="oh-num">{awardTicketLabel(award)}</td>
                         <td>{patternLabel(award.pattern)}</td>
                         <td>
                           <Link className="adm-link oh-num" to={`/admin/games/${award.roomId}`}>

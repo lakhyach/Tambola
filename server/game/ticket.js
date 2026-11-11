@@ -165,22 +165,179 @@ export function generateTicket(rng = cryptoRandomInt) {
   return grid;
 }
 
+const SHEET_SIZE = 6;
+
+function addFlowEdge(graph, from, to, capacity) {
+  const forward = { to, capacity, reverse: graph[to].length };
+  const backward = { to: from, capacity: 0, reverse: graph[from].length };
+  graph[from].push(forward);
+  graph[to].push(backward);
+  return forward;
+}
+
+function fillSheetExtras(base, rng) {
+  const rowCount = SHEET_SIZE * ROWS;
+  const source = 0;
+  const rowStart = 1;
+  const ticketColumnStart = rowStart + rowCount;
+  const columnStart = ticketColumnStart + SHEET_SIZE * COLS;
+  const sink = columnStart + COLS;
+  const graph = Array.from({ length: sink + 1 }, () => []);
+  const rowEdges = Array.from({ length: rowCount }, () => []);
+
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+    const rowNode = rowStart + rowIndex;
+    addFlowEdge(graph, source, rowNode, NUMBERS_PER_ROW - 3);
+    const ticket = Math.floor(rowIndex / ROWS);
+    const row = rowIndex % ROWS;
+    const columns = shuffle(Array.from({ length: COLS }, (_, col) => col).filter((col) => !base[ticket][row][col]), rng);
+    for (const col of columns) {
+      const ticketColumn = ticketColumnStart + ticket * COLS + col;
+      rowEdges[rowIndex].push({ col, edge: addFlowEdge(graph, rowNode, ticketColumn, 1) });
+    }
+  }
+
+  for (let ticket = 0; ticket < SHEET_SIZE; ticket++) {
+    for (let col = 0; col < COLS; col++) {
+      addFlowEdge(graph, ticketColumnStart + ticket * COLS + col, columnStart + col, MAX_PER_COLUMN - 1);
+    }
+  }
+  let total = 0;
+  for (let col = 0; col < COLS; col++) {
+    const [min, max] = COLUMN_RANGES[col];
+    const remaining = max - min + 1 - SHEET_SIZE;
+    addFlowEdge(graph, columnStart + col, sink, remaining);
+    total += remaining;
+  }
+  if (total !== rowCount * (NUMBERS_PER_ROW - 3)) throw new Error("internal: invalid Tambola sheet degree totals");
+
+  let flow = 0;
+  while (true) {
+    const level = new Array(graph.length).fill(-1);
+    const queue = [source];
+    level[source] = 0;
+    for (let head = 0; head < queue.length; head++) {
+      const node = queue[head];
+      for (const edge of graph[node]) {
+        if (edge.capacity > 0 && level[edge.to] < 0) {
+          level[edge.to] = level[node] + 1;
+          queue.push(edge.to);
+        }
+      }
+    }
+    if (level[sink] < 0) break;
+    const cursor = new Array(graph.length).fill(0);
+    const send = (node, amount) => {
+      if (node === sink) return amount;
+      for (; cursor[node] < graph[node].length; cursor[node]++) {
+        const edge = graph[node][cursor[node]];
+        if (edge.capacity <= 0 || level[edge.to] !== level[node] + 1) continue;
+        const pushed = send(edge.to, Math.min(amount, edge.capacity));
+        if (!pushed) continue;
+        edge.capacity -= pushed;
+        graph[edge.to][edge.reverse].capacity += pushed;
+        return pushed;
+      }
+      return 0;
+    };
+    let pushed;
+    do {
+      pushed = send(source, Number.MAX_SAFE_INTEGER);
+      flow += pushed;
+    } while (pushed > 0);
+  }
+
+  if (flow !== total) return null;
+  const occupancy = base.map((ticket) => ticket.map((row) => row.slice()));
+  for (let rowIndex = 0; rowIndex < rowCount; rowIndex++) {
+    const ticket = Math.floor(rowIndex / ROWS);
+    const row = rowIndex % ROWS;
+    for (const { col, edge } of rowEdges[rowIndex]) if (edge.capacity === 0) occupancy[ticket][row][col] = true;
+  }
+  return occupancy;
+}
+
+/**
+ * Generate one traditional Tambola sheet: six legal 3x9 tickets that use
+ * each number 1-90 exactly once across the strip.
+ */
+export function generateTicketSheet(rng = cryptoRandomInt) {
+  if (typeof rng !== "function") throw new TypeError("rng must be a function");
+  let occupancy = null;
+  for (let attempt = 0; attempt < 100 && !occupancy; attempt++) {
+    const base = Array.from({ length: SHEET_SIZE }, () => Array.from({ length: ROWS }, () => new Array(COLS).fill(false)));
+    for (let ticket = 0; ticket < SHEET_SIZE; ticket++) {
+      const columns = shuffle(Array.from({ length: COLS }, (_, col) => col), rng);
+      for (let row = 0; row < ROWS; row++) for (const col of columns.slice(row * 3, row * 3 + 3)) base[ticket][row][col] = true;
+    }
+    occupancy = fillSheetExtras(base, rng);
+  }
+  if (!occupancy) throw new Error("could not construct a valid six-ticket sheet");
+
+  const grids = Array.from({ length: SHEET_SIZE }, () => Array.from({ length: ROWS }, () => new Array(COLS).fill(null)));
+  for (let col = 0; col < COLS; col++) {
+    const [min, max] = COLUMN_RANGES[col];
+    const values = Array.from({ length: max - min + 1 }, (_, index) => min + index);
+    const ticketOrder = shuffle(Array.from({ length: SHEET_SIZE }, (_, ticket) => ticket), rng);
+    let valueIndex = 0;
+    for (let row = 0; row < ROWS; row++) {
+      for (const ticket of ticketOrder) {
+        if (occupancy[ticket][row][col]) grids[ticket][row][col] = values[valueIndex++];
+      }
+    }
+    if (valueIndex !== values.length) throw new Error("internal: Tambola sheet column allocation is incomplete");
+  }
+  for (const [index, grid] of grids.entries()) {
+    const check = validateTicket(grid);
+    if (!check.valid) throw new Error(`internal: generated sheet ticket ${index + 1} is invalid: ${check.errors.join("; ")}`);
+  }
+  const numbers = grids.flat(2).filter(Number.isInteger).sort((a, b) => a - b);
+  if (numbers.length !== 90 || numbers.some((number, index) => number !== index + 1)) throw new Error("internal: Tambola sheet does not contain every number exactly once");
+  return grids;
+}
+
+/** Generate distinct tickets in six-ticket complementary strips, then singles. */
+export function generateTicketSheets(count, rng = cryptoRandomInt) {
+  if (!Number.isInteger(count) || count < 0) throw new RangeError("sheet count must be a non-negative integer");
+  const sheets = [];
+  for (let index = 0; index < count; index++) sheets.push(generateTicketSheet(rng));
+  return sheets;
+}
+
 /**
  * Generate `count` distinct tickets. Ticket identity is derived from its
  * sorted numbers, so a repeated ticket is regenerated rather than handed out
  * twice inside one batch (nice-to-have fairness, not a rule requirement).
  */
 export function generateTickets(count, rng = cryptoRandomInt) {
+  if (!Number.isInteger(count) || count < 0) throw new RangeError("ticket count must be a non-negative integer");
   const tickets = [];
   const seen = new Set();
-  for (let guard = 0; tickets.length < count && guard < count * 50; guard++) {
-    const grid = generateTicket(rng);
-    const fingerprint = grid.flat().filter((n) => n !== null).sort((a, b) => a - b).join(",");
-    if (seen.has(fingerprint)) continue;
-    seen.add(fingerprint);
+  const sheetCount = Math.floor(count / SHEET_SIZE);
+  for (let index = 0; index < sheetCount; index++) {
+    let sheet = null;
+    for (let attempt = 0; attempt < 100 && !sheet; attempt++) {
+      const candidate = generateTicketSheet(rng);
+      const fingerprints = candidate.map((grid) => grid.flat().filter(Number.isInteger).sort((a, b) => a - b).join(","));
+      if (new Set(fingerprints).size !== SHEET_SIZE || fingerprints.some((fingerprint) => seen.has(fingerprint))) continue;
+      fingerprints.forEach((fingerprint) => seen.add(fingerprint));
+      sheet = candidate;
+    }
+    if (!sheet) throw new Error("could not generate a unique six-ticket sheet after 100 attempts");
+    tickets.push(...sheet);
+  }
+  while (tickets.length < count) {
+    let grid = null;
+    for (let attempt = 0; attempt < 100 && !grid; attempt++) {
+      const candidate = generateTicket(rng);
+      const fingerprint = candidate.flat().filter(Number.isInteger).sort((a, b) => a - b).join(",");
+      if (seen.has(fingerprint)) continue;
+      seen.add(fingerprint);
+      grid = candidate;
+    }
+    if (!grid) throw new Error("could not generate a unique ticket after 100 attempts");
     tickets.push(grid);
   }
-  while (tickets.length < count) tickets.push(generateTicket(rng));
   return tickets;
 }
 

@@ -22,6 +22,9 @@ function publicTicket(row, { publicOnly = false } = {}) {
     serial: row.serial,
     serialOrdinal: Number(row.serial_ordinal),
     grid: row.grid,
+    sheetId: row.sheet_id || null,
+    sheetOrdinal: row.sheet_ordinal == null ? null : Number(row.sheet_ordinal),
+    sheetPosition: row.sheet_position == null ? null : Number(row.sheet_position),
     status: row.inventory_status,
     ...(!publicOnly ? { playerName: row.player_name || null } : {}),
     ...(!publicOnly ? { reservationId: row.reservation_id || null } : {}),
@@ -79,12 +82,15 @@ export function createTicketInventoryService({ db, now = () => new Date(), gener
     if (!UUID_RE.test(String(sessionId || "")) || !UUID_RE.test(String(reservationId || ""))) return [];
     const query = client ? client.query.bind(client) : db.query;
     const result = await query(
-      `SELECT t.ticket_id,t.serial,t.serial_ordinal,t.grid,a.released_at,a.release_reason
+      `SELECT t.ticket_id,t.serial,t.serial_ordinal,t.grid,t.sheet_id,sh.sheet_ordinal,t.sheet_position,a.released_at,a.release_reason
          FROM ticket_reservation_items a JOIN session_tickets t ON t.session_id=a.session_id AND t.ticket_id=a.ticket_id
+         LEFT JOIN session_ticket_sheets sh ON sh.session_id=t.session_id AND sh.sheet_id=t.sheet_id
         WHERE a.session_id=$1 AND a.reservation_id=$2 ORDER BY t.serial_ordinal`, [sessionId, reservationId]
     );
     return result.rows.map((row) => ({
       ticketId: row.ticket_id, serial: row.serial, serialOrdinal: Number(row.serial_ordinal), grid: row.grid,
+      sheetId: row.sheet_id || null, sheetOrdinal: row.sheet_ordinal == null ? null : Number(row.sheet_ordinal),
+      sheetPosition: row.sheet_position == null ? null : Number(row.sheet_position),
       releasedAt: iso(row.released_at), releaseReason: row.release_reason || null,
     }));
   }
@@ -101,7 +107,6 @@ export function createTicketInventoryService({ db, now = () => new Date(), gener
       if (!session) return { error: "SESSION_NOT_FOUND" };
       if (instanceId && session.instance_id !== instanceId) return { error: "SESSION_NOT_FOUND" };
       if (session.inventory_mode !== "numbered") return { error: "LEGACY_SESSION" };
-      if (session.status !== "draft") return { error: "SESSION_NOT_GENERATABLE" };
       if (Number(session.ticket_capacity) !== requestedCount) return { error: "INVENTORY_COUNT_MISMATCH", expected: Number(session.ticket_capacity) };
 
       const priorKey = await client.query(
@@ -124,6 +129,7 @@ export function createTicketInventoryService({ db, now = () => new Date(), gener
         };
       }
       if (existing?.generation_batch_id) return { error: "INVENTORY_STATE_INVALID" };
+      if (session.status !== "draft") return { error: "SESSION_NOT_GENERATABLE" };
 
       const grids = generate(requestedCount);
       if (!Array.isArray(grids) || grids.length !== requestedCount) throw new Error("ticket generator did not return the complete requested inventory");
@@ -137,24 +143,43 @@ export function createTicketInventoryService({ db, now = () => new Date(), gener
       }
 
       const generationBatchId = randomUUID();
+      const sheetCount = generate === generateTickets ? Math.floor(requestedCount / 6) : 0;
+      const sheetIds = Array.from({ length: sheetCount }, () => randomUUID());
       const batch = await client.query(
         `INSERT INTO ticket_inventory_batches(generation_batch_id,session_id,instance_id,idempotency_key,requested_count,generated_count,status,generated_by)
          VALUES($1,$2,$3,$4,$5,0,'generating',$6) RETURNING created_at`,
         [generationBatchId, sessionId, session.instance_id, idempotencyKey, requestedCount, who.label]
       );
+      for (let offset = 0; offset < sheetCount; offset += 250) {
+        const chunk = sheetIds.slice(offset, offset + 250);
+        const values = [];
+        const tuples = chunk.map((sheetId, localIndex) => {
+          const ordinal = offset + localIndex + 1;
+          const first = values.length + 1;
+          values.push(sheetId, sessionId, generationBatchId, ordinal);
+          return `($${first},$${first + 1},$${first + 2},$${first + 3})`;
+        });
+        await client.query(
+          `INSERT INTO session_ticket_sheets(sheet_id,session_id,generation_batch_id,sheet_ordinal) VALUES ${tuples.join(",")}`,
+          values
+        );
+      }
       const insertChunkSize = 250;
       for (let offset = 0; offset < grids.length; offset += insertChunkSize) {
         const values = [];
         const tuples = grids.slice(offset, offset + insertChunkSize).map((grid, localIndex) => {
           const serialOrdinal = offset + localIndex + 1;
           const serial = `TKT-${String(serialOrdinal).padStart(4, "0")}`;
-          const ticketValues = [randomUUID(), sessionId, generationBatchId, serialOrdinal, serial, ticketFingerprint(grid), JSON.stringify(grid)];
+          const sheetIndex = Math.floor((serialOrdinal - 1) / 6);
+          const sheetId = sheetIndex < sheetCount ? sheetIds[sheetIndex] : null;
+          const sheetPosition = sheetId ? ((serialOrdinal - 1) % 6) + 1 : null;
+          const ticketValues = [randomUUID(), sessionId, generationBatchId, serialOrdinal, serial, ticketFingerprint(grid), JSON.stringify(grid), sheetId, sheetPosition];
           const firstPlaceholder = values.length + 1;
           values.push(...ticketValues);
-          return `($${firstPlaceholder},$${firstPlaceholder + 1},$${firstPlaceholder + 2},$${firstPlaceholder + 3},$${firstPlaceholder + 4},$${firstPlaceholder + 5},$${firstPlaceholder + 6})`;
+          return `($${firstPlaceholder},$${firstPlaceholder + 1},$${firstPlaceholder + 2},$${firstPlaceholder + 3},$${firstPlaceholder + 4},$${firstPlaceholder + 5},$${firstPlaceholder + 6},$${firstPlaceholder + 7},$${firstPlaceholder + 8})`;
         });
         await client.query(
-          `INSERT INTO session_tickets(ticket_id,session_id,generation_batch_id,serial_ordinal,serial,fingerprint,grid) VALUES ${tuples.join(",")}`,
+          `INSERT INTO session_tickets(ticket_id,session_id,generation_batch_id,serial_ordinal,serial,fingerprint,grid,sheet_id,sheet_position) VALUES ${tuples.join(",")}`,
           values
         );
       }
@@ -229,12 +254,13 @@ export function createTicketInventoryService({ db, now = () => new Date(), gener
       : await db.query("SELECT count(*)::int AS total FROM session_tickets WHERE session_id=$1", [sessionId]);
     params.push(safePageSize, (safePage - 1) * safePageSize);
     const rows = await db.query(
-      `SELECT t.ticket_id,t.serial,t.serial_ordinal,t.grid,${projectedStatus} AS inventory_status,
+      `SELECT t.ticket_id,t.serial,t.serial_ordinal,t.grid,t.sheet_id,sh.sheet_ordinal,t.sheet_position,${projectedStatus} AS inventory_status,
           CASE WHEN r.status='confirmed' THEN r.display_name ELSE NULL END AS player_name,
           CASE WHEN r.status IN ('held','confirmed') THEN r.reservation_id ELSE NULL END AS reservation_id,
           CASE WHEN r.status='held' AND r.expires_at>now() THEN r.expires_at ELSE NULL END AS reservation_expires_at
          FROM session_tickets t JOIN game_sessions s USING(session_id)
          JOIN game_instances i USING(instance_id)
+       LEFT JOIN session_ticket_sheets sh ON sh.session_id=t.session_id AND sh.sheet_id=t.sheet_id
          LEFT JOIN ticket_reservation_items a ON a.ticket_id=t.ticket_id AND a.released_at IS NULL
          LEFT JOIN ticket_reservations r ON r.reservation_id=a.reservation_id
         WHERE ${where} ORDER BY t.serial_ordinal LIMIT $${params.length - 1} OFFSET $${params.length}`,
@@ -264,9 +290,10 @@ export function createTicketInventoryService({ db, now = () => new Date(), gener
     return listInventory({ sessionId, page, pageSize, search, status });
   }
 
-  async function allocateToReservation({ sessionId, reservationId, ticketIds, actor = { type: "player", label: "player" }, client: transactionClient = null } = {}) {
+  async function allocateToReservation({ sessionId, reservationId, ticketIds, bookingMode = "random", actor = { type: "player", label: "player" }, client: transactionClient = null } = {}) {
     if (!UUID_RE.test(String(sessionId || "")) || !UUID_RE.test(String(reservationId || ""))) return { error: "RESERVATION_NOT_FOUND" };
     if (!Array.isArray(ticketIds) || ticketIds.length < 1 || ticketIds.length > 12 || ticketIds.some((id) => !UUID_RE.test(String(id))) || new Set(ticketIds).size !== ticketIds.length) return { error: "INVALID_TICKET_SELECTION" };
+    if (!["random", "half", "full"].includes(bookingMode)) return { error: "INVALID_BOOKING_MODE" };
     return inTransaction(transactionClient, async (client) => {
       const lockedSession = await client.query("SELECT inventory_mode,inventory_state FROM game_sessions WHERE session_id=$1 FOR UPDATE", [sessionId]);
       if (!lockedSession.rowCount) return { error: "SESSION_NOT_FOUND" };
@@ -276,6 +303,32 @@ export function createTicketInventoryService({ db, now = () => new Date(), gener
       if (!reservation) return { error: "RESERVATION_NOT_FOUND" };
       if (reservation.status !== "held" || new Date(reservation.expires_at) <= new Date(now())) return { error: "RESERVATION_NOT_ACTIVE" };
       if (Number(reservation.ticket_count) !== ticketIds.length) return { error: "TICKET_COUNT_MISMATCH" };
+
+      if (bookingMode !== "random") {
+        const sheetTickets = await client.query(
+          "SELECT ticket_id,sheet_id,sheet_position FROM session_tickets WHERE session_id=$1 AND ticket_id=ANY($2::uuid[])",
+          [sessionId, ticketIds]
+        );
+        if (sheetTickets.rowCount !== ticketIds.length) return { error: "INVALID_TICKET_SELECTION" };
+        const groups = new Map();
+        for (const ticket of sheetTickets.rows) {
+          if (!ticket.sheet_id || !Number.isInteger(Number(ticket.sheet_position))) return { error: "SHEET_SELECTION_INVALID" };
+          const positions = groups.get(ticket.sheet_id) || [];
+          positions.push(Number(ticket.sheet_position));
+          groups.set(ticket.sheet_id, positions);
+        }
+        for (const positions of groups.values()) {
+          positions.sort((left, right) => left - right);
+          const isFull = positions.length === 6 && positions.every((position, index) => position === index + 1);
+          const isHalf = positions.length === 3 && (
+            positions.every((position, index) => position === index + 1)
+            || positions.every((position, index) => position === index + 4)
+          );
+          if (bookingMode === "full" ? !isFull : bookingMode === "half" ? !isHalf : false) return { error: "SHEET_SELECTION_INVALID" };
+        }
+        if (bookingMode === "full" && ticketIds.length % 6 !== 0) return { error: "SHEET_SELECTION_INVALID" };
+        if (bookingMode === "half" && ticketIds.length % 3 !== 0) return { error: "SHEET_SELECTION_INVALID" };
+      }
 
       const stale = await client.query(
         `SELECT r.reservation_id,r.status FROM ticket_reservation_items a
