@@ -174,19 +174,25 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
       || (row.room_status === "RUNNING" && row.room_has_games);
   }
 
+  function roomBookingEligible(row) {
+    return !row.room_code
+      || (row.room_status === "WAITING" && Number(row.room_game_number) === 0 && !row.room_has_games);
+  }
+
   function windowOpen(row, at = now()) {
     const time = at instanceof Date ? at.getTime() : new Date(at).getTime();
     return row.status === "open" && row.instance_status === "active" && row.public_visible &&
-      roomEligible(row) &&
+      roomBookingEligible(row) &&
       new Date(row.booking_opens_at).getTime() <= time && new Date(row.booking_closes_at).getTime() > time &&
       new Date(row.starts_at).getTime() > time;
   }
 
   function bookingWindowClosed(row, at = now()) {
     const time = at instanceof Date ? at.getTime() : new Date(at).getTime();
-    return row.status === "open" && row.instance_status === "active" && row.public_visible && roomEligible(row) &&
-      new Date(row.booking_opens_at).getTime() <= time && new Date(row.booking_closes_at).getTime() <= time &&
-      new Date(row.starts_at).getTime() > time;
+    const opened = new Date(row.booking_opens_at).getTime() <= time;
+    const closedByTime = new Date(row.booking_closes_at).getTime() <= time || new Date(row.starts_at).getTime() <= time;
+    const closedByRoom = !roomBookingEligible(row);
+    return row.status === "open" && row.instance_status === "active" && row.public_visible && opened && (closedByTime || closedByRoom);
   }
 
   function publicSessionVisible(row, at = now()) {

@@ -176,7 +176,7 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     const ownerDetail = await fetch(`${base}/api/admin/instances/regular/reservations/${held.reservationId}`, { headers: { cookie: `tambola_owner=${token}` } });
     assert.equal((await ownerDetail.json()).reservation.history.some((event) => event.action === "hold.cancel"), true);
 
-    const operatorCancelHold = await service.reserve({ sessionId: created.sessionId, displayName: "Operator Cancel Guest", ticketCount: 1 });
+    const operatorCancelHold = await service.reserve({ sessionId: created.sessionId, displayName: "Operator Guest", ticketCount: 1 });
     await service.lookupOrTransition({ reservationId: operatorCancelHold.reservation.reservationId, bookingToken: operatorCancelHold.reservation.bookingToken, action: "confirm" });
     const eventsBeforeOperatorCancel = emitted.length;
     const operatorCancelResponse = await fetch(`${base}/api/admin/instances/regular/reservations/${operatorCancelHold.reservation.reservationId}/cancel`, {
@@ -366,7 +366,7 @@ test("confirmed reservations bind once to the correct waiting room and lock its 
     assert.equal(recoveredLateJoin.snapshot.tickets.length, 1, "numbered ticket assignment survives process reload and reconnect");
     assert.deepEqual(recoveredLateJoin.snapshot.tickets[0].grid, selectedTicket.grid);
     assert.equal((await service.getPublicSession(lifecycleSession.session.sessionId)).bookingStatus, "closed", "a running game remains visible while ticket sales close");
-    assert.equal((await service.reserve({ sessionId: lifecycleSession.session.sessionId, displayName: "Late Booker", ticketCount: 1, ticketIds: [publicCatalog.tickets[1].ticketId] })).error, "SESSION_UNAVAILABLE", "starting the room closes new reservations");
+    assert.equal((await service.reserve({ sessionId: lifecycleSession.session.sessionId, displayName: "Late Booker", ticketCount: 1, ticketIds: [publicCatalog.tickets[1].ticketId] })).error, "BOOKING_CLOSED", "starting the room closes new reservations while existing confirmed bookings remain joinable");
     const lifecycleAudit = await env.db.query("SELECT action,metadata->>'reason' AS reason FROM ticket_reservation_audit WHERE session_id=$1 ORDER BY event_id", [lifecycleSession.session.sessionId]);
     assert.ok(lifecycleAudit.rows.some((event) => event.action === "hold.assign"));
     assert.equal(lifecycleAudit.rows.some((event) => event.action === "hold.cancel" && event.reason === "room-started"), false, "a confirmed booking survives game start");
