@@ -529,6 +529,7 @@ export default function AdminGameDetail() {
                 {claims.map((claim, index) => (
                   <tr key={claim.claimId || `${claim.playerId}-${claim.pattern}-${index}`}>
                     <td>{claim.displayName || claim.playerId}</td>
+                    <td className="oh-num">{claim.ticketNo || "—"}</td>
                     <td>{patternLabel(claim.pattern)}</td>
                     <td>
                       <Badge tone={claimTone(claim.status)}>{statusLabel(claim.status)}</Badge>
@@ -551,6 +552,7 @@ export default function AdminGameDetail() {
               <thead>
                 <tr>
                   <th scope="col">Player</th>
+                  <th scope="col">Ticket</th>
                   <th scope="col">Pattern</th>
                   <th scope="col">Points</th>
                   <th scope="col">Call</th>

@@ -138,7 +138,7 @@ export function createPosterService({ db, imageProvider = createOpenAiImageProvi
       title: row.title, startsAt: row.starts_at, bookingClosesAt: row.booking_closes_at, timeZone: row.time_zone || "UTC", status: row.status,
       gameType: row.slug === "bumper" ? "Bumper Tambola" : "Regular Tambola", roomCode: row.room_code || null,
       capacity: Number(row.ticket_capacity), available: Math.max(0, Number(row.ticket_capacity) - Number(row.held) - Number(row.confirmed)),
-      winningPatterns: row.room_code ? Object.entries(PATTERNS).filter(([id, pattern]) => (row.room_config?.patterns?.[id] ?? pattern.enabledByDefault) === true).map(([id, pattern]) => ({ id, label: pattern.label, points: pattern.points })) : [],
+      winningPatterns: row.room_code ? Object.entries(PATTERNS).filter(([id, pattern]) => (row.room_config?.patterns?.[id] ?? pattern.enabledByDefault) === true).map(([id, pattern]) => ({ id, label: pattern.label, points: Number(row.room_config?.patternPoints?.[id] ?? pattern.points) })) : [],
       configurationState: row.room_code ? "complete" : "room-and-patterns-required" }));
   }
 
