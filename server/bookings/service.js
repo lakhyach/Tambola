@@ -205,7 +205,6 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
 
   async function listPublicSessions(slug) {
     await expireSessionsWithStaleHolds(null, slug);
-    const phoneHash = lookupKey && normalizePhoneNumber(term) ? hashPhoneForSession(lookupKey, session.session_id, term) : null;
     const result = await db.query(
       `SELECT s.*,i.slug,i.display_name,i.status AS instance_status,i.public_visible,bound_room.config AS room_config,
         s.ticket_capacity::int AS ticket_limit,
@@ -259,6 +258,10 @@ export function createBookingService({ db, now = () => new Date(), inventoryServ
     if (term.length < 3) return { tickets: [] };
     const session = await getSessionRowForRoom(roomCode);
     if (!session || session.instance_status !== "active" || !session.public_visible || !["open", "paused"].includes(session.status)) return null;
+    const normalizedPhone = normalizePhoneNumber(term);
+    const phoneHash = lookupKey && normalizedPhone
+      ? hashPhoneForSession(lookupKey, session.session_id, normalizedPhone)
+      : null;
     const result = await db.query(
       `SELECT t.serial,t.grid,r.display_name FROM ticket_reservation_items a
        JOIN ticket_reservations r ON r.reservation_id=a.reservation_id AND r.session_id=a.session_id
