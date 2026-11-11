@@ -26,6 +26,14 @@ const POSTER_DIRECTIONS = [
     id: "desi-street-food", name: "Desi Street Food", templateVersionId: "desi-street-food-v1", accent: "#ffdf32",
     prompt: "Desi Street Food Tambola night bazaar, vivid fuchsia and plum with warm haldi yellow, charming Indian street-food cart details, chai steam, festive bulbs, glossy numbered Tambola balls and a ticket motif, playful premium poster illustration, clear quiet center and lower third for crisp editable event copy. Background art only; no letters, words, numbers, logos or QR codes.",
   },
+  {
+    id: "grand-tambola-night", name: "Grand Tambola Night", templateVersionId: "bollywood-masala-v1", accent: "#f2c230",
+    prompt: "Original Ninety Club grand Tambola night poster background inspired by classic Indian game-night handbills: bold deep red field, luminous gold and warm yellow highlights, a neat fan of traditional 3-row Tambola tickets and glossy numbered balls as clear hero objects, dramatic marquee glow, premium celebratory print illustration, keep a clean central title area and a quiet lower band for editable event details. Background art only; no letters, words, numbers, logos or QR codes.",
+  },
+  {
+    id: "ivory-magenta-tambola", name: "Ivory & Magenta", templateVersionId: "royal-festive-v1", accent: "#b32388",
+    prompt: "Original Ninety Club Tambola night poster background inspired by elegant Indian club invitations: warm ivory paper, refined magenta headline zone and small gold accents, a centered illustrated Tambola ticket with a few glossy numbered balls, subtle ornamental edge details and a light festive frame, clean editorial print design with abundant ivory space for accurate editable event copy. Background art only; no letters, words, numbers, logos or QR codes.",
+  },
 ];
 
 export default function AdminPosters() {
