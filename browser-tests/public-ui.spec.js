@@ -107,11 +107,13 @@ test("QA owner publishes a 200-ticket Regular session; five isolated player brow
   const playerContexts = [];
   const playerPages = [];
   const playerRoomUrls = [];
+  const playerErrors = [];
   for (let index = 1; index <= 5; index += 1) {
     const context = await browser.newContext({ timezoneId: "Asia/Kolkata", viewport: { width: 1365, height: 900 } });
     playerContexts.push(context);
     const playerPage = await context.newPage();
     playerPages.push(playerPage);
+    playerPage.on("pageerror", (error) => playerErrors.push(error.message));
     await playerPage.goto(`/sessions/${encodeURIComponent(publicList.sessionId)}`);
     const ticketButton = playerPage.locator(".booking-ticket-item button.booking-ticket-select:enabled").first();
     await expect(ticketButton).toBeVisible();
@@ -138,6 +140,7 @@ test("QA owner publishes a 200-ticket Regular session; five isolated player brow
     await expect(playerPage.locator("[data-ticket-picker='true']")).toHaveCount(0);
     playerRoomUrls.push(playerPage.url());
   }
+  expect(playerErrors).toEqual([]);
   expect(new Set(tickets).size).toBe(5);
   expect(tickets).toEqual(["TKT-0001", "TKT-0002", "TKT-0003", "TKT-0004", "TKT-0005"]);
   for (const playerPage of playerPages) {
