@@ -68,6 +68,17 @@ export function formatNumber(value) {
   return typeof value === "number" && Number.isFinite(value) ? value.toLocaleString() : "—";
 }
 
+/** Prefer the official inventory serial in award/history surfaces. */
+export function awardTicketLabel(award) {
+  const serials = Array.isArray(award?.ticketSerials) ? award.ticketSerials.filter((serial) => typeof serial === "string" && serial) : [];
+  if (serials.length) return serials.join(", ");
+  if (typeof award?.ticketSerial === "string" && award.ticketSerial) return award.ticketSerial;
+  const numbers = Array.isArray(award?.ticketNos) && award.ticketNos.length
+    ? award.ticketNos
+    : (Number.isInteger(award?.ticketNo) ? [award.ticketNo] : []);
+  return numbers.length ? numbers.map((number) => `Ticket ${formatNumber(number)}`).join(", ") : "—";
+}
+
 const STATUS_LABELS = {
   WAITING: "Waiting",
   RUNNING: "Live",

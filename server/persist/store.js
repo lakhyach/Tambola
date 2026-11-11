@@ -62,10 +62,10 @@ export function createStore({ db, log = () => {} } = {}) {
   // ------------------------------------------------------------- rooms & seats
 
   /** Rooms are created durable-first: no ack until the row exists. */
-  async function createRoom({ roomId, config, host, instanceId = "regular" } = {}) {
+  async function createRoom({ roomId, config, host, instanceId = "regular", transactionClient = null } = {}) {
     if (!roomId) throw new Error("createRoom needs a room id");
     if (!host || !host.playerId) throw new Error("createRoom needs a host participant");
-    await db.withTransaction(async (client) => {
+    const persist = async (client) => {
       await client.query("INSERT INTO players (player_id, display_name) VALUES ($1, $2)", [host.playerId, host.name]);
       await client.query(
         "INSERT INTO rooms (room_code, status, game_number, host_player_id, config, game_instance_id) VALUES ($1, 'WAITING', 0, $2, $3, $4)",
@@ -76,7 +76,9 @@ export function createStore({ db, log = () => {} } = {}) {
         [roomId, host.playerId, Boolean(host.connected)]
       );
       await audit(client, { roomId, playerId: host.playerId, type: "room-created", detail: { config } });
-    });
+    };
+    if (transactionClient) await persist(transactionClient);
+    else await db.withTransaction(persist);
     return { roomId };
   }
 
@@ -142,7 +144,8 @@ export function createStore({ db, log = () => {} } = {}) {
 
   async function bookingSessionForRoom({ roomId } = {}) {
     const result = await db.query(
-      `SELECT s.session_id,s.instance_id,s.status,s.starts_at,s.booking_closes_at,r.game_instance_id,r.status AS room_status,r.game_number,i.status AS instance_status
+      `SELECT s.session_id,s.instance_id,s.status,s.starts_at,s.booking_closes_at,r.game_instance_id,r.status AS room_status,r.game_number,i.status AS instance_status,
+              EXISTS(SELECT 1 FROM games g WHERE g.room_code=r.room_code AND g.game_number=r.game_number AND g.status='RUNNING') AS has_running_game
          FROM game_sessions s JOIN rooms r ON r.room_code=s.room_code
          JOIN game_instances i ON i.instance_id=s.instance_id
         WHERE s.room_code=$1`, [roomId]
@@ -162,7 +165,9 @@ export function createStore({ db, log = () => {} } = {}) {
          JOIN rooms room ON room.room_code=s.room_code
         WHERE r.reservation_id=$1 AND s.room_code=$2 AND r.status='confirmed'
           AND r.player_id IS NULL AND s.status='open' AND i.status='active'
-          AND room.status='WAITING' AND room.game_number=0 AND s.starts_at>now()
+          AND ((room.status='WAITING' AND room.game_number=0 AND s.starts_at>now())
+            OR (room.status IN ('RUNNING','PAUSED') AND room.game_number>0
+              AND EXISTS(SELECT 1 FROM games g WHERE g.room_code=room.room_code AND g.game_number=room.game_number AND g.status='RUNNING')))
           AND r.booking_token_hash=$3`,
       [reservationId, roomId, safeBookingHash(bookingToken)]
     );
@@ -196,22 +201,32 @@ export function createStore({ db, log = () => {} } = {}) {
     };
   }
 
-  async function addParticipantFromBooking({ roomId, playerId, name, connected = true, reservationId, bookingToken, expectedTicketIds = [] } = {}) {
+  async function addParticipantFromBooking({ roomId, playerId, name, connected = true, reservationId, bookingToken, expectedTicketIds = [], tickets = [] } = {}) {
     const hash = safeBookingHash(bookingToken);
     try {
       return await db.withTransaction(async (client) => {
         const reservation = await client.query(
           `SELECT r.*,s.status AS session_status,s.starts_at,i.status AS instance_status,
                   room.status AS room_status,room.game_number,s.room_code AS session_room,
-                  s.inventory_mode,s.inventory_state FROM ticket_reservations r JOIN game_sessions s ON s.session_id=r.session_id
+                  s.inventory_mode,s.inventory_state,
+                  EXISTS(SELECT 1 FROM games g WHERE g.room_code=room.room_code AND g.game_number=room.game_number AND g.status='RUNNING') AS has_running_game
+             FROM ticket_reservations r JOIN game_sessions s ON s.session_id=r.session_id
              JOIN game_instances i ON i.instance_id=s.instance_id JOIN rooms room ON room.room_code=s.room_code
-            WHERE r.reservation_id=$1 AND s.room_code=$2 FOR UPDATE OF r,s`, [reservationId, roomId]
+            WHERE r.reservation_id=$1 AND s.room_code=$2 FOR UPDATE OF r,s,room`, [reservationId, roomId]
         );
         const row = reservation.rows[0];
+        const waitingRoom = row?.room_status === "WAITING" && Number(row.game_number) === 0 && new Date(row.starts_at) > new Date();
+        const runningRoom = ["RUNNING", "PAUSED"].includes(row?.room_status) && Number(row.game_number) > 0 && row.has_running_game;
         if (!row || !safeHashEqual(row.booking_token_hash, hash) || row.status !== "confirmed" || row.player_id ||
-            row.session_status !== "open" || row.instance_status !== "active" || row.room_status !== "WAITING" ||
-            Number(row.game_number) !== 0 || new Date(row.starts_at) <= new Date()) {
+            row.session_status !== "open" || row.instance_status !== "active" || (!waitingRoom && !runningRoom)) {
           return { ok: false, code: "RESERVATION_NOT_FOUND", error: "that confirmed booking is not available for this room" };
+        }
+        if (runningRoom) {
+          const currentGame = await client.query(
+            "SELECT 1 FROM games WHERE room_code=$1 AND game_number=$2 AND status='RUNNING' FOR UPDATE",
+            [roomId, Number(row.game_number)]
+          );
+          if (!currentGame.rowCount) return { ok: false, code: "SESSION_UNAVAILABLE", error: "this game is no longer accepting booked players" };
         }
         if (name !== row.display_name) return { ok: false, code: "RESERVATION_NOT_FOUND", error: "that confirmed booking is not available for this room" };
         let inventoryTickets = [];
@@ -249,12 +264,45 @@ export function createStore({ db, log = () => {} } = {}) {
           `INSERT INTO room_members(room_code,player_id,role,connected,last_seen_at,ticket_count,booking_reservation_id)
            VALUES($1,$2,'player',$3,now(),$4,$5)`, [roomId, playerId, connected, Number(row.ticket_count), reservationId]
         );
+        if (runningRoom) {
+          if (!Array.isArray(tickets) || tickets.length !== Number(row.ticket_count)) {
+            throw new IntegrityError("late booked seat has an incomplete live ticket set", { roomId, playerId });
+          }
+          const assignedById = new Map(inventoryTickets.map((ticket) => [ticket.inventoryTicketId, ticket]));
+          for (const [index, ticket] of tickets.entries()) {
+            const assigned = ticket.inventoryTicketId ? assignedById.get(ticket.inventoryTicketId) : null;
+            if (row.inventory_mode === "numbered" && (!assigned || JSON.stringify(assigned.grid) !== JSON.stringify(ticket.grid))) {
+              throw new IntegrityError("late booked seat tickets disagree with its confirmed inventory", { roomId, playerId });
+            }
+            if (row.inventory_mode !== "numbered" && (ticket.inventoryTicketId || ticket.inventorySessionId || ticket.inventoryReservationId)) {
+              throw new IntegrityError("legacy late booked seat contains numbered inventory identity", { roomId, playerId });
+            }
+            await client.query(
+              `INSERT INTO tickets(room_code,game_number,player_id,ticket_no,grid,inventory_session_id,inventory_reservation_id,inventory_ticket_id)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
+              [roomId, Number(row.game_number), playerId, ticket.ticketNo || index + 1, json(ticket.grid),
+                ticket.inventorySessionId || null, ticket.inventoryReservationId || null, ticket.inventoryTicketId || null]
+            );
+            if (ticket.inventoryTicketId) await client.query(
+              `INSERT INTO session_ticket_events(session_id,ticket_id,reservation_id,action,actor_type,actor_label,metadata)
+               VALUES($1,$2,$3,'issued','system','game-engine',$4)`,
+              [row.session_id, ticket.inventoryTicketId, reservationId, json({ roomCode: roomId, gameNumber: Number(row.game_number), ticketNo: ticket.ticketNo || index + 1 })]
+            );
+          }
+        }
         await audit(client, { roomId, playerId, type: "join", detail: { name, reservationId, ticketCount: Number(row.ticket_count) } });
         await client.query(
           `INSERT INTO ticket_reservation_audit(session_id,reservation_id,action,actor_type,actor_label,metadata)
            VALUES($1,$2,'hold.assign','player',$3,$4)`,
           [row.session_id, reservationId, name, JSON.stringify({ ticketCount: Number(row.ticket_count), roomCode: roomId })]
         );
+        const gameNumber = runningRoom ? Number(row.game_number) : null;
+        await audit(client, { roomId, gameNumber, playerId, type: "tickets-booked", detail: { count: Number(row.ticket_count), booking: true } });
+        await audit(client, {
+          roomId, gameNumber, playerId,
+          type: row.inventory_mode === "numbered" ? "inventory-tickets-assigned" : "tickets-selected",
+          detail: { count: Number(row.ticket_count), booking: true },
+        });
         return { ok: true, registered: true, ticketCount: Number(row.ticket_count), inventoryTickets };
       });
     } catch (error) {
@@ -389,11 +437,41 @@ export function createStore({ db, log = () => {} } = {}) {
    * all of that is durable or none of it is, so a crash can never leave a room
    * "running" with half its tickets.
    */
-  async function startGame({ roomId, gameNumber, drawSequence, tickets = [], ticketCounts = [], config } = {}) {
+  async function startGame({ roomId, gameNumber, drawSequence, tickets = [], ticketCounts = [], config, startSource = "host", scheduledStart = null } = {}) {
     if (!Array.isArray(drawSequence) || drawSequence.length !== DRAW_LENGTH) {
       throw new IntegrityError("refusing to persist a draw that is not 90 numbers", { roomId });
     }
+    if (!["host", "scheduled"].includes(startSource) || (startSource === "scheduled" && (!scheduledStart?.sessionId || !scheduledStart?.claimToken))) {
+      const error = new Error("invalid game start source"); error.code = "SCHEDULED_START_INVALID"; throw error;
+    }
     const result = await db.withTransaction(async (client) => {
+      let scheduledAt = null;
+      if (startSource === "scheduled") {
+        const session = await client.query(
+          `SELECT s.starts_at,s.room_code
+             FROM game_sessions s JOIN game_instances i ON i.instance_id=s.instance_id
+            WHERE s.session_id=$1 AND s.room_code=$2 AND s.auto_start_enabled
+              AND s.status='open' AND s.auto_start_state='starting'
+              AND s.auto_start_claim_token=$3 AND s.auto_start_claimed_until>clock_timestamp()
+              AND s.starts_at<=clock_timestamp() AND i.status='active'
+            FOR UPDATE OF s`,
+          [scheduledStart.sessionId, roomId, scheduledStart.claimToken]
+        );
+        if (!session.rowCount) {
+          const error = new Error("scheduled start is not due or no longer owns its database claim");
+          error.code = "SCHEDULED_START_CLAIM_LOST"; throw error;
+        }
+        scheduledAt = session.rows[0].starts_at;
+      } else {
+        const reserved = await client.query(
+          "SELECT 1 FROM game_sessions WHERE room_code=$1 AND auto_start_enabled AND status NOT IN ('cancelled','completed') FOR UPDATE",
+          [roomId]
+        );
+        if (reserved.rowCount) {
+          const error = new Error("this room is reserved for its scheduled automatic start");
+          error.code = "AUTO_START_RESERVED"; throw error;
+        }
+      }
       const moved = await client.query(
         `UPDATE rooms SET status = 'RUNNING', game_number = $2, config = COALESCE($3, config)
           WHERE room_code = $1 AND closed_at IS NULL AND status = 'WAITING'
@@ -405,10 +483,10 @@ export function createStore({ db, log = () => {} } = {}) {
         error.code = "INVALID_TRANSITION";
         throw error;
       }
-      await client.query(
-        `INSERT INTO games (room_code, game_number, status, draw_sequence)
-         VALUES ($1, $2, 'RUNNING', $3)`,
-        [roomId, gameNumber, json(drawSequence)]
+      const insertedGame = await client.query(
+        `INSERT INTO games (room_code, game_number, status, draw_sequence, start_source, scheduled_for)
+         VALUES ($1, $2, 'RUNNING', $3, $4, $5) RETURNING started_at`,
+        [roomId, gameNumber, json(drawSequence), startSource, scheduledAt]
       );
       for (const entry of ticketCounts) {
         const count = Number(entry.count);
@@ -477,8 +555,32 @@ export function createStore({ db, log = () => {} } = {}) {
           );
         }
       }
-      await audit(client, { roomId, gameNumber, type: "start", detail: { players: ticketCounts.length, tickets: tickets.length } });
-      return { ok: true, gameNumber };
+      const actualStartedAt = insertedGame.rows[0].started_at;
+      if (startSource === "scheduled") {
+        const marked = await client.query(
+          `UPDATE game_sessions SET auto_start_state='started',auto_started_at=$3,
+                auto_start_claim_token=NULL,auto_start_claimed_until=NULL,auto_start_retry_at=NULL,auto_start_error=NULL
+            WHERE session_id=$1 AND auto_start_claim_token=$2 AND auto_start_state='starting'
+            RETURNING session_id`,
+          [scheduledStart.sessionId, scheduledStart.claimToken, actualStartedAt]
+        );
+        if (!marked.rowCount) {
+          const error = new Error("scheduled start claim changed during game transition");
+          error.code = "SCHEDULED_START_CLAIM_LOST"; throw error;
+        }
+      } else {
+        await client.query(
+          `UPDATE game_sessions SET auto_start_state='started',auto_started_at=$2,
+                auto_start_claim_token=NULL,auto_start_claimed_until=NULL,auto_start_retry_at=NULL,auto_start_error=NULL
+            WHERE room_code=$1 AND auto_start_enabled AND status='open' AND auto_start_state<>'started'`,
+          [roomId, actualStartedAt]
+        );
+      }
+      await audit(client, { roomId, gameNumber, type: "start", detail: {
+        players: ticketCounts.length, tickets: tickets.length, source: startSource,
+        ...(scheduledAt ? { scheduledAt: new Date(scheduledAt).toISOString(), actualStartedAt: new Date(actualStartedAt).toISOString() } : {}),
+      } });
+      return { ok: true, gameNumber, startedAt: actualStartedAt, scheduledAt };
     });
     return result;
   }
@@ -489,6 +591,12 @@ export function createStore({ db, log = () => {} } = {}) {
         `UPDATE games SET status = 'COMPLETED', completed_at = now(), end_reason = $3
           WHERE room_code = $1 AND game_number = $2 AND status = 'RUNNING'`,
         [roomId, gameNumber, reason]
+      );
+      await client.query(
+        `UPDATE game_sessions SET status='completed',auto_start_state='completed',
+              auto_start_claim_token=NULL,auto_start_claimed_until=NULL
+          WHERE room_code=$1 AND auto_start_enabled AND status IN ('open','paused')`,
+        [roomId]
       );
       await audit(client, { roomId, gameNumber, type: "completed", detail: { reason } });
     });
@@ -552,6 +660,12 @@ export function createStore({ db, log = () => {} } = {}) {
           [roomId, gameNumber]
         );
         await client.query("UPDATE rooms SET status = 'COMPLETED' WHERE room_code = $1", [roomId]);
+        await client.query(
+          `UPDATE game_sessions SET status='completed',auto_start_state='completed',
+                auto_start_claim_token=NULL,auto_start_claimed_until=NULL
+            WHERE room_code=$1 AND auto_start_enabled AND status IN ('open','paused')`,
+          [roomId]
+        );
       }
       await audit(client, { roomId, gameNumber, type: "call", detail: { number, index: expectedIndex, source } });
 
@@ -593,6 +707,8 @@ export function createStore({ db, log = () => {} } = {}) {
     callIndex,
     ticketNo = null,
     ticketNos = null,
+    ticketSerial = null,
+    ticketSerials = null,
     exclusive = true,
   } = {}) {
     return db.withTransaction(async (client) => {
@@ -619,8 +735,8 @@ export function createStore({ db, log = () => {} } = {}) {
          VALUES ($1, $2, $3, $4, 'AWARDED', 'complete', $5)`,
         [roomId, gameNumber, playerId, pattern, callIndex]
       );
-      await audit(client, { roomId, gameNumber, playerId, type: "claim", detail: { pattern, points, ordinal, ticketNo, ticketNos } });
-      return { ok: true, ordinal, pattern, points, ticketNo };
+      await audit(client, { roomId, gameNumber, playerId, type: "claim", detail: { pattern, points, ordinal, ticketNo, ticketNos, ticketSerial, ticketSerials } });
+      return { ok: true, ordinal, pattern, points, ticketNo, ticketSerial, ticketSerials };
     });
   }
 
@@ -784,8 +900,9 @@ export function createStore({ db, log = () => {} } = {}) {
 
   // ------------------------------------------------------------------ schedule
 
-  async function upsertSchedule({ roomId, gameNumber, autoCall, intervalMs, nextDueAt, resetTick = false } = {}) {
-    await db.query(
+  async function upsertSchedule({ roomId, gameNumber, autoCall, intervalMs, nextDueAt, resetTick = false, transactionClient = null } = {}) {
+    const runner = transactionClient || db;
+    await runner.query(
       `INSERT INTO room_schedule (room_code, game_number, auto_call, interval_ms, tick, next_due_at)
        VALUES ($1, $2, $3, $4, 0, $5)
        ON CONFLICT (room_code) DO UPDATE
@@ -861,6 +978,133 @@ export function createStore({ db, log = () => {} } = {}) {
     return result.rows[0] || null;
   }
 
+  async function autoStartSessionForRoom({ roomId } = {}) {
+    const result = await db.query(
+      `SELECT session_id,auto_start_enabled,auto_start_state,starts_at
+         FROM game_sessions WHERE room_code=$1 AND auto_start_enabled AND status NOT IN ('cancelled','completed')
+         ORDER BY created_at DESC LIMIT 1`, [roomId]
+    );
+    const row = result.rows[0];
+    return row ? { enabled: true, sessionId: row.session_id, state: row.auto_start_state, scheduledAt: row.starts_at } : null;
+  }
+
+  /** Atomically claim one due session. Expired claims are safe to retry. */
+  async function claimDueScheduledStart({ claimToken, leaseMs = 30000, retryMs = 5000 } = {}) {
+    if (typeof claimToken !== "string" || !/^[0-9a-f-]{36}$/i.test(claimToken)) throw new Error("scheduled start claim needs a UUID token");
+    return db.withTransaction(async (client) => {
+      const claimed = await client.query(
+        `WITH due AS (
+           SELECT session_id FROM game_sessions
+            WHERE auto_start_enabled AND status='open'
+              AND starts_at<=clock_timestamp()
+              AND auto_start_state IN ('scheduled','starting','waiting')
+              AND (auto_start_claimed_until IS NULL OR auto_start_claimed_until<=clock_timestamp())
+              AND (auto_start_retry_at IS NULL OR auto_start_retry_at<=clock_timestamp())
+            ORDER BY starts_at,session_id
+            FOR UPDATE SKIP LOCKED LIMIT 1
+         )
+         UPDATE game_sessions s SET auto_start_state='starting',auto_start_claim_token=$1,
+               auto_start_claimed_until=clock_timestamp()+($2::int*interval '1 millisecond'),
+               auto_start_attempts=auto_start_attempts+1,auto_start_error=NULL
+           FROM due WHERE s.session_id=due.session_id
+         RETURNING s.session_id,s.instance_id,s.room_code,s.starts_at,s.time_zone,s.auto_start_attempts`,
+        [claimToken, leaseMs]
+      );
+      if (!claimed.rowCount) return { claimed: false };
+      const session = claimed.rows[0];
+      const details = await client.query(
+        `SELECT s.status AS session_status,i.status AS instance_status,r.game_instance_id,r.status AS room_status,
+                r.game_number,r.closed_at,
+                EXISTS(SELECT 1 FROM games g WHERE g.room_code=r.room_code) AS has_game,
+                (SELECT count(*)::int FROM room_members m WHERE m.room_code=r.room_code AND m.left_at IS NULL) AS member_count,
+                (SELECT g.started_at FROM games g WHERE g.room_code=r.room_code ORDER BY g.game_number DESC LIMIT 1) AS game_started_at,
+                (SELECT g.status FROM games g WHERE g.room_code=r.room_code ORDER BY g.game_number DESC LIMIT 1) AS game_status
+           FROM game_sessions s JOIN game_instances i ON i.instance_id=s.instance_id
+           LEFT JOIN rooms r ON r.room_code=s.room_code WHERE s.session_id=$1`, [session.session_id]
+      );
+      const state = details.rows[0];
+      if (state?.game_status === "COMPLETED") {
+        await client.query(
+          `UPDATE game_sessions SET status='completed',auto_start_state='completed',
+                auto_start_claim_token=NULL,auto_start_claimed_until=NULL
+            WHERE session_id=$1 AND auto_start_claim_token=$2`, [session.session_id, claimToken]
+        );
+        return { claimed: false, reconciled: true, sessionId: session.session_id };
+      }
+      if (state?.room_status === "RUNNING" && state.has_game) {
+        await client.query(
+          `UPDATE game_sessions SET auto_start_state='started',auto_started_at=COALESCE(auto_started_at,$3),
+                auto_start_claim_token=NULL,auto_start_claimed_until=NULL,auto_start_retry_at=NULL
+            WHERE session_id=$1 AND auto_start_claim_token=$2`,
+          [session.session_id, claimToken, state.game_started_at]
+        );
+        return { claimed: false, reconciled: true, sessionId: session.session_id };
+      }
+      let errorCode = null;
+      if (!session.room_code || !state?.room_status) errorCode = "SESSION_ROOM_REQUIRED";
+      else if (state.instance_status !== "active" || state.game_instance_id !== session.instance_id) errorCode = "SESSION_ROOM_INVALID";
+      else if (state.room_status !== "WAITING" || Number(state.game_number) !== 0 || state.closed_at || state.has_game) errorCode = "SESSION_ROOM_NOT_WAITING";
+      if (errorCode) {
+        await client.query(
+          `UPDATE game_sessions SET auto_start_state='failed',auto_start_error=$3,
+                auto_start_claim_token=NULL,auto_start_claimed_until=NULL
+            WHERE session_id=$1 AND auto_start_claim_token=$2`, [session.session_id, claimToken, errorCode]
+        );
+        return { claimed: false, failed: true, errorCode, sessionId: session.session_id };
+      }
+      if (Number(state.member_count) < 1) {
+        await client.query(
+          `UPDATE game_sessions SET auto_start_state='waiting',auto_start_retry_at=clock_timestamp()+($3::int*interval '1 millisecond'),
+                auto_start_error='NO_PLAYERS',auto_start_claim_token=NULL,auto_start_claimed_until=NULL
+            WHERE session_id=$1 AND auto_start_claim_token=$2`, [session.session_id, claimToken, retryMs]
+        );
+        return { claimed: false, waiting: true, sessionId: session.session_id };
+      }
+      return {
+        claimed: true, sessionId: session.session_id, instanceId: session.instance_id,
+        roomCode: session.room_code, scheduledAt: session.starts_at, timeZone: session.time_zone,
+        attempts: Number(session.auto_start_attempts),
+        claimToken,
+      };
+    });
+  }
+
+  /** Revalidate a scheduler lease immediately before changing the room engine. */
+  async function verifyScheduledStartClaim({ sessionId, claimToken } = {}) {
+    const result = await db.query(
+      `SELECT s.session_id,s.instance_id,s.room_code,s.starts_at,s.time_zone,
+              i.status AS instance_status,r.game_instance_id,r.status AS room_status,r.game_number,r.closed_at,
+              EXISTS(SELECT 1 FROM games g WHERE g.room_code=r.room_code) AS has_game,
+              (SELECT count(*)::int FROM room_members m WHERE m.room_code=r.room_code AND m.left_at IS NULL) AS member_count
+         FROM game_sessions s JOIN game_instances i ON i.instance_id=s.instance_id
+         LEFT JOIN rooms r ON r.room_code=s.room_code
+        WHERE s.session_id=$1 AND s.auto_start_enabled AND s.status='open'
+          AND s.auto_start_state='starting' AND s.auto_start_claim_token=$2
+          AND s.auto_start_claimed_until>clock_timestamp() AND s.starts_at<=clock_timestamp()`,
+      [sessionId, claimToken]
+    );
+    const row = result.rows[0];
+    if (!row) return { ok: false, code: "SCHEDULED_START_CLAIM_LOST", error: "scheduled start is not yet due or the claim expired" };
+    if (!row.room_code || row.instance_status !== "active" || row.game_instance_id !== row.instance_id ||
+        row.room_status !== "WAITING" || Number(row.game_number) !== 0 || row.closed_at || row.has_game) {
+      return { ok: false, code: "SESSION_ROOM_INVALID", error: "scheduled room is no longer a valid waiting room" };
+    }
+    if (Number(row.member_count) < 1) return { ok: false, code: "NO_PLAYERS", error: "the scheduled room has no joined players yet" };
+    return { ok: true, sessionId: row.session_id, claimToken, roomCode: row.room_code, scheduledAt: row.starts_at, timeZone: row.time_zone };
+  }
+
+  async function releaseScheduledStartClaim({ sessionId, claimToken, retry = false, retryMs = 5000, errorCode = null } = {}) {
+    const state = retry ? "waiting" : "failed";
+    const result = await db.query(
+      `UPDATE game_sessions SET auto_start_state=$3,auto_start_error=$4,
+            auto_start_retry_at=CASE WHEN $3='waiting' THEN clock_timestamp()+($5::int*interval '1 millisecond') ELSE NULL END,
+            auto_start_claim_token=NULL,auto_start_claimed_until=NULL
+        WHERE session_id=$1 AND auto_start_claim_token=$2 AND auto_start_state='starting'
+        RETURNING session_id`, [sessionId, claimToken, state, errorCode, retryMs]
+    );
+    return { released: result.rowCount === 1, state };
+  }
+
   /** Server-side sessions are also part of the durable footprint. */
   async function countRows() {
     const result = await db.query(
@@ -912,6 +1156,10 @@ export function createStore({ db, log = () => {} } = {}) {
     disarmSchedule,
     claimTick,
     loadSchedule,
+    autoStartSessionForRoom,
+    claimDueScheduledStart,
+    verifyScheduledStartClaim,
+    releaseScheduledStartClaim,
     countRows,
     isUniqueError,
     FOREIGN_KEY_VIOLATION,

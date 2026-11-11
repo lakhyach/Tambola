@@ -21,6 +21,9 @@ const PlayerRoom = () => {
   const t = useCallback((key, variables) => bookingCopy(language, key, variables), [language]);
   const [players, setPlayers] = useState([]);
   const [roomCode, setRoomCode] = useState("");
+  const [scheduledSession, setScheduledSession] = useState(null);
+  const [clockNow, setClockNow] = useState(Date.now());
+  const serverClockOffset = useRef(0);
   const [tickets, setTickets] = useState({ count: 1, max: 1, locked: false });
   const [previews, setPreviews] = useState([]);
   const [note, setNote] = useState("");
@@ -30,6 +33,36 @@ const PlayerRoom = () => {
   // what will actually be played instead of an empty preview area. The call is
   // idempotent — the engine only mints while the seat is short of its count.
   const previewed = useRef(false);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClockNow(Date.now() + serverClockOffset.current), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!roomCode) return undefined;
+    const abort = new AbortController();
+    let active = true;
+    const refreshSchedule = async () => {
+      try {
+        const response = await fetch(`/api/public/rooms/${encodeURIComponent(roomCode)}/session`, { cache: "no-store", signal: abort.signal, headers: { Accept: "application/json" } });
+        const data = await response.json().catch(() => ({}));
+        if (!active) return;
+        if (!response.ok || !data.ok || !data.session) { setScheduledSession(null); return; }
+        const serverTime = Date.parse(data.session.serverTime);
+        if (Number.isFinite(serverTime)) serverClockOffset.current = serverTime - Date.now();
+        setScheduledSession(data.session);
+      } catch (error) {
+        if (active && error.name !== "AbortError") setScheduledSession(null);
+      }
+    };
+    refreshSchedule();
+    const stopReconnect = on("connect", refreshSchedule);
+    const timer = window.setInterval(refreshSchedule, 15_000);
+    const onVisible = () => { if (document.visibilityState === "visible") refreshSchedule(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { active = false; abort.abort(); window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisible); stopReconnect(); };
+  }, [roomCode]);
 
   const applyCounts = (snapshot) => {
     if (!snapshot) return;
@@ -147,7 +180,39 @@ const PlayerRoom = () => {
               </div>
             </Panel>
 
-            <TicketPicker value={tickets.count} max={tickets.max} disabled={tickets.locked} language={language} lockedLabel={t("lockedReservation")} onPick={pickCount} />
+            {scheduledSession ? <Panel className="p-4" aria-live="off">
+              <p className="oh-eyebrow" style={{ margin: 0 }}>SCHEDULED GAME</p>
+              <strong>{scheduledSession.title}</strong>
+              <p style={{ color: "var(--oh-text-muted)", margin: "6px 0 0" }}>
+                {scheduledSession.gameStatus === "live" ? "The game is live. Joining the current game…"
+                  : scheduledSession.gameStatus === "completed" ? "This game has completed."
+                    : scheduledSession.status === "cancelled" ? "This scheduled game was cancelled."
+                      : scheduledSession.gameStatus === "paused" ? "The game is paused. Waiting for the host to resume."
+                      : scheduledSession.scheduledStartStatus === "starting" ? "The server is starting the game…"
+                        : scheduledSession.scheduledStartStatus === "failed" ? "The scheduled start is delayed. The server will retry."
+                        : (() => {
+                          const remaining = Math.max(0, Date.parse(scheduledSession.startsAt) - clockNow);
+                          const seconds = Math.floor(remaining / 1000);
+                          const days = Math.floor(seconds / 86400);
+                          const hours = Math.floor((seconds % 86400) / 3600);
+                          const minutes = Math.floor((seconds % 3600) / 60);
+                          const rest = seconds % 60;
+                          return remaining > 0 ? `Scheduled for ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: scheduledSession.timeZone }).format(new Date(scheduledSession.startsAt))} (${scheduledSession.timeZone}) · starts in ${days ? `${days}d ` : ""}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}` : !scheduledSession.autoStartEnabled ? "Waiting for the host to start the game…" : scheduledSession.scheduledStartStatus === "waiting" ? "Waiting for the server to start the game…" : "The scheduled time has arrived. Waiting for the server to start the game…";
+                        })()}
+              </p>
+            </Panel> : null}
+
+            {tickets.locked ? (
+              <Panel className="p-4" aria-label={t("yourTickets")}>
+                <h2 className="oh-display" style={{ fontSize: 15, margin: 0 }}>{t("yourTickets")}</h2>
+                <p className="oh-eyebrow" style={{ margin: "5px 0 0", color: "var(--oh-text-muted)" }}>{t("lockedReservation")}</p>
+                {previews.some((ticket) => ticket?.serial) ? (
+                  <ul className="oh-ticket-serial-list" aria-label={t("assignedTicketSerials")}>
+                    {previews.filter((ticket) => ticket?.serial).map((ticket) => <li key={ticket.serial}>{ticket.serial}</li>)}
+                  </ul>
+                ) : null}
+              </Panel>
+            ) : <TicketPicker value={tickets.count} max={tickets.max} language={language} onPick={pickCount} />}
             {note ? (
               <p role="alert" className="text-center" style={{ color: "var(--oh-danger)", fontSize: 13 }}>
                 {note}

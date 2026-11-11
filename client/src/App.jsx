@@ -19,6 +19,9 @@ function countdownTarget(session, now) {
   const closes = Date.parse(session.bookingClosesAt);
   const starts = Date.parse(session.startsAt);
   if (session.gameStatus === "live") return { label: "Live now", remaining: null };
+  if (session.gameStatus === "starting") return { label: "Starting now", remaining: null };
+  if (session.gameStatus === "waiting") return { label: "Waiting for the game to start", remaining: null };
+  if (session.gameStatus === "completed") return { label: "Game completed", remaining: null };
   if (session.status === "paused") return { label: "Bookings paused", remaining: null };
   if (opens > now) return { label: "Bookings open in", remaining: opens - now };
   if (closes > now && session.bookingStatus === "open") return { label: "Bookings close in", remaining: closes - now };

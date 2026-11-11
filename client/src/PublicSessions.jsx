@@ -75,7 +75,11 @@ export default function PublicSessions() {
               const opens = Date.parse(session.bookingOpensAt); const closes = Date.parse(session.bookingClosesAt); const starts = Date.parse(session.startsAt);
               const bookingOpen = session.status === "open" && opens <= current && closes > current && starts > current && Number(session.available) > 0;
               const bookingLabel = session.status === "paused" ? "Bookings paused" : starts <= current ? "Bookings closed" : opens > current ? "Bookings not open" : closes <= current ? "Bookings closed" : Number(session.available) <= 0 ? "Sold out" : "Bookings open";
-              const gameLabel = session.gameStatus === "live" ? "Live" : starts > current ? "Upcoming" : session.gameStatus;
+              const gameLabel = session.gameStatus === "live" ? "Live"
+                : session.gameStatus === "starting" ? "Starting now"
+                  : session.gameStatus === "waiting" ? "Waiting to start"
+                    : session.gameStatus === "completed" ? "Completed"
+                      : starts > current ? "Upcoming" : session.gameStatus;
               return <article className="booking-session" key={session.sessionId}>
                 <div className="booking-session__topline">
                   <span className="booking-session__badge">{gameLabel} · {bookingLabel}</span>
@@ -86,7 +90,7 @@ export default function PublicSessions() {
                   <div><dt>{bookingCopy(language, "starts")}</dt><dd>{formatBookingDate(session.startsAt, language)}</dd></div>
                   <div><dt>Bookings open</dt><dd>{formatBookingDate(session.bookingOpensAt, language)}</dd></div>
                   <div><dt>{bookingCopy(language, "bookingCloses")}</dt><dd>{formatBookingDate(session.bookingClosesAt, language)}</dd></div>
-                  <div><dt>Game status</dt><dd>{session.gameStatus === "live" ? "Live" : session.gameStatus === "upcoming" ? "Upcoming" : session.gameStatus}</dd></div>
+                  <div><dt>Game status</dt><dd>{session.gameStatus === "live" ? "Live" : session.gameStatus === "starting" ? "Starting now" : session.gameStatus === "waiting" ? "Waiting to start" : session.gameStatus === "completed" ? "Completed" : session.gameStatus === "upcoming" ? "Upcoming" : session.gameStatus}</dd></div>
                   <div><dt>{bookingCopy(language, "ticketsAvailable")}</dt><dd>{formatBookingNumber(Math.max(0, Number(session.available) || 0), language)} / {formatBookingNumber(Number(session.capacity) || 0, language)}</dd></div>
                 </dl>
                 <p className="booking-timezone-note">{bookingCopy(language, "localTime")}</p>

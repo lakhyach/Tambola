@@ -427,7 +427,10 @@ export function getPattern(patternId, config = {}) {
   const pattern = PATTERNS[patternId];
   if (!pattern) return null;
   if (!enabledPatternIds(config).includes(patternId)) return null;
-  return pattern;
+  const configuredPoints = config.patternPoints?.[patternId];
+  return Number.isSafeInteger(configuredPoints) && configuredPoints >= 0 && configuredPoints <= 100000
+    ? { ...pattern, points: configuredPoints }
+    : pattern;
 }
 
 /**

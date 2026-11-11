@@ -1,4 +1,5 @@
 /* eslint-disable react/prop-types */
+import { useState } from "react";
 import { FaBroadcastTower, FaDoorOpen, FaTicketAlt, FaTrophy, FaUsers } from "react-icons/fa";
 import GameHeader from "./GameHeader.jsx";
 import CurrentNumberReveal from "./CurrentNumberReveal.jsx";
@@ -21,6 +22,7 @@ import { canClaim, claimNote, ticketPanel } from "../lib/playerview.js";
 import { callAnnouncement } from "../lib/ticketview.js";
 import { bookingClaimNote, bookingCopy, formatBookingNumber, useBookingLanguage } from "../i18n/booking-locale.js";
 import PublicBack from "./PublicBack.jsx";
+import TambolaTicket from "./TambolaTicket.jsx";
 
 /** Ticket absence has two real meanings; neither should produce a fake grid. */
 const TicketNotice = ({ spectator, language }) => (
@@ -34,6 +36,10 @@ const TicketNotice = ({ spectator, language }) => (
 /** Composition only: game values and actions all belong to GameScreen. */
 const GameShell = ({ role, view, sessionResumeCount }) => {
   const language = useBookingLanguage();
+  const [finderTerm, setFinderTerm] = useState("");
+  const [finderResults, setFinderResults] = useState([]);
+  const [finderMessage, setFinderMessage] = useState("");
+  const [finderBusy, setFinderBusy] = useState(false);
   if (role === "host") return <CallerConsole view={view} />;
 
   const tickets = view.tickets || [];
@@ -44,6 +50,17 @@ const GameShell = ({ role, view, sessionResumeCount }) => {
   const eventName = typeof document !== "undefined" ? document.documentElement.dataset.instanceName : "";
   // The voice selector changes spoken output only; visible game copy remains English.
   const callout = getNumberCallout(view.lastCall, { language: "en", festival: view.sound?.festival });
+  async function findMyLiveTickets(event) {
+    event.preventDefault(); setFinderBusy(true); setFinderMessage(""); setFinderResults([]);
+    try {
+      const response = await fetch(`/api/public/rooms/${encodeURIComponent(view.roomId)}/tickets/find`, { method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" }, body: JSON.stringify({ q: finderTerm.trim() }), cache: "no-store" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.ok) throw new Error("Ticket lookup is unavailable. Check the exact ticket number or display name.");
+      setFinderResults(data.tickets || []);
+      setFinderMessage(data.tickets?.length ? `${data.tickets.length} confirmed ticket(s) found.` : "No confirmed ticket matched that exact ticket number, display name, or registered phone.");
+    } catch (error) { setFinderMessage(error.message); }
+    finally { setFinderBusy(false); }
+  }
 
   return (
     <div className="oh-app-shell player-festival" lang={hi ? "hi" : "en"}>
@@ -51,6 +68,32 @@ const GameShell = ({ role, view, sessionResumeCount }) => {
       <GameHeader roomId={view.roomId} state={view.state} playerCount={view.players.length} language={language} sound={view.sound} onToggleSound={view.onToggleSound} onToggleSpeech={view.onToggleSpeech} onToggleSpeechLang={view.onToggleSpeechLang} />
       <main id="main-content" tabIndex="-1" className="player-game-main">
         <PublicBack to="/player/room">← Back to room</PublicBack>
+        {view.scheduledSession ? (() => {
+          const session = view.scheduledSession;
+          const startsAt = Date.parse(session.startsAt);
+          const remaining = startsAt - view.scheduleNow;
+          const seconds = Number.isFinite(remaining) ? Math.max(0, Math.floor(remaining / 1000)) : 0;
+          const countdown = `${Math.floor(seconds / 86400) ? `${Math.floor(seconds / 86400)}d ` : ""}${String(Math.floor((seconds % 86400) / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+          const scheduledFor = Number.isFinite(startsAt)
+            ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: session.timeZone }).format(new Date(startsAt))
+            : null;
+          let status;
+          if (session.status === "cancelled" || session.gameStatus === "cancelled") status = "This scheduled session was cancelled.";
+          else if (view.state === "COMPLETED" || session.gameStatus === "completed") status = "This game has completed.";
+          else if (view.state === "PAUSED" || session.gameStatus === "paused") status = "The game is paused. Waiting for the host to resume.";
+          else if (view.state === "RUNNING" || session.gameStatus === "live") status = "The game is live.";
+          else if (session.scheduledStartStatus === "starting") status = "The server is starting the game…";
+          else if (session.scheduledStartStatus === "failed") status = "The scheduled start is delayed. The server will retry.";
+          else if (remaining > 0) status = `Starts in ${countdown}.`;
+          else if (!session.autoStartEnabled) status = "Waiting for the host to start the game.";
+          else if (session.scheduledStartStatus === "waiting") status = "Waiting for the server to start the game…";
+          else status = "The scheduled time has arrived. Waiting for the server to start the game…";
+          return <Panel className="p-4" data-scheduled-game="true" aria-live="polite">
+            <span className="oh-eyebrow">{session.title || "Scheduled game"}</span>
+            {scheduledFor ? <p style={{ margin: "4px 0", color: "var(--oh-text-muted)" }}>Scheduled for {scheduledFor} ({session.timeZone}).</p> : null}
+            <strong role="status">{status}</strong>
+          </Panel>;
+        })() : null}
         <h1 className="oh-sr-only">{t("liveGameHeading")}</h1>
         <Toast message={view.message} />
         <div className="oh-sr-only" role="status" aria-live="polite" aria-atomic="true" data-call-announcer="true">{callAnnouncement(view.lastCall, view.remaining)}</div>
@@ -97,6 +140,16 @@ const GameShell = ({ role, view, sessionResumeCount }) => {
             <div className="player-section-heading"><h2><FaTicketAlt />{t("myTickets")} <span>({formatBookingNumber(tickets.length, language)})</span></h2><span>{hi ? "आधिकारिक कॉल से अपने आप चिह्नित" : "Automatically marked from official calls"}</span></div>
             {panel === "spectator" || panel === "choose" ? <TicketNotice spectator={panel === "spectator"} language={language} /> : <TicketRail tickets={tickets} calledNumbers={view.calledNumbers} currentNumber={view.lastCall} playerName={view.name} roomId={view.roomId} state={view.state} language={language} />}
           </section>
+          {view.state === "RUNNING" ? <section className="player-live-tickets" aria-labelledby="live-ticket-finder-title">
+            <div className="player-section-heading"><h2 id="live-ticket-finder-title">Find a live ticket</h2><span>Exact ticket number, display name{view.scheduledSession?.phoneLookupEnabled ? ", or registered phone" : ""}</span></div>
+            <form className="booking-catalog__filters" onSubmit={findMyLiveTickets}>
+              <label htmlFor="live-ticket-finder">Ticket number, display name{view.scheduledSession?.phoneLookupEnabled ? ", or registered phone" : ""}<input id="live-ticket-finder" value={finderTerm} minLength={3} maxLength={40} onChange={(event) => setFinderTerm(event.target.value)} required autoComplete="off" /></label>
+              <button className="public-link-button" type="submit" disabled={finderBusy}>{finderBusy ? "Searching…" : "Find tickets"}</button>
+            </form>
+            <p className="booking-hint">Lookup is limited to confirmed tickets in this live room. Phone numbers are only matched when the organizer has enabled privacy-safe phone lookup; no phone or booking details are shown.</p>
+            {finderMessage ? <p role="status" className="booking-notice">{finderMessage}</p> : null}
+            {finderResults.length ? <div className="adm-issued-ticket-catalog">{finderResults.map((ticket) => <article className="adm-issued-ticket" key={ticket.serial}><strong>{ticket.serial}</strong><TambolaTicket ticket={ticket.grid} ticketNo={ticket.serial} language={language} /></article>)}</div> : null}
+          </section> : null}
         </div>
 
         <section className="player-live-patterns" aria-label={t("winningPatterns")}>

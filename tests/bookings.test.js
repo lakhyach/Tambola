@@ -12,39 +12,62 @@ import { HAS_DB, openDurableSchema } from "./pattern-harness.js";
 import { createBookingService } from "../server/bookings/service.js";
 import { createAdminBookingRouter, createPublicBookingRouter } from "../server/bookings/routes.js";
 import { connectionToDatabase } from "../scripts/pg-cli.js";
+import { createBookingRealtime } from "../server/bookings/realtime.js";
 
 test("instance-scoped scheduled booking holds are private, expiring and capacity safe", { skip: !HAS_DB }, async () => {
   const env = await openDurableSchema({ prefix: "booking" });
   const service = createBookingService({ db: env.db });
   const token = "a".repeat(64);
   const app = express();
-  app.use("/api/public", createPublicBookingRouter({ db: env.db }));
+  const bookingRealtime = createBookingRealtime();
+  const emitted = [];
+  const io = { to(room) { return { emit(event, payload) { emitted.push({ room, event, payload }); } }; } };
+  app.use("/api/public", createPublicBookingRouter({ db: env.db, io, bookingRealtime }));
   app.use("/api/admin", createAdminBookingRouter({
     db: env.db,
     ownerSessions: { async verify() { return { ok: true, ownerId: "owner-test", sessionId: "session-test" }; } },
     ownerStore: { async getById() { return { ownerId: "owner-test", username: "owner", role: "super_admin" }; } },
     throttle: { adminMutation: { async check() { return { allowed: true }; }, async recordFailure() { return {}; } } },
+    io, bookingRealtime,
   }));
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
   const adminHeaders = { cookie: `tambola_owner=${token}; tambola_csrf=${"b".repeat(48)}`, "x-csrf-token": "b".repeat(48), "content-type": "application/json" };
   const future = (minutes) => new Date(Date.now() + minutes * 60_000).toISOString();
-  const createPayload = (capacity = 5) => ({ title: "Community game", startsAt: future(40), bookingOpensAt: future(-2), bookingClosesAt: future(35), capacity });
+  const configuredPatterns = [{ id: "earlyFive", points: 77 }, { id: "fullHouse", points: 300 }];
+  const createPayload = (capacity = 5) => ({ title: "Community game", startsAt: future(40), bookingOpensAt: future(-2), bookingClosesAt: future(35), capacity, winningPatterns: configuredPatterns });
   try {
     assert.equal((await fetch(`${base}/api/admin/instances/regular/sessions`)).status, 401);
     assert.equal((await fetch(`${base}/api/admin/instances/regular/sessions`, {
       method: "POST", headers: { cookie: `tambola_owner=${token}`, "content-type": "application/json" }, body: JSON.stringify(createPayload()),
     })).status, 403);
-    const createResponse = await fetch(`${base}/api/admin/instances/regular/sessions`, { method: "POST", headers: adminHeaders, body: JSON.stringify(createPayload()) });
+    const firstCreatePayload = { ...createPayload(), idempotencyKey: "9".repeat(64) };
+    const createResponse = await fetch(`${base}/api/admin/instances/regular/sessions`, { method: "POST", headers: adminHeaders, body: JSON.stringify(firstCreatePayload) });
     assert.equal(createResponse.status, 201);
     const created = (await createResponse.json()).session;
+    const repeatedCreateResponse = await fetch(`${base}/api/admin/instances/regular/sessions`, { method: "POST", headers: adminHeaders, body: JSON.stringify(firstCreatePayload) });
+    assert.equal(repeatedCreateResponse.status, 200, "a retry after a lost create response returns the original session");
+    const repeatedCreate = await repeatedCreateResponse.json();
+    assert.equal(repeatedCreate.idempotent, true);
+    assert.equal(repeatedCreate.session.sessionId, created.sessionId);
+    const changedCreateResponse = await fetch(`${base}/api/admin/instances/regular/sessions`, {
+      method: "POST", headers: adminHeaders,
+      body: JSON.stringify({ ...firstCreatePayload, title: "A different game" }),
+    });
+    assert.equal(changedCreateResponse.status, 409, "a creation key cannot be reused for different session details");
     assert.equal(created.status, "draft");
     assert.equal(created.capacity, 5);
     assert.equal(created.available, 5);
     assert.equal(created.heldTicketCount, 0);
     assert.equal(created.confirmedTicketCount, 0);
     assert.equal(created.reservationCount, 0);
+    assert.deepEqual(created.winningPatterns.map(({ id, points }) => ({ id, points })), configuredPatterns);
+    const persistedRules = await env.db.query("SELECT winning_patterns FROM game_sessions WHERE session_id=$1", [created.sessionId]);
+    assert.deepEqual(persistedRules.rows[0].winning_patterns, { earlyFive: 77, fullHouse: 300 });
+
+    const invalidRules = await service.updateSession({ instanceId: "regular", sessionId: created.sessionId, actor: "owner", patch: { winningPatterns: [{ id: "unknown", points: 5 }] } });
+    assert.equal(invalidRules.error, "INVALID_WINNING_PATTERNS");
 
     // AdminSessions sends the event timezone whenever an operator edits a
     // session. Keep that client/server contract explicit in the route test.
@@ -76,6 +99,12 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal(publicList.sessions[0].sessionId, created.sessionId);
     assert.equal((await (await fetch(`${base}/api/public/sessions/${created.sessionId}`)).json()).session.available, 5);
 
+    const ticketResponse = await fetch(`${base}/api/admin/booking-events/ticket`, { method: "POST", headers: adminHeaders, body: JSON.stringify({ instanceId: "regular" }) });
+    assert.equal(ticketResponse.status, 200);
+    const subTicket = (await ticketResponse.json()).ticket;
+    assert.deepEqual(bookingRealtime.consume(subTicket), { instanceId: "regular", ownerSessionId: "session-test" });
+    assert.equal(bookingRealtime.consume(subTicket), null, "a booking subscription ticket is single use");
+
     const scheduledOnly = await service.createSession({ instanceId: "regular", actor: "owner", title: "Scheduled listing check", startsAt: future(40), bookingOpensAt: future(10), bookingClosesAt: future(35), capacity: 4 });
     await service.updateSession({ instanceId: "regular", sessionId: scheduledOnly.session.sessionId, actor: "owner", patch: { status: "open" } });
     const scheduledPublic = await service.getPublicSession(scheduledOnly.session.sessionId);
@@ -83,10 +112,19 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal((await service.listPublicSessions("regular")).some((session) => session.sessionId === scheduledOnly.session.sessionId), true);
     assert.equal((await service.reserve({ sessionId: scheduledOnly.session.sessionId, displayName: "Early Guest", ticketCount: 1 })).error, "SESSION_UNAVAILABLE", "listing a scheduled session does not open booking early");
 
-    const bookingClosed = await service.createSession({ instanceId: "regular", actor: "owner", title: "Closed booking listing check", startsAt: future(40), bookingOpensAt: future(-10), bookingClosesAt: future(-1), capacity: 4 });
-    await service.updateSession({ instanceId: "regular", sessionId: bookingClosed.session.sessionId, actor: "owner", patch: { status: "open" } });
-    assert.equal((await service.getPublicSession(bookingClosed.session.sessionId)).bookingStatus, "closed", "future games remain visible after their booking window closes");
-    assert.equal((await service.reserve({ sessionId: bookingClosed.session.sessionId, displayName: "Late Guest", ticketCount: 1 })).error, "BOOKING_CLOSED");
+    const bookingClosed = await service.createSession({ instanceId: "regular", actor: "owner", title: "Closed booking listing check", startsAt: future(40), bookingOpensAt: future(-10), bookingClosesAt: future(5), capacity: 4 });
+    const publishedBeforeClose = await service.updateSession({ instanceId: "regular", sessionId: bookingClosed.session.sessionId, actor: "owner", patch: { status: "open" } });
+    assert.equal(publishedBeforeClose.session.status, "open", "publish the session while its booking window is still valid");
+    await env.db.query("UPDATE game_sessions SET booking_closes_at=clock_timestamp()-interval '1 second' WHERE session_id=$1", [bookingClosed.session.sessionId]);
+    const closedPublicSession = await service.getPublicSession(bookingClosed.session.sessionId);
+    assert.equal(closedPublicSession.bookingStatus, "closed", "future games remain visible after their booking window closes");
+    assert.equal((await service.reserve({ sessionId: bookingClosed.session.sessionId, displayName: "Late Guest", ticketCount: 1 })).error, "BOOKING_CLOSED", "a request after the closed window receives the clear booking-closed result");
+
+    const alreadyClosed = await service.createSession({ instanceId: "regular", actor: "owner", title: "Cannot publish after booking closes", startsAt: future(40), bookingOpensAt: future(-10), bookingClosesAt: future(-1), capacity: 4 });
+    const publishedAfterClose = await service.updateSession({ instanceId: "regular", sessionId: alreadyClosed.session.sessionId, actor: "owner", patch: { status: "open" } });
+    assert.equal(publishedAfterClose.session.status, "open", "future sessions can remain visible after booking closes");
+    assert.equal((await service.getPublicSession(alreadyClosed.session.sessionId)).bookingStatus, "closed");
+    assert.equal((await service.reserve({ sessionId: alreadyClosed.session.sessionId, displayName: "Late Guest", ticketCount: 1 })).error, "BOOKING_CLOSED");
 
     const idempotencyToken = "c".repeat(64);
     const holdResponse = await fetch(`${base}/api/public/sessions/${created.sessionId}/reservations`, {
@@ -94,6 +132,7 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     });
     assert.equal(holdResponse.status, 201);
     const held = (await holdResponse.json()).reservation;
+    assert.deepEqual(emitted.at(-1), { room: "admin-bookings:regular", event: "admin:booking-changed", payload: { instanceId: "regular", sessionId: created.sessionId } });
     assert.equal(held.status, "held");
     assert.equal(held.ticketCount, 2);
     assert.match(held.bookingToken, /^[a-f0-9]{64}$/);
@@ -120,8 +159,8 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal(confirmResponse.status, 200);
     assert.equal((await confirmResponse.json()).reservation.status, "confirmed");
     assert.equal(Number((await env.db.query("SELECT count(*)::int AS n FROM auth_throttle WHERE scope='booking-public'")).rows[0].n), 0, "valid booking actions do not accumulate authentication failure strikes");
-    const adminSessions = (await (await fetch(`${base}/api/admin/instances/regular/sessions`, { headers: { cookie: `tambola_owner=${token}` } })).json()).sessions;
-    assert.equal(adminSessions.find((session) => session.sessionId === created.sessionId)?.confirmedTicketCount, 2);
+    const ownerSessions = (await (await fetch(`${base}/api/admin/instances/regular/sessions`, { headers: { cookie: `tambola_owner=${token}` } })).json()).sessions;
+    assert.equal(ownerSessions.find((session) => session.sessionId === created.sessionId)?.confirmedTicketCount, 2);
     const cancelResponse = await fetch(`${base}/api/public/reservations/${held.reservationId}/cancel`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ bookingToken: held.bookingToken }),
     });
@@ -136,6 +175,19 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal(ownerRows.length, 1);
     const ownerDetail = await fetch(`${base}/api/admin/instances/regular/reservations/${held.reservationId}`, { headers: { cookie: `tambola_owner=${token}` } });
     assert.equal((await ownerDetail.json()).reservation.history.some((event) => event.action === "hold.cancel"), true);
+
+    const operatorCancelHold = await service.reserve({ sessionId: created.sessionId, displayName: "Operator Guest", ticketCount: 1 });
+    await service.lookupOrTransition({ reservationId: operatorCancelHold.reservation.reservationId, bookingToken: operatorCancelHold.reservation.bookingToken, action: "confirm" });
+    const eventsBeforeOperatorCancel = emitted.length;
+    const operatorCancelResponse = await fetch(`${base}/api/admin/instances/regular/reservations/${operatorCancelHold.reservation.reservationId}/cancel`, {
+      method: "POST", headers: adminHeaders, body: JSON.stringify({}),
+    });
+    assert.equal(operatorCancelResponse.status, 200);
+    assert.equal((await operatorCancelResponse.json()).reservation.status, "cancelled");
+    assert.deepEqual(emitted.slice(eventsBeforeOperatorCancel).at(-1), {
+      room: "admin-bookings:regular", event: "admin:booking-changed",
+      payload: { instanceId: "regular", sessionId: created.sessionId },
+    }, "an operator cancellation commits and publishes the live inventory refresh");
 
     const hold = await service.reserve({ sessionId: created.sessionId, displayName: "Expired", ticketCount: 1 });
     await env.db.query("UPDATE ticket_reservations SET expires_at=now()-interval '1 second' WHERE reservation_id=$1", [hold.reservation.reservationId]);
@@ -187,11 +239,11 @@ test("instance-scoped scheduled booking holds are private, expiring and capacity
     assert.equal((await env.db.query("SELECT status FROM ticket_reservations WHERE reservation_id=$1", [staleHold.reservation.reservationId])).rows[0].status, "expired", "session closure preserves an elapsed hold as expired");
     const staleAudit = await env.db.query("SELECT action FROM ticket_reservation_audit WHERE reservation_id=$1 ORDER BY event_id", [staleHold.reservation.reservationId]);
     assert.deepEqual(staleAudit.rows.map((row) => row.action), ["hold.create", "hold.expire"], "expired holds do not receive a misleading hold.cancel event");
-    assert.deepEqual(
-      (await service.listPublicSessions("regular")).map((session) => session.sessionId).sort(),
-      [created.sessionId, scheduledOnly.session.sessionId, bookingClosed.session.sessionId].sort(),
-      "published future sessions stay public before booking opens and after booking closes",
-    );
+    const stillPublic = (await service.listPublicSessions("regular")).map((session) => session.sessionId);
+    assert.ok(stillPublic.includes(created.sessionId), "the active created session remains public");
+    for (const hiddenId of [raceCreate.session.sessionId, retryCreate.session.sessionId, staleSession.session.sessionId]) {
+      assert.equal(stillPublic.includes(hiddenId), false, "cancelled sessions are removed from public listings");
+    }
     await env.db.query("UPDATE game_instances SET status='archived',public_visible=false WHERE instance_id='regular'");
     assert.deepEqual(await service.listPublicSessions("regular"), []);
     const audit = await env.db.query("SELECT action FROM ticket_reservation_audit WHERE session_id=$1 ORDER BY event_id", [created.sessionId]);
@@ -287,19 +339,158 @@ test("confirmed reservations bind once to the correct waiting room and lock its 
     assert.equal((await env.db.query("SELECT 1 FROM room_members WHERE room_code=$1 AND player_id=$2", [bumperRoom.roomId, joined.playerId])).rowCount, 0);
 
     const lifecycleRoom = await controller.createRoom({ name: "Closing booking room", socketId: "lifecycle-host", instanceId: "regular" });
-    const lifecycleSession = await service.createSession({ instanceId: "regular", actor: "owner", title: "Lifecycle game", startsAt: future(80), bookingOpensAt: future(-2), bookingClosesAt: future(75), capacity: 4, roomCode: lifecycleRoom.roomId });
+    const lifecycleSession = await service.createSession({ instanceId: "regular", actor: "owner", title: "Lifecycle game", startsAt: future(80), bookingOpensAt: future(-2), bookingClosesAt: future(75), capacity: 4, roomCode: lifecycleRoom.roomId, inventoryMode: "numbered" });
+    const generated = await service.generateInventory({ instanceId: "regular", sessionId: lifecycleSession.session.sessionId, requestedCount: 4, actor: { type: "owner", label: "owner" }, idempotencyKey: "latejoin-regular-v1" });
+    assert.equal(generated.generatedCount, 4);
     await service.updateSession({ instanceId: "regular", sessionId: lifecycleSession.session.sessionId, actor: "owner", patch: { status: "open" } });
-    const lifecycleReservation = await service.reserve({ sessionId: lifecycleSession.session.sessionId, displayName: "Waiting Guest", ticketCount: 1 });
+    const publicCatalog = await service.listPublicTicketCatalog({ sessionId: lifecycleSession.session.sessionId, page: 1, pageSize: 4, status: "available" });
+    assert.equal(publicCatalog.tickets.length, 4);
+    const selectedTicket = publicCatalog.tickets[0];
+    const lifecycleReservation = await service.reserve({ sessionId: lifecycleSession.session.sessionId, displayName: "Waiting Guest", ticketCount: 1, ticketIds: [selectedTicket.ticketId] });
     await service.lookupOrTransition({ reservationId: lifecycleReservation.reservation.reservationId, bookingToken: lifecycleReservation.reservation.bookingToken, action: "confirm" });
     const lifecycleGame = registry.get(lifecycleRoom.roomId);
     assert.equal((await controller.start({ room: lifecycleGame, auth: { hostToken: lifecycleGame.hostCredential() } })).ok, true);
-    assert.equal((await env.db.query("SELECT status FROM game_sessions WHERE session_id=$1", [lifecycleSession.session.sessionId])).rows[0].status, "completed");
-    assert.equal((await env.db.query("SELECT status FROM ticket_reservations WHERE reservation_id=$1", [lifecycleReservation.reservation.reservationId])).rows[0].status, "cancelled");
-    assert.equal((await service.getPublicSession(lifecycleSession.session.sessionId)), null, "starting the room removes its session from public availability");
+    assert.equal((await env.db.query("SELECT status FROM game_sessions WHERE session_id=$1", [lifecycleSession.session.sessionId])).rows[0].status, "open");
+    assert.equal((await env.db.query("SELECT status FROM ticket_reservations WHERE reservation_id=$1", [lifecycleReservation.reservation.reservationId])).rows[0].status, "confirmed");
+    const lateJoined = await controller.joinRoom({ roomId: lifecycleRoom.roomId, name: "Waiting Guest", socketId: "late-booked-player", instanceSlug: "regular", reservationId: lifecycleReservation.reservation.reservationId, bookingToken: lifecycleReservation.reservation.bookingToken });
+    assert.equal(lateJoined.ok, true, JSON.stringify(lateJoined));
+    assert.equal(lateJoined.state, "RUNNING");
+    assert.equal(lateJoined.snapshot.tickets.length, 1);
+    assert.deepEqual(lateJoined.snapshot.tickets[0].grid, selectedTicket.grid, "the selected numbered ticket is visible to the late player");
+    const persistedTicket = await env.db.query("SELECT t.inventory_ticket_id,t.grid FROM tickets t WHERE t.room_code=$1 AND t.game_number=1 AND t.player_id=$2", [lifecycleRoom.roomId, lateJoined.playerId]);
+    assert.equal(persistedTicket.rowCount, 1, "the late booked ticket is written to the already-running game");
+    assert.equal(persistedTicket.rows[0].inventory_ticket_id, selectedTicket.ticketId, "the live game retains the exact inventory identity");
+    assert.deepEqual(persistedTicket.rows[0].grid, selectedTicket.grid, "the durable game ticket matches the issued catalog grid");
+    const recoveredLateJoin = await env.newProcess({ autoCall: false }).controller.resume({ roomId: lifecycleRoom.roomId, sessionToken: lateJoined.sessionToken, socketId: "late-booked-reconnect" });
+    assert.equal(recoveredLateJoin.ok, true);
+    assert.equal(recoveredLateJoin.snapshot.tickets.length, 1, "numbered ticket assignment survives process reload and reconnect");
+    assert.deepEqual(recoveredLateJoin.snapshot.tickets[0].grid, selectedTicket.grid);
+    assert.equal((await service.getPublicSession(lifecycleSession.session.sessionId)).bookingStatus, "closed", "a running game remains visible while ticket sales close");
+    assert.equal((await service.reserve({ sessionId: lifecycleSession.session.sessionId, displayName: "Late Booker", ticketCount: 1, ticketIds: [publicCatalog.tickets[1].ticketId] })).error, "BOOKING_CLOSED", "starting the room closes new reservations while existing confirmed bookings remain joinable");
     const lifecycleAudit = await env.db.query("SELECT action,metadata->>'reason' AS reason FROM ticket_reservation_audit WHERE session_id=$1 ORDER BY event_id", [lifecycleSession.session.sessionId]);
-    assert.ok(lifecycleAudit.rows.some((event) => event.action === "hold.cancel" && event.reason === "room-started"));
+    assert.ok(lifecycleAudit.rows.some((event) => event.action === "hold.assign"));
+    assert.equal(lifecycleAudit.rows.some((event) => event.action === "hold.cancel" && event.reason === "room-started"), false, "a confirmed booking survives game start");
   } finally {
     for (const roomId of registry.rooms.keys()) registry.close(roomId, "test finished");
+    await env.close();
+  }
+});
+
+test("winning patterns and reward points persist independently per scheduled session", { skip: !HAS_DB }, async () => {
+  const env = await openDurableSchema({ prefix: "session_rules" });
+  const process = env.newProcess();
+  let coldProcess = null;
+  const service = createBookingService({ db: env.db });
+  const future = (minutes) => new Date(Date.now() + minutes * 60_000).toISOString();
+  try {
+    const rooms = await Promise.all([
+      process.controller.createRoom({ name: "Rules Host A", socketId: "rules-host-a", instanceId: "regular" }),
+      process.controller.createRoom({ name: "Rules Host B", socketId: "rules-host-b", instanceId: "regular" }),
+    ]);
+    const rulesA = [{ id: "earlyFive", points: 80 }, { id: "fullHouse", points: 250 }];
+    const rulesB = [{ id: "topLine", points: 5 }];
+    const create = (title, roomCode, winningPatterns) => service.createSession({
+      instanceId: "regular", actor: "owner-test", title, startsAt: future(90), bookingOpensAt: future(-1), bookingClosesAt: future(80), capacity: 10, roomCode, winningPatterns,
+    });
+    const a = await create("Rule set A", rooms[0].roomId, rulesA);
+    const b = await create("Rule set B", rooms[1].roomId, rulesB);
+    assert.equal(a.error, undefined); assert.equal(b.error, undefined);
+    for (const [roomCode, session] of [[rooms[0].roomId, a.session], [rooms[1].roomId, b.session]]) {
+      assert.deepEqual(await process.controller.configureSessionPatterns({ roomId: roomCode, winningPatterns: session.winningPatterns }), { ok: true });
+    }
+    const roomA = process.registry.get(rooms[0].roomId);
+    const roomB = process.registry.get(rooms[1].roomId);
+    assert.deepEqual(roomA.stateView().enabledPatterns, ["earlyFive", "fullHouse"]);
+    assert.equal(roomA.config.patternPoints.earlyFive, 80);
+    assert.deepEqual(roomB.stateView().enabledPatterns, ["topLine"]);
+    assert.equal(roomB.config.patternPoints.topLine, 5);
+    coldProcess = env.newProcess();
+    const recoveredRoom = await coldProcess.controller.ensureRoom({ roomId: rooms[0].roomId });
+    assert.equal(recoveredRoom.ok, true);
+    assert.deepEqual(recoveredRoom.room.stateView().enabledPatterns, ["earlyFive", "fullHouse"]);
+    assert.equal(recoveredRoom.room.config.patternPoints.earlyFive, 80, "the reward survives a cold process rebuild");
+    const durable = await env.db.query("SELECT winning_patterns FROM game_sessions WHERE session_id = ANY($1::uuid[]) ORDER BY title", [[a.session.sessionId, b.session.sessionId]]);
+    assert.deepEqual(durable.rows.map((row) => row.winning_patterns), [{ earlyFive: 80, fullHouse: 250 }, { topLine: 5 }]);
+    roomA.start({ socketId: "rules-host-a" });
+    const locked = await process.controller.configureSessionPatterns({ roomId: rooms[0].roomId, winningPatterns: rulesB });
+    assert.equal(locked.code, "WINNING_PATTERNS_LOCKED");
+  } finally {
+    for (const roomId of process.registry.rooms.keys()) process.registry.close(roomId, "test finished");
+    for (const roomId of coldProcess?.registry.rooms.keys() || []) coldProcess.registry.close(roomId, "test finished");
+    await env.close();
+  }
+});
+
+test("owner session creation provisions and binds a generated room on the selected instance", { skip: !HAS_DB }, async () => {
+  const env = await openDurableSchema({ prefix: "managed_session" });
+  const process = env.newProcess();
+  const token = "c".repeat(64);
+  const app = express();
+  app.use("/api/admin", createAdminBookingRouter({
+    db: env.db, controller: process.controller,
+    ownerSessions: { async verify() { return { ok: true, ownerId: "owner-test", sessionId: "session-test" }; } },
+    ownerStore: { async getById() { return { ownerId: "owner-test", username: "owner", role: "super_admin" }; } },
+    throttle: { adminMutation: { async check() { return { allowed: true }; }, async recordFailure() { return {}; } } },
+  }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const headers = { cookie: `tambola_owner=${token}; tambola_csrf=${"d".repeat(48)}`, "x-csrf-token": "d".repeat(48), "content-type": "application/json" };
+  try {
+    const response = await fetch(`${base}/api/admin/instances/regular/sessions`, {
+      method: "POST", headers, body: JSON.stringify({
+        title: "Owner game", startsAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+        bookingOpensAt: new Date(Date.now() - 60_000).toISOString(), bookingClosesAt: new Date(Date.now() + 50 * 60_000).toISOString(),
+        capacity: 6, inventoryMode: "numbered", createRoom: true,
+        winningPatterns: [{ id: "topLine", points: 11 }, { id: "fullHouse", points: 90 }],
+      }),
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.match(body.session.roomCode, /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6,12}$/);
+    assert.equal(body.roomCode, body.session.roomCode);
+    const stored = await env.db.query(`SELECT s.instance_id,s.room_code,r.game_instance_id,r.config
+      FROM game_sessions s JOIN rooms r ON r.room_code=s.room_code WHERE s.session_id=$1`, [body.session.sessionId]);
+    assert.equal(stored.rows[0].instance_id, "regular");
+    assert.equal(stored.rows[0].game_instance_id, "regular");
+    assert.deepEqual(stored.rows[0].config.patterns, { earlyFive: false, topLine: true, middleLine: false, bottomLine: false, corners: false, fullHouse: true, earlySeven: false, star: false, box: false, secondFullHouse: false, halfSheet: false });
+    assert.deepEqual(stored.rows[0].config.patternPoints, { topLine: 11, fullHouse: 90 });
+    assert.equal((await env.db.query("SELECT count(*)::int AS n FROM rooms WHERE room_code=$1", [body.roomCode])).rows[0].n, 1);
+  } finally {
+    server.close();
+    for (const roomId of process.registry.rooms.keys()) process.registry.close(roomId, "test finished");
+    await env.close();
+  }
+});
+
+test("public player waiting room receives a timezone-aware server schedule without private booking data", { skip: !HAS_DB }, async () => {
+  const env = await openDurableSchema({ prefix: "player_schedule" });
+  const process = env.newProcess();
+  const service = createBookingService({ db: env.db });
+  try {
+    const room = await process.controller.createRoom({ name: "Schedule Host", socketId: "schedule-host", instanceId: "regular" });
+    const future = (minutes) => new Date(Date.now() + minutes * 60_000).toISOString();
+    const created = await service.createSession({ instanceId: "regular", actor: "owner-test", title: "IST schedule", startsAt: future(30), bookingOpensAt: future(-1), bookingClosesAt: future(25), capacity: 4, roomCode: room.roomId, timeZone: "Asia/Kolkata" });
+    await service.updateSession({ instanceId: "regular", sessionId: created.session.sessionId, actor: "owner-test", patch: { status: "open" } });
+    const publicSession = await service.getPublicSessionForRoom(room.roomId);
+    assert.equal(publicSession.sessionId, created.session.sessionId);
+    assert.equal(publicSession.timeZone, "Asia/Kolkata");
+    assert.equal(publicSession.autoStartEnabled, false);
+    assert.match(publicSession.serverTime, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(Object.hasOwn(publicSession, "roomCode"), false);
+    assert.equal(Object.hasOwn(publicSession, "bookingToken"), false);
+    assert.equal(Object.hasOwn(publicSession, "winningPatterns"), false);
+
+    const cancelled = await service.updateSession({ instanceId: "regular", sessionId: created.session.sessionId, actor: "owner-test", patch: { status: "cancelled" } });
+    assert.equal(cancelled.session.status, "cancelled");
+    assert.equal((await service.getPublicSessionForRoom(room.roomId)).status, "cancelled", "a previously published cancellation remains visible to room visitors");
+    const completedRoom = await process.controller.createRoom({ name: "Completed Host", socketId: "completed-host", instanceId: "regular" });
+    const completedSession = await service.createSession({ instanceId: "regular", actor: "owner-test", title: "Completed schedule", startsAt: future(30), bookingOpensAt: future(-1), bookingClosesAt: future(25), capacity: 4, roomCode: completedRoom.roomId });
+    await service.updateSession({ instanceId: "regular", sessionId: completedSession.session.sessionId, actor: "owner-test", patch: { status: "open" } });
+    await service.updateSession({ instanceId: "regular", sessionId: completedSession.session.sessionId, actor: "owner-test", patch: { status: "completed" } });
+    assert.equal((await service.getPublicSessionForRoom(completedRoom.roomId)).status, "completed", "a completed published session remains visible to room visitors");
+  } finally {
+    for (const roomId of process.registry.rooms.keys()) process.registry.close(roomId, "test finished");
     await env.close();
   }
 });

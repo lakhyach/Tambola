@@ -64,7 +64,7 @@ function normalise(args) {
 /** Session codes that mean the browser's saved credential is dead, full stop. */
 const SESSION_DEAD = new Set(["SESSION_INVALID", "SESSION_REVOKED", "SESSION_EXPIRED", "SESSION_ROTATED"]);
 
-export function registerGameHandlers(io, { rooms, controller, log = () => {}, limits = {}, db = null, moderatorAuth = null, sarvamTts = null, allowPublicHosting = false } = {}) {
+export function registerGameHandlers(io, { rooms, controller, log = () => {}, limits = {}, db = null, moderatorAuth = null, sarvamTts = null, allowPublicHosting = false, bookingRealtime = null } = {}) {
   io.on("connection", (socket) => {
     socket.data.session = null;
     const moderatorTicket = socket.handshake && socket.handshake.auth && socket.handshake.auth.moderatorTicket;
@@ -73,6 +73,40 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
     socket.data.moderatorReady = moderatorReady;
     const budget = createBudget({ burst: limits.burst ?? 40, perSecond: limits.perSecond ?? 20 });
     const voiceBudget = createBudget({ burst: 4, perSecond: 1 });
+
+    socket.on("admin:booking-subscribe", (payload, ack) => {
+      if (!budget()) return rejected(ack, ErrorCodes.RATE_LIMITED, "too many events, slow down");
+      if (socket.data.moderatorSocket || typeof payload?.ticket !== "string" || !bookingRealtime) {
+        return rejected(ack, "NOT_ALLOWED", "an authorized admin subscription is required");
+      }
+      const authorized = bookingRealtime.consume(payload.ticket);
+      if (!authorized) return rejected(ack, "NOT_ALLOWED", "the admin subscription has expired");
+      const subscriptions = socket.data.bookingSubscriptions || (socket.data.bookingSubscriptions = new Map());
+      const room = bookingRealtime.room(authorized.instanceId);
+      clearTimeout(subscriptions.get(authorized.instanceId));
+      const expiry = setTimeout(() => {
+        socket.leave(room);
+        subscriptions.delete(authorized.instanceId);
+      }, 120_000);
+      expiry.unref?.();
+      subscriptions.set(authorized.instanceId, expiry);
+      socket.data.bookingAdminSession = authorized.ownerSessionId;
+      socket.join(room);
+      reply(ack, { ok: true });
+    });
+
+    socket.on("admin:booking-unsubscribe", (payload) => {
+      const subscriptions = socket.data.bookingSubscriptions;
+      const instanceId = typeof payload?.instanceId === "string" ? payload.instanceId : "";
+      if (!subscriptions?.has(instanceId) || !bookingRealtime) return;
+      clearTimeout(subscriptions.get(instanceId));
+      subscriptions.delete(instanceId);
+      socket.leave(bookingRealtime.room(instanceId));
+    });
+    socket.on("disconnect", () => {
+      for (const timer of socket.data.bookingSubscriptions?.values() || []) clearTimeout(timer);
+      socket.data.bookingSubscriptions?.clear();
+    });
 
     /**
      * Wrap a handler: budget check, payload shape check, then the handler gets
@@ -170,6 +204,14 @@ export function registerGameHandlers(io, { rooms, controller, log = () => {}, li
         ...(bookingCredentialsValid ? { reservationId: rawReservationId, bookingToken: rawBookingToken.toLowerCase() } : {}),
       });
       if (!joined.ok) return reply(ack, joined);
+      if (bookingCredentialsValid && db && bookingRealtime) {
+        try {
+          const booking = await db.query(`SELECT s.instance_id,s.session_id FROM ticket_reservations r
+            JOIN game_sessions s ON s.session_id=r.session_id WHERE r.reservation_id=$1 AND s.room_code=$2`, [rawReservationId, roomId]);
+          const target = booking.rows[0];
+          if (target) io.to(bookingRealtime.room(target.instance_id)).emit("admin:booking-changed", { instanceId: target.instance_id, sessionId: target.session_id });
+        } catch { /* the committed booking remains available through admin refresh/reconciliation */ }
+      }
       socket.join(roomId);
       socket.data.session = {
         roomId,

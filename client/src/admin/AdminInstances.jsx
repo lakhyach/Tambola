@@ -15,6 +15,10 @@ export default function AdminInstances() {
   const [form, setForm] = useState({ displayName: "", slug: "", description: "" });
   const [appearance, setAppearance] = useState({});
 
+function agentContactsFromText(text) {
+  return text.split(/\r?\n/).map((line) => line.split("|").map((part) => part.trim())).filter(([name, phone]) => name && phone).slice(0, 10).map(([name, phone]) => ({ name, phone }));
+}
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -75,6 +79,14 @@ export default function AdminInstances() {
             <label>Logo<select value={appearance[instance.instance_id]?.branding.logo || ""} onChange={event => patchBranding(instance.instance_id, { logo: event.target.value })}><option value="">Use platform mark</option><option value="tambola-house-mark.svg">{platformBranding.name} mark</option><option value="tambola-house-lockup.svg">{platformBranding.name} horizontal lockup</option><option value="regular-mark.svg">Regular instance mark</option><option value="bumper-mark.svg">Bumper instance mark</option></select></label>
             <label>Browser icon<select value={appearance[instance.instance_id]?.branding.icon || ""} onChange={event => patchBranding(instance.instance_id, { icon: event.target.value })}><option value="">Use logo / platform icon</option><option value="tambola-house-icon.svg">{platformBranding.name} app icon</option><option value="regular-mark.svg">Regular instance mark</option><option value="bumper-mark.svg">Bumper instance mark</option></select></label>
             <label>Tagline<input maxLength={100} value={appearance[instance.instance_id]?.branding.tagline || ""} onChange={event => patchBranding(instance.instance_id, { tagline: event.target.value })} /></label>
+            <fieldset className="adm-instance-defaults"><legend>Public host and agent contacts</legend>
+              <label>Host name<input maxLength={60} value={appearance[instance.instance_id]?.branding.contacts?.hostName || ""} onChange={event => patchBranding(instance.instance_id, { contacts: { ...(appearance[instance.instance_id]?.branding.contacts || {}), hostName: event.target.value } })} /></label>
+              <label>Host phone<input type="tel" maxLength={20} placeholder="+91 98765 43210" value={appearance[instance.instance_id]?.branding.contacts?.hostPhone || ""} onChange={event => patchBranding(instance.instance_id, { contacts: { ...(appearance[instance.instance_id]?.branding.contacts || {}), hostPhone: event.target.value } })} /></label>
+              <label>WhatsApp phone<input type="tel" maxLength={20} placeholder="+91 98765 43210" value={appearance[instance.instance_id]?.branding.contacts?.hostWhatsapp || ""} onChange={event => patchBranding(instance.instance_id, { contacts: { ...(appearance[instance.instance_id]?.branding.contacts || {}), hostWhatsapp: event.target.value } })} /></label>
+              <label>Host email<input type="email" maxLength={120} value={appearance[instance.instance_id]?.branding.contacts?.hostEmail || ""} onChange={event => patchBranding(instance.instance_id, { contacts: { ...(appearance[instance.instance_id]?.branding.contacts || {}), hostEmail: event.target.value } })} /></label>
+              <label>Agents (one per line: name | phone)<textarea rows={4} maxLength={1000} value={(appearance[instance.instance_id]?.branding.contacts?.agents || []).map(agent => `${agent.name} | ${agent.phone}`).join("\n")} onChange={event => patchBranding(instance.instance_id, { contacts: { ...(appearance[instance.instance_id]?.branding.contacts || {}), agents: agentContactsFromText(event.target.value) } })} /></label>
+              <p className="adm-sub">Only details entered here appear on public game pages. These contact details are visible to anyone with the game link.</p>
+            </fieldset>
             <div className="adm-instance-colors">{[["accent","Primary"],["accentBright","Bright"],["accentDeep","Deep"],["coral","Highlight"]].map(([key,label]) => <label key={key}>{label}<input type="color" value={appearance[instance.instance_id]?.branding[key] || "#42c98a"} onChange={event => patchBranding(instance.instance_id, { [key]: event.target.value })} /></label>)}</div>
             <label className="adm-instance-public"><input type="checkbox" checked={appearance[instance.instance_id]?.publicVisible ?? false} onChange={event => patchAppearance(instance.instance_id, { publicVisible: event.target.checked })} /> Show in public hall directory</label>
             <fieldset className="adm-instance-defaults">
