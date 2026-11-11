@@ -288,7 +288,8 @@ export function createAdminQueries({ db } = {}) {
         [roomId, currentGame]
       ),
       db.query(
-        `SELECT c.claim_id, c.game_number, c.player_id, c.pattern, c.status, c.reason, c.call_index, c.decided_at, p.display_name
+        `SELECT c.claim_id, c.game_number, c.player_id, c.pattern, c.status, c.reason, c.call_index, c.decided_at, p.display_name,
+                (SELECT a.ticket_no FROM awards a WHERE a.room_code=c.room_code AND a.game_number=c.game_number AND a.player_id=c.player_id AND a.pattern=c.pattern ORDER BY a.award_id LIMIT 1) AS ticket_no
            FROM claims c JOIN players p ON p.player_id = c.player_id
           WHERE c.room_code = $1 ORDER BY c.claim_id`,
         [roomId]
@@ -336,6 +337,7 @@ export function createAdminQueries({ db } = {}) {
         gameNumber: c.game_number,
         playerId: c.player_id,
         displayName: c.display_name,
+        ticketNo: c.ticket_no ?? null,
         pattern: c.pattern,
         status: c.status,
         reason: c.reason,

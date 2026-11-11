@@ -211,6 +211,7 @@ export default function AdminGames() {
               disabled={creating}
             />
             <span>Call numbers automatically once the round starts</span>
+            <small>Publishing a session opens bookings. The host starts the round separately, unless scheduled auto-start is enabled.</small>
           </label>
 
           {formError ? <ErrorNote title="The room was not created" error={formError} /> : null}
