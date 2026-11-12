@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Header from "./Header";
+import GameJourney from "./components/GameJourney.jsx";
 import { usePlatformBranding } from "./platform-branding.js";
 import { PATTERN_CATALOG, PATTERN_TICKET, getPatternDisplayCells, getPatternDisplayNote } from "./pattern-display.js";
 import "./landing-festival.css";
@@ -119,8 +120,9 @@ function Landing() {
           <h1 id="festival-hero-title" className="fest-display">{brand.name}</h1>
           <p className="fest-hero__subtitle">A little sparkle. A lot of good company. Your next Tambola night starts here.</p>
           <div className="fest-hero__actions">
-            <Link className="fest-button fest-button--play" to="/games"><span aria-hidden="true">✦</span> Play Now</Link>
-            <Link className="fest-button fest-button--pink" to="/games">Book a Seat</Link>
+            <Link className="fest-button fest-button--play" to="/host"><span aria-hidden="true">✦</span> Host a game</Link>
+            <Link className="fest-button fest-button--pink" to="/player">Join a game</Link>
+            <Link className="fest-button fest-button--quiet" to="/games">Browse tickets</Link>
           </div>
           <p className="fest-hero__promise"><span>FREE TO PLAY</span><i /> No purchases · No wagers · No cash prizes</p>
         </div>
@@ -146,7 +148,7 @@ function Landing() {
 
       <section className="fest-how fest-section" aria-labelledby="how-title">
         <div className="fest-how__art" aria-hidden="true"><div className="fest-orbit"><span>1</span><span>2</span><span>3</span></div><div className="fest-call-ball">90</div><div className="fest-how__sparkles">✦ <span>✧</span> ✦</div></div>
-        <div className="fest-how__copy"><p className="fest-eyebrow">EASY TO JOIN · JOYFUL TO PLAY</p><h2 id="how-title" className="fest-display">How to play</h2><ol className="fest-steps"><li><b>01</b><span><strong>Find a game</strong><small>Choose an available hall or a published session.</small></span></li><li><b>02</b><span><strong>Take your seat</strong><small>Join with the room code, or reserve through a session listing.</small></span></li><li><b>03</b><span><strong>Follow each call</strong><small>Your ticket reconnects with the room and reflects official calls.</small></span></li><li><b>04</b><span><strong>Claim when ready</strong><small>The server checks your claim against its game history.</small></span></li></ol><Link className="fest-button fest-button--gold" to="/games">Let’s play <span aria-hidden="true">→</span></Link></div>
+        <div className="fest-how__copy"><p className="fest-eyebrow">ONE CLEAR PATH · THREE SIMPLE STEPS</p><h2 id="how-title" className="fest-display">Setup. Tickets. Play.</h2><GameJourney current="setup" /><div className="fest-how__actions"><Link className="fest-button fest-button--gold" to="/host">Set up a game <span aria-hidden="true">→</span></Link><Link className="fest-text-link" to="/games">Choose a game hall</Link></div></div>
       </section>
 
       <section className="fest-pattern-section fest-section" aria-labelledby="patterns-title">

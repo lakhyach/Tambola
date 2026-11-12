@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { createTicketInventoryService } from "./inventory.js";
 import { parseScheduleInstant, validateSessionSchedule } from "./schedule-time.js";
 import { PATTERNS } from "../game/patterns.js";
+import { gameJourneyStepForSession } from "../game/journey.js";
 import { publicInstanceBranding } from "../instances/branding.js";
 import { hashPhoneForSession, normalizePhoneNumber, parsePhoneLookupKey } from "./phone-lookup.js";
 
@@ -33,6 +34,7 @@ function sessionShape(row, timestamp = Date.now()) {
         : opensAt > at ? "not_open"
           : closesAt <= at ? "closed"
             : available <= 0 ? "sold_out" : "open";
+  const gameStep = gameJourneyStepForSession({ status: row.status, gameStatus });
   return {
     sessionId: row.session_id,
     serverTime: new Date(at).toISOString(),
@@ -50,6 +52,7 @@ function sessionShape(row, timestamp = Date.now()) {
     status: row.status,
     bookingStatus,
     gameStatus,
+    gameStep,
     inventoryMode: row.inventory_mode || "legacy",
     inventoryState: row.inventory_state || "legacy",
     autoStartEnabled: Boolean(row.auto_start_enabled),

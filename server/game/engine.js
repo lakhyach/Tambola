@@ -38,6 +38,7 @@
 
 import { randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { generateTicket, validateTicket } from "./ticket.js";
+import { gameJourneyStepForRoom } from "./journey.js";
 import {
   PATTERNS,
   enabledPatternIds,
@@ -1859,6 +1860,7 @@ export class TambolaRoom {
     return {
       roomId: this.roomId,
       state: this.state,
+      gameStep: gameJourneyStepForRoom(this.state),
       calledCount: this.cursor,
       remaining: this.draw.length ? this.draw.length - this.cursor : null,
       lastCall: this.calledNumbers.length ? this.calledNumbers[this.calledNumbers.length - 1] : null,

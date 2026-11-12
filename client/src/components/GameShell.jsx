@@ -23,6 +23,7 @@ import { callAnnouncement } from "../lib/ticketview.js";
 import { bookingClaimNote, bookingCopy, formatBookingNumber, useBookingLanguage } from "../i18n/booking-locale.js";
 import PublicBack from "./PublicBack.jsx";
 import TambolaTicket from "./TambolaTicket.jsx";
+import GameJourney from "./GameJourney.jsx";
 
 /** Ticket absence has two real meanings; neither should produce a fake grid. */
 const TicketNotice = ({ spectator, language }) => (
@@ -40,7 +41,7 @@ const GameShell = ({ role, view, sessionResumeCount }) => {
   const [finderResults, setFinderResults] = useState([]);
   const [finderMessage, setFinderMessage] = useState("");
   const [finderBusy, setFinderBusy] = useState(false);
-  if (role === "host") return <CallerConsole view={view} />;
+  if (role === "host") return <div className="caller-game-flow"><GameJourney current={view.gameStep || "play"} compact /><CallerConsole view={view} /></div>;
 
   const tickets = view.tickets || [];
   const panel = ticketPanel({ state: view.state, sheets: tickets });
@@ -68,6 +69,7 @@ const GameShell = ({ role, view, sessionResumeCount }) => {
       <GameHeader roomId={view.roomId} state={view.state} playerCount={view.players.length} language={language} sound={view.sound} onToggleSound={view.onToggleSound} onToggleSpeech={view.onToggleSpeech} onToggleSpeechLang={view.onToggleSpeechLang} />
       <main id="main-content" tabIndex="-1" className="player-game-main">
         <PublicBack to="/player/room">← Back to room</PublicBack>
+        <GameJourney current={view.gameStep || "play"} language={language} compact />
         {view.scheduledSession ? (() => {
           const session = view.scheduledSession;
           const startsAt = Date.parse(session.startsAt);

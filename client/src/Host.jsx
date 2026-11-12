@@ -7,6 +7,7 @@ import Panel from "./components/Panel.jsx";
 import Button from "./components/Button.jsx";
 import ConnectionIndicator from "./components/ConnectionIndicator.jsx";
 import BookingLanguageSelect from "./i18n/BookingLanguageSelect.jsx";
+import GameJourney from "./components/GameJourney.jsx";
 import { bookingCopy, bookingRefusalText, setBookingLanguage, useBookingLanguage } from "./i18n/booking-locale.js";
 import "./host-screen.css";
 
@@ -83,6 +84,7 @@ const Host = () => {
       <main id="main-content" lang={language === "hi" ? "hi" : "en"} tabIndex="-1" className="flex-1 flex items-center justify-center festival-host-screen festival-host-screen--start" style={{ padding: 20 }}>
         <Panel className="p-6 sm:p-8 festival-host-card" style={{ width: "100%", maxWidth: 480 }}>
           <div className="flex justify-end mb-4"><BookingLanguageSelect language={language} onChange={setBookingLanguage} /></div>
+          <GameJourney current="setup" language={language} />
           <h1 className="oh-display" style={{ fontSize: 30, margin: "0 0 4px" }}>
             {t("hostOpenTitle")}
           </h1>

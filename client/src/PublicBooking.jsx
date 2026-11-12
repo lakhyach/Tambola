@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import Header from "./Header.jsx";
 import PublicBack from "./components/PublicBack.jsx";
+import GameJourney from "./components/GameJourney.jsx";
 import BookingLanguageSelect from "./i18n/BookingLanguageSelect.jsx";
 import TambolaTicket from "./components/TambolaTicket.jsx";
 import { bookingCopy, bookingRefusalText, bookingStatus, formatBookingDate, formatBookingNumber, setBookingLanguage, useBookingLanguage } from "./i18n/booking-locale.js";
@@ -318,6 +319,7 @@ export default function PublicBooking() {
       <Header />
       <main id="main-content" lang={language === "hi" ? "hi" : "en"} tabIndex="-1" className="public-container booking-page">
         <div className="booking-topbar"><PublicBack to={activeSession ? `/games/${encodeURIComponent(activeSession.instanceSlug)}/sessions` : "/games"}>← {t("allSessions")}</PublicBack><BookingLanguageSelect language={language} onChange={setBookingLanguage} /></div>
+        <GameJourney current="tickets" language={language} />
         {loadState === "loading" || (loadState === "ready" && !activeSession) ? <p className="booking-notice" role="status">{t("loadingSession")}</p> : null}
         {loadState === "error" ? (
           <section className="booking-empty" role="alert">
