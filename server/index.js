@@ -58,6 +58,7 @@ import { createAdmin } from "./admin/index.js";
 import { mfaKeyFromEnv } from "./admin/mfa.js";
 import { createModeratorRouter } from "./moderator/routes.js";
 import { createAdminBookingRouter, createPublicBookingRouter } from "./bookings/routes.js";
+import { createBookingRealtime } from "./bookings/realtime.js";
 import { createPublicThemeRouter } from "./themes/routes.js";
 import { createPublicPosterRouter } from "./posters/routes.js";
 import { publicPlatformManifest } from "./branding/platform.js";
@@ -296,6 +297,7 @@ export async function createApp(options = {}) {
       return callback(new Error("origin not allowed"), false);
     },
   });
+  const bookingRealtime = createBookingRealtime();
 
   // --------------------------------------------------------------- wiring
 
@@ -537,7 +539,7 @@ export async function createApp(options = {}) {
     } catch (error) { next(error); }
   });
   if (durable && persistence.db) {
-    app.use("/api/public", createPublicBookingRouter({ db: persistence.db }));
+    app.use("/api/public", createPublicBookingRouter({ db: persistence.db, io, bookingRealtime }));
     app.use("/api/public", createPublicThemeRouter({ service: admin.themeService }));
     app.use("/api/public", createPublicPosterRouter({ service: admin.posterService }));
     app.use("/api/admin", createAdminBookingRouter({
@@ -547,6 +549,10 @@ export async function createApp(options = {}) {
       throttle: admin.throttle,
       audit: admin.audit,
       requireMfa: production,
+      controller,
+      io,
+      bookingRealtime,
+      posterService: admin.posterService,
     }));
   } else {
     app.use("/api/public", (_req, res) => res.status(503).json({ ok: false, code: "DURABLE_REQUIRED", error: "scheduled bookings require PostgreSQL" }));
@@ -636,7 +642,10 @@ export async function createApp(options = {}) {
       voices: status.voices || SARVAM_VOICE_CATALOG,
     });
   });
-  registerGameHandlers(io, { rooms: registry, controller, log, limits: options.limits, db: persistence.db, moderatorAuth: moderatorService?.auth || null, sarvamTts, allowPublicHosting: options.allowPublicHosting === true });
+  // Arbitrary public-host room creation is a development/demo convenience only.
+  // Production room creation always goes through the owner or permissioned
+  // moderator management APIs, regardless of a stale opt-in flag.
+  registerGameHandlers(io, { rooms: registry, controller, log, limits: options.limits, db: persistence.db, moderatorAuth: moderatorService?.auth || null, sarvamTts, allowPublicHosting: !production && options.allowPublicHosting === true, bookingRealtime });
 
   // ---------------------------------------------------- web client + fallbacks
   // Registered AFTER the admin API so /api/admin/* is never swallowed by the

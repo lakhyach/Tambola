@@ -200,6 +200,15 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
     }
   }
   const storedAwards = bundle.awards || [];
+  const awardTicketIdentity = (award) => {
+    const owned = ticketsByPlayer.get(award.player_id) || [];
+    const ticketNos = Array.isArray(award.ticket_nos) ? award.ticket_nos :
+      (Number.isInteger(award.ticket_no) ? [award.ticket_no] : []);
+    const serials = ticketNos.map((no) => owned.find((ticket) => ticket.no === no)?.serial);
+    return serials.length && serials.every((serial) => typeof serial === "string")
+      ? { ...(ticketNos.length === 1 ? { ticketSerial: serials[0] } : {}), ticketSerials: serials }
+      : {};
+  };
   const membersById = new Map(members.map((member) => [member.player_id, member]));
   const storedClaims = Array.isArray(bundle.claims) ? bundle.claims : null;
   const awardedClaimCounts = new Map();
@@ -331,6 +340,7 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
       playerId: award.player_id,
       ticketNo: Number.isInteger(award.ticket_no) ? award.ticket_no : null,
       ticketNos: Array.isArray(award.ticket_nos) ? award.ticket_nos.slice() : null,
+      ...awardTicketIdentity(award),
     });
   }
   const pointsByPlayer = new Map();
@@ -393,6 +403,7 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
           callIndex: award.call_index,
           ticketNo: Number.isInteger(award.ticket_no) ? award.ticket_no : null,
           ticketNos: Array.isArray(award.ticket_nos) ? award.ticket_nos.slice() : null,
+          ...awardTicketIdentity(award),
           ordinal: Number.isInteger(award.winner_ordinal) ? award.winner_ordinal : null,
           at: asMillis(award.awarded_at),
         })),
@@ -459,6 +470,7 @@ export function buildHydrationSource(bundle, { log = () => {} } = {}) {
       // as "unknown" rather than inventing ticket 1 or ordinal 1.
       ticketNo: Number.isInteger(award.ticket_no) ? award.ticket_no : null,
       ticketNos: Array.isArray(award.ticket_nos) ? award.ticket_nos.slice() : null,
+      ...awardTicketIdentity(award),
       ordinal: Number.isInteger(award.winner_ordinal) ? award.winner_ordinal : null,
       at: asMillis(award.awarded_at),
     })),

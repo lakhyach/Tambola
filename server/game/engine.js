@@ -427,6 +427,8 @@ export class TambolaRoom {
         // took the first one) would silently start disagreeing with itself.
         ticketNo: Number.isInteger(award.ticketNo) ? award.ticketNo : null,
         ticketNos: Array.isArray(award.ticketNos) ? award.ticketNos.slice() : null,
+        ...(typeof award.ticketSerial === "string" ? { ticketSerial: award.ticketSerial } : {}),
+        ...(Array.isArray(award.ticketSerials) ? { ticketSerials: award.ticketSerials.slice() } : {}),
         ordinal: Number.isInteger(award.ordinal) ? award.ordinal : winners.length + 1,
         callIndex: award.callIndex,
         at: award.at,
@@ -681,7 +683,8 @@ export class TambolaRoom {
   lockTicketCount({ playerId, count } = {}) {
     const player = this.players.get(playerId);
     if (!player) return fail(ErrorCodes.NOT_PLAYER, "you are not a participant of this room");
-    if (this.state !== GameState.WAITING) return fail(ErrorCodes.INVALID_STATE, "ticket selection is locked once the game has started", { state: this.state });
+    const lateBookedSeat = [GameState.RUNNING, GameState.PAUSED].includes(this.state) && !player.tickets.length && !player.ticketSelectionLocked;
+    if (this.state !== GameState.WAITING && !lateBookedSeat) return fail(ErrorCodes.INVALID_STATE, "ticket selection is locked once the game has started", { state: this.state });
     const ceiling = this.ticketCeiling(player.id);
     if (!Number.isInteger(count) || count < TICKET_MIN || count > ceiling) {
       return fail(ErrorCodes.TICKET_LIMIT, "the confirmed reservation exceeds the remaining room ticket capacity", { max: ceiling });
@@ -708,7 +711,8 @@ export class TambolaRoom {
     if (playerToken !== undefined && player.token !== playerToken) {
       return fail(ErrorCodes.NOT_PLAYER, "bad player credential");
     }
-    if (this.state !== GameState.WAITING) {
+    const lateBookedSeat = [GameState.RUNNING, GameState.PAUSED].includes(this.state) && player.ticketSelectionLocked && !player.tickets.length;
+    if (this.state !== GameState.WAITING && !lateBookedSeat) {
       return fail(ErrorCodes.INVALID_STATE, "inventory tickets can only be assigned before the game starts", { state: this.state });
     }
     if (!Array.isArray(tickets) || tickets.length !== player.ticketCount || tickets.length < TICKET_MIN || tickets.length > this.ticketCeiling(player.id)) {
@@ -794,7 +798,8 @@ export class TambolaRoom {
     if (playerToken !== undefined && player.token !== playerToken) {
       return fail(ErrorCodes.NOT_PLAYER, "bad player credential");
     }
-    if (this.state !== GameState.WAITING) {
+    const lateBookedSeat = [GameState.RUNNING, GameState.PAUSED].includes(this.state) && player.ticketSelectionLocked && !player.tickets.length;
+    if (this.state !== GameState.WAITING && !lateBookedSeat) {
       return fail(ErrorCodes.INVALID_STATE, "ticket selection is locked once the game has started", { state: this.state });
     }
     const ceiling = this.ticketCeiling(player.id);
@@ -1638,6 +1643,12 @@ export class TambolaRoom {
         points: known.points,
         ticketNo: verdict.ticketNo,
         ticketNos: verdict.ticketNos ?? null,
+        ...(player.tickets.find((ticket) => ticket.no === verdict.ticketNo)?.serial
+          ? { ticketSerial: player.tickets.find((ticket) => ticket.no === verdict.ticketNo).serial }
+          : {}),
+        ...(Array.isArray(verdict.ticketNos) && verdict.ticketNos.every((no) => typeof player.tickets.find((ticket) => ticket.no === no)?.serial === "string")
+          ? { ticketSerials: verdict.ticketNos.map((no) => player.tickets.find((ticket) => ticket.no === no).serial) }
+          : {}),
         completedOnCall: verdict.completedOnCall ?? null,
         callIndex: this.cursor,
         claimedAt: this.now(),
@@ -1704,6 +1715,8 @@ export class TambolaRoom {
       points: known.points,
       ticketNo: prepared.ticketNo ?? null,
       ticketNos: prepared.ticketNos ?? null,
+      ...(prepared.ticketSerial ? { ticketSerial: prepared.ticketSerial } : {}),
+      ...(Array.isArray(prepared.ticketSerials) ? { ticketSerials: prepared.ticketSerials.slice() } : {}),
       // 1 for the first winner of a pattern, 2 for the next: the number the
       // prize is remembered by, and the column the database writes back
       ordinal: awarded.length + 1,
@@ -1722,6 +1735,8 @@ export class TambolaRoom {
       points: known.points,
       ticketNo: prepared.ticketNo ?? null,
       ticketNos: prepared.ticketNos ?? null,
+      ...(prepared.ticketSerial ? { ticketSerial: prepared.ticketSerial } : {}),
+      ...(Array.isArray(prepared.ticketSerials) ? { ticketSerials: prepared.ticketSerials.slice() } : {}),
       leaderboard: this.leaderboard(),
       awards: this.awardList(),
     };
@@ -1788,6 +1803,8 @@ export class TambolaRoom {
           points: winner.points,
           ticketNo: winner.ticketNo ?? null,
           ticketNos: winner.ticketNos ?? null,
+          ...(winner.ticketSerial ? { ticketSerial: winner.ticketSerial } : {}),
+          ...(Array.isArray(winner.ticketSerials) ? { ticketSerials: winner.ticketSerials.slice() } : {}),
           winnerOrdinal: winner.ordinal ?? null,
           callIndex: winner.callIndex,
         });

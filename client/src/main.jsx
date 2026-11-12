@@ -194,6 +194,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <Route path="/poster/:posterId" element={<PublicPoster />} />
           <Route path="/games/:slug" element={<PublicInstance />} />
           <Route path="/games/:slug/sessions" element={<PublicSessions />} />
+<Route path="/games/:slug/sessions/:sessionId" element={<PublicBooking />} />
           <Route path="/sessions/:sessionId" element={<PublicBooking />} />
           <Route path="/moderator/bookings" element={<ModeratorBookings />} />
           <Route path="/moderator/accept" element={<ModeratorCredential kind="accept" />} />

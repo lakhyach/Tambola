@@ -55,12 +55,13 @@ function inventoryStatus(status) {
 }
 
 export default function PublicBooking() {
-  const { sessionId = "" } = useParams();
+  const { sessionId = "", slug = "" } = useParams();
   const language = useBookingLanguage();
   const t = (key, variables) => bookingCopy(language, key, variables);
   const [session, setSession] = useState(null);
   const [loadState, setLoadState] = useState("loading");
   const [displayName, setDisplayName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [ticketCount, setTicketCount] = useState(1);
   const [hold, setHold] = useState(null);
   const [confirmed, setConfirmed] = useState(null);
@@ -79,6 +80,7 @@ export default function PublicBooking() {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState("");
   const [selectedTicketIds, setSelectedTicketIds] = useState([]);
+  const [bookingMode, setBookingMode] = useState("random");
   const [selectedTicketDetails, setSelectedTicketDetails] = useState({});
   const [clockNow, setClockNow] = useState(Date.now());
   const serverOffset = useRef(0);
@@ -100,6 +102,7 @@ export default function PublicBooking() {
     setSession(null);
     setLoadState("loading");
     setDisplayName("");
+    setPhoneNumber("");
     setTicketCount(1);
     setHold(null);
     setConfirmed(null);
@@ -110,10 +113,10 @@ export default function PublicBooking() {
     setError("");
     setMessage("");
     setCopied(false);
-    setCatalog(null); setCatalogPage(1); setCatalogSearch(""); setCatalogQuery(""); setCatalogStatus(""); setSelectedTicketIds([]); setSelectedTicketDetails({}); setCatalogError("");
+    setCatalog(null); setCatalogPage(1); setCatalogSearch(""); setCatalogQuery(""); setCatalogStatus(""); setSelectedTicketIds([]); setSelectedTicketDetails({}); setBookingMode("random"); setCatalogError("");
     call(`/api/public/sessions/${encodeURIComponent(sessionId)}`, undefined, abort.signal, language)
       .then((data) => {
-        if (!data.session) throw new Error("This session is unavailable.");
+        if (!data.session || (slug && data.session.instanceSlug !== slug)) throw new Error("This session is unavailable.");
         const serverTime = Date.parse(data.session.serverTime);
         if (Number.isFinite(serverTime)) serverOffset.current = serverTime - Date.now();
         setSession(data.session);
@@ -125,7 +128,7 @@ export default function PublicBooking() {
       abort.abort();
       if (requestSignal.current === abort) requestSignal.current = null;
     };
-  }, [language, sessionId]);
+  }, [language, sessionId, slug]);
 
   const numberedInventory = session?.sessionId === sessionId && (session?.inventoryMode === "numbered" || session?.inventory_mode === "numbered");
 
@@ -158,15 +161,20 @@ export default function PublicBooking() {
   }, [numberedInventory, reloadCatalog]);
 
   function chooseTicket(ticket) {
-    const selected = selectedTicketIds.includes(ticket.ticketId);
+    if (bookingMode !== "random" && (!ticket.sheetId || ticket.sheetPosition == null || !Number.isInteger(Number(ticket.sheetPosition)))) return;
+    const groupTickets = bookingMode === "random" ? [ticket] : (catalog?.tickets || []).filter((item) => item.sheetId === ticket.sheetId && (bookingMode === "full" || (Number(item.sheetPosition) <= 3) === (Number(ticket.sheetPosition) <= 3)));
+    const expected = bookingMode === "full" ? 6 : bookingMode === "half" ? 3 : 1;
+    if (groupTickets.length !== expected || groupTickets.some((item) => inventoryStatus(item.status) !== "available")) return;
+    const groupIds = groupTickets.map((item) => item.ticketId);
+    const selected = groupIds.every((id) => selectedTicketIds.includes(id));
     if (selected) {
-      setSelectedTicketIds((current) => current.filter((id) => id !== ticket.ticketId));
+      setSelectedTicketIds((current) => current.filter((id) => !groupIds.includes(id)));
       return;
     }
     if (inventoryStatus(ticket.status) !== "available" || busy || reservationIntent.current) return;
-    if (selectedTicketIds.length >= maxTickets) return;
-    setSelectedTicketIds((current) => [...current, ticket.ticketId]);
-    setSelectedTicketDetails((current) => ({ ...current, [ticket.ticketId]: ticket }));
+    if (selectedTicketIds.length + expected > maxTickets) return;
+    setSelectedTicketIds((current) => [...current, ...groupIds]);
+    setSelectedTicketDetails((current) => ({ ...current, ...Object.fromEntries(groupTickets.map((item) => [item.ticketId, item])) }));
   }
 
   async function createHold(event) {
@@ -185,8 +193,8 @@ export default function PublicBooking() {
         reservationIntent.current = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
       }
       const data = await call(`/api/public/sessions/${encodeURIComponent(sessionId)}/reservations`, {
-        displayName: displayName.trim(), ticketCount: numberedInventory ? selectedTicketIds.length : Number(ticketCount),
-        ...(numberedInventory ? { ticketIds: selectedTicketIds } : {}), bookingToken: reservationIntent.current,
+        displayName: displayName.trim(), ...(activeSession?.phoneLookupEnabled && phoneNumber.trim() ? { phoneNumber: phoneNumber.trim() } : {}), ticketCount: numberedInventory ? selectedTicketIds.length : Number(ticketCount),
+        ...(numberedInventory ? { ticketIds: selectedTicketIds, bookingMode } : {}), bookingToken: reservationIntent.current,
       }, activeRequest?.signal, language);
       if (activeRequest !== requestSignal.current) return;
       if (!data.reservation?.bookingToken || !data.reservation?.reservationId) throw new Error("The server did not return a reservation credential. Please try again.");
@@ -292,7 +300,7 @@ export default function PublicBooking() {
     && Date.parse(activeSession.startsAt) > clockNow);
   const sessionCapacity = Math.max(0, Number(activeSession?.ticketCapacity) || Number(activeSession?.ticketLimit) || 0);
   const maxTickets = numberedInventory
-    ? Math.min(sessionCapacity, Math.max(0, Number(activeSession?.available) || 0))
+    ? Math.min(12, sessionCapacity, Math.max(0, Number(activeSession?.available) || 0))
     : Math.min(sessionCapacity, Math.max(0, Number(activeSession?.available) || 0));
   const copyInventory = (key) => inventoryCopy[key]?.[language === "hi" ? 1 : 0] || inventoryCopy[key]?.[0] || key;
   const reservationTicketRows = (reservation) => {
@@ -334,6 +342,12 @@ export default function PublicBooking() {
                   <div><dt>{t("bookingCloses")}</dt><dd>{formatBookingDate(activeSession.bookingClosesAt, language)}</dd></div>
                   <div><dt>{t("ticketsAvailable")}</dt><dd>{formatBookingNumber(Math.max(0, Number(activeSession.available) || 0), language)} / {formatBookingNumber(Number(activeSession.capacity) || 0, language)}</dd></div>
                 </dl>
+                <div className="booking-actions"><button className="public-link-button" type="button" onClick={async () => { const gameLink = new URL(`/games/${encodeURIComponent(activeSession.instanceSlug)}/sessions/${encodeURIComponent(activeSession.sessionId)}`, window.location.origin).href; try { await navigator.clipboard.writeText(gameLink); setMessage("Shareable game link copied."); } catch { setMessage(gameLink); } }}>Copy branded game link</button></div>
+                {(activeSession.contacts?.hostName || activeSession.contacts?.hostPhone || activeSession.contacts?.hostWhatsapp || activeSession.contacts?.hostEmail || activeSession.contacts?.agents?.length) ? <aside className="booking-result"><h3>Contact host / agents</h3>
+                  {activeSession.contacts.hostName ? <p>{activeSession.contacts.hostName}</p> : null}
+                  <div className="booking-actions">{activeSession.contacts.hostPhone ? <a className="public-link-button" href={`tel:${encodeURIComponent(activeSession.contacts.hostPhone)}`}>Call host</a> : null}{activeSession.contacts.hostWhatsapp ? <a className="public-link-button" href={`https://wa.me/${activeSession.contacts.hostWhatsapp.replace(/\D/g, "")}`} target="_blank" rel="noreferrer">WhatsApp host</a> : null}{activeSession.contacts.hostEmail ? <a className="public-link-button" href={`mailto:${encodeURIComponent(activeSession.contacts.hostEmail)}`}>Email host</a> : null}</div>
+                  {activeSession.contacts.agents?.map((agent) => <p key={`${agent.name}-${agent.phone}`}>Agent {agent.name} · <a href={`tel:${encodeURIComponent(agent.phone)}`}>Call {agent.name}</a></p>)}
+                </aside> : null}
                 <p className="booking-hint">{t("bookingHint")}</p>
                 {Number(activeSession.available) < 1 ? <p className="booking-alert" role="status">{t("full")}</p> : null}
                 {!bookingOpenNow && Number(activeSession.available) > 0 ? <p className="booking-notice" role="status">{activeSession.status === "paused" ? "Bookings are paused by the game organizer." : Date.parse(activeSession.bookingOpensAt) > clockNow ? "Bookings have not opened yet." : "The booking window is closed."}</p> : null}
@@ -344,6 +358,13 @@ export default function PublicBooking() {
                 <h2 id="reserve-title">{t("chooseTickets")}</h2>
                 {numberedInventory ? <section className="booking-catalog" aria-labelledby="ticket-catalog-title">
                   <div className="booking-catalog__head"><h3 id="ticket-catalog-title">{copyInventory("title")}</h3><p>{copyInventory("intro")}</p></div>
+                  <label className="booking-field">Booking style
+                    <select value={bookingMode} disabled={Boolean(reservationIntent.current)} onChange={(event) => { setBookingMode(event.target.value); setSelectedTicketIds([]); setSelectedTicketDetails({}); }}>
+                      <option value="random">Random · choose individual tickets</option>
+                      <option value="half">Half-sheet · 3 consecutive tickets</option>
+                      <option value="full">Full-sheet · 6 consecutive tickets</option>
+                    </select>
+                  </label>
                   <form className="booking-catalog__filters" onSubmit={(event) => { event.preventDefault(); setCatalogQuery(catalogSearch.trim()); setCatalogPage(1); }}>
                     <label>{copyInventory("search")}<input value={catalogSearch} maxLength={40} onChange={(event) => setCatalogSearch(event.target.value)} /></label>
                     <label>{copyInventory("status")}<select value={catalogStatus} onChange={(event) => { setCatalogStatus(event.target.value); setCatalogPage(1); }}>
@@ -357,11 +378,14 @@ export default function PublicBooking() {
                     <p className="booking-catalog__count" role="status">{copyInventory("showing")} {catalog.tickets.length ? (catalog.page - 1) * catalog.pageSize + 1 : 0}–{Math.min(catalog.page * catalog.pageSize, catalog.total)} {copyInventory("of")} {Number(catalog.total).toLocaleString()} {copyInventory("tickets")} · {Number(catalog.inventoryTotal).toLocaleString()} {copyInventory("tickets")}</p>
                     {!catalog.tickets.length ? <p className="booking-empty-inline">{copyInventory("none")}</p> : <ul className="booking-ticket-catalog">
                       {catalog.tickets.map((ticket) => {
-                        const selected = selectedTicketIds.includes(ticket.ticketId);
+                        const modeIds = bookingMode === "random" ? [ticket.ticketId] : (catalog.tickets || []).filter((item) => item.sheetId === ticket.sheetId && (bookingMode === "full" || (Number(item.sheetPosition) <= 3) === (Number(ticket.sheetPosition) <= 3))).map((item) => item.ticketId);
+                        const selected = modeIds.length > 0 && modeIds.every((id) => selectedTicketIds.includes(id));
+                        const requiredCount = bookingMode === "full" ? 6 : bookingMode === "half" ? 3 : 1;
                         const statusKey = inventoryStatus(ticket.status);
+                        const validBundle = bookingMode === "random" ? statusKey === "available" : Boolean(ticket.sheetId) && ticket.sheetPosition != null && modeIds.length === requiredCount && (catalog.tickets || []).filter((item) => modeIds.includes(item.ticketId)).every((item) => item.sheetPosition != null && Number.isInteger(Number(item.sheetPosition)) && inventoryStatus(item.status) === "available");
                         return <li key={ticket.ticketId} className="booking-ticket-item" data-status={statusKey} data-selected={String(selected)}>
                           <div className="booking-ticket-card-head"><div className="booking-ticket-item__identity"><strong>{ticket.serial}</strong><span className="booking-ticket-status" data-status={statusKey}>{copyInventory(statusKey)}</span>{ticket.playerName ? <small>{ticket.playerName}</small> : null}</div>
-                            <button className="booking-ticket-select" type="button" disabled={busy || Boolean(reservationIntent.current) || (!selected && (statusKey !== "available" || selectedTicketIds.length >= maxTickets))} aria-pressed={selected} onClick={() => chooseTicket(ticket)}>{selected ? (language === "hi" ? "चुना गया" : "Selected") : statusKey === "available" ? copyInventory("select") : copyInventory(statusKey)}</button>
+                            <button className="booking-ticket-select" type="button" disabled={busy || Boolean(reservationIntent.current) || (!selected && (!validBundle || statusKey !== "available" || selectedTicketIds.length + requiredCount > maxTickets))} aria-pressed={selected} onClick={() => chooseTicket(ticket)}>{selected ? (language === "hi" ? "चुना गया" : "Selected bundle") : statusKey === "available" ? (validBundle ? copyInventory("select") : "Bundle unavailable") : copyInventory(statusKey)}</button>
                           </div>
                           <div className="booking-ticket-actual"><TambolaTicket ticket={ticket.grid} ticketNo={ticket.serial} language={language} /></div>
                         </li>;
@@ -383,6 +407,10 @@ export default function PublicBooking() {
                     <label className="booking-field">{t("playerName")}
                     <input autoComplete="nickname" maxLength={20} minLength={3} required disabled={Boolean(reservationIntent.current)} value={displayName} onChange={(event) => setDisplayName(event.target.value)} />
                     </label>
+                    {activeSession.phoneLookupEnabled ? <label className="booking-field">Phone number for live ticket lookup (optional)
+                      <input type="tel" inputMode="tel" autoComplete="tel" maxLength={24} placeholder="+919876543210" disabled={Boolean(reservationIntent.current)} value={phoneNumber} onChange={(event) => setPhoneNumber(event.target.value)} />
+                      <span className="booking-hint">Enter country code. We store a protected lookup digest, never display your number, and only use it to find your confirmed ticket in this live game.</span>
+                    </label> : null}
                     {!numberedInventory ? <label className="booking-field">{t("ticketCount")}
                       <input type="number" inputMode="numeric" min="1" max={maxTickets} step="1" required disabled={Boolean(reservationIntent.current)} value={ticketCount} onChange={(event) => setTicketCount(event.target.value)} />
                     </label> : <p className="booking-hint">{copyInventory("selected")}: {selectedTicketIds.length} / {maxTickets}</p>}

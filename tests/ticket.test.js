@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import {
   generateTicket,
   generateTickets,
+  generateTicketSheet,
   validateTicket,
   rowNumbers,
   ticketNumbers,
@@ -123,6 +124,16 @@ test("generateTickets returns the requested number of distinct tickets", () => {
   for (const ticket of batch) assertLegal(ticket, "batch ticket");
   const fingerprints = batch.map((t) => ticketNumbers(t).sort((a, b) => a - b).join(","));
   assert.equal(new Set(fingerprints).size, 40, "no two tickets identical");
+});
+
+test("a full Tambola sheet contains six legal tickets and every number 1-90 exactly once", () => {
+  for (let seed = 1; seed <= 25; seed++) {
+    const sheet = generateTicketSheet(makeRng(seed));
+    assert.equal(sheet.length, 6);
+    for (const ticket of sheet) assertLegal(ticket, `sheet ${seed} ticket`);
+    const numbers = sheet.flat(2).filter(Number.isInteger).sort((a, b) => a - b);
+    assert.deepEqual(numbers, Array.from({ length: 90 }, (_, index) => index + 1));
+  }
 });
 
 test("generator rejects a non-function rng", () => {

@@ -8,7 +8,20 @@ import "./posters.css";
 
 const freshPoster = () => ({ title: "", schedule: "", details: "", patterns: "", themeVersionId: null, accent: null, layoutSize: "portrait", cta: "Join the game", eventDetails: "", venue: "", organizerName: "", contactInfo: "", bookingUrl: null });
 const emptyTemplate = () => ({ templateId: "", name: "", description: "", category: "classic", layout: "classic" });
+function sessionDateTime(value, timeZone, options) {
+  if (!value || !timeZone || !Number.isFinite(Date.parse(value))) return "Not scheduled";
+  try { return new Intl.DateTimeFormat("en-IN", { ...options, timeZone }).format(new Date(value)); }
+  catch { return "Invalid session timezone"; }
+}
 const POSTER_DIRECTIONS = [
+  {
+    id: "grand-night", name: "Grand Night", templateVersionId: "bollywood-masala-v1", accent: "#ffcf32",
+    prompt: "Original Ninety Club grand Tambola night poster art, saturated crimson and deep wine red, dramatic oversized stage lettering area left empty for real editable event text, illustrated 90-ball Tambola ticket angled across the center with glossy numbered balls around it, confident high-contrast gold and ivory details, lively Indian community game night, bold vintage cinema marquee mood. Background art only; no letters, words, numbers, logos or QR codes.",
+  },
+  {
+    id: "club-presents", name: "Club Presents", templateVersionId: "royal-festive-v1", accent: "#d84aa8",
+    prompt: "Original Ninety Club Tambola Night poster art, bright ivory paper with softly distressed edges, bold magenta and plum framing, a centered illustrated Tambola ticket with colorful numbered balls, clean open header and lower information zones for event copy, playful polished neighborhood club flyer with vivid print color and subtle paper grain. Background art only; no letters, words, numbers, logos or QR codes.",
+  },
   {
     id: "bollywood-masala", name: "Bollywood Masala", templateVersionId: "bollywood-masala-v1", accent: "#f6da37",
     prompt: "Bollywood Masala Tambola night, dramatic near-black stage, glowing green and saffron spotlights, fanned paper Tambola tickets and glossy numbered bingo balls, energetic Indian cinema marquee atmosphere, rich gold trim, premium print-art direction, keep the center and lower third calm for crisp editable event copy. Background art only; no letters, words, numbers, logos or QR codes.",
@@ -49,6 +62,15 @@ export default function AdminPosters() {
   const svgRef = useRef(null);
   const template = useMemo(() => templates.find((item) => item.templateVersionId === templateVersionId) || templates.find((item) => item.status === "approved") || null, [templates, templateVersionId]);
   const instance = useMemo(() => instances.find((item) => item.instance_id === instanceId) || null, [instances, instanceId]);
+  const sessionPoster = useMemo(() => eventContext ? {
+    ...poster,
+    title: eventContext.title,
+    schedule: eventContext.schedule,
+    details: poster.eventDetails || `${eventContext.gameType} · ${eventContext.ticketAvailability}`,
+    patterns: eventContext.prizesDescription || "No published winning patterns",
+    bookingUrl: eventContext.publicJoinUrl,
+    eventFacts: eventContext,
+  } : poster, [eventContext, poster]);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -69,6 +91,7 @@ export default function AdminPosters() {
   useEffect(() => {
     if (!instanceId) { setEventSessions([]); setSessionId(""); setEventContext(null); return; }
     let active = true;
+    setEventContext(null);
     api.posterSessions(instanceId).then((result) => { if (!active) return; const rows = result.sessions || []; setEventSessions(rows); setSessionId((current) => rows.some((row) => row.sessionId === current) ? current : rows[0]?.sessionId || ""); })
       .catch(() => { if (active) { setEventSessions([]); setEventContext(null); } });
     return () => { active = false; };
@@ -77,6 +100,7 @@ export default function AdminPosters() {
   useEffect(() => {
     if (!instanceId || !sessionId) { setEventContext(null); return; }
     let active = true;
+    setEventContext(null);
     api.posterSessionContext(instanceId, sessionId).then((result) => { if (active) setEventContext(result.context); })
       .catch(() => { if (active) setEventContext(null); });
     return () => { active = false; };
@@ -100,9 +124,9 @@ export default function AdminPosters() {
   }
 
   async function saveDraft() {
-    if (!instanceId || !template) return null;
+    if (!instanceId || !template || !sessionId || eventContext?.sessionId !== sessionId) return null;
     let id = posterId;
-    const savedPoster = Object.fromEntries(Object.entries(poster).filter(([key]) => key !== "artworkDataUrl" && key !== "artworkUrl"));
+    const savedPoster = Object.fromEntries(Object.entries(sessionPoster).filter(([key]) => key !== "artworkDataUrl" && key !== "artworkUrl"));
     const payload = { instanceId, templateVersionId: template.templateVersionId, data: { ...savedPoster, ...(eventContext ? { sessionId: eventContext.sessionId } : {}) } };
     if (id) await api.savePoster(id, payload);
     else { const created = await api.createPoster(payload); id = created.posterId; setPosterId(id); }
@@ -183,7 +207,7 @@ export default function AdminPosters() {
 
     <Section title="Create a poster from a prompt" description="Describe the visual direction. The server generates background art; verified session facts are typeset separately and never delegated to the image model.">
       <div className="adm-poster-form">
-        <label>Event / session<select value={sessionId} onChange={(event) => setSessionId(event.target.value)} disabled={!eventSessions.length}><option value="">Choose a scheduled session</option>{eventSessions.map((item) => <option key={item.sessionId} value={item.sessionId}>{item.title} · {new Date(item.startsAt).toLocaleString()} · {item.status}</option>)}</select></label>
+        <label>Event / session<select value={sessionId} onChange={(event) => { setSessionId(event.target.value); setEventContext(null); }} disabled={!eventSessions.length}><option value="">Choose a scheduled session</option>{eventSessions.map((item) => <option key={item.sessionId} value={item.sessionId}>{item.title} · {new Date(item.startsAt).toLocaleString()} · {item.status}</option>)}</select></label>
         <label className="poster-form-wide">Visual direction<textarea value={prompt} maxLength={1200} rows={4} placeholder="Premium Diwali night, deep plum and luminous gold, elegant palace arches, warm diya light, sophisticated editorial art…" onChange={(event) => setPrompt(event.target.value)} /><small>{prompt.length}/1200 · no factual copy is placed inside generated artwork</small></label>
         <div className="poster-form-wide adm-poster-directions" role="group" aria-label="Poster art direction presets">
           <span className="oh-eyebrow">Choose a visual direction</span>
@@ -197,16 +221,19 @@ export default function AdminPosters() {
     </Section>
 
     <Section title="Optional composition library" description="Choose a reviewed typography and layout system for accurate event details. Generated artwork remains the visual background.">
-      <div className="adm-poster-template-grid">{templates.filter((item) => item.status === "approved").map((item) => <button type="button" key={item.templateVersionId} className={`adm-poster-template ${templateVersionId === item.templateVersionId ? "is-selected" : ""}`} aria-pressed={templateVersionId === item.templateVersionId} onClick={() => setTemplateVersionId(item.templateVersionId)}><span className={`adm-poster-template__sample layout-${item.layout}`} style={{ "--poster-bg": item.palette.background, "--poster-accent": item.palette.accent }}><i /><b>{item.name}</b></span><strong>{item.name}</strong><small>{item.category} · version {item.version}</small></button>)}</div>
+      <div className="adm-poster-template-grid">{templates.filter((item) => item.status === "approved").map((item) => <button type="button" key={item.templateVersionId} className={`adm-poster-template ${templateVersionId === item.templateVersionId ? "is-selected" : ""}`} aria-pressed={templateVersionId === item.templateVersionId} onClick={() => setTemplateVersionId(item.templateVersionId)}><span className="adm-poster-template__art" style={{ aspectRatio: sessionPoster.layoutSize === "square" ? "1 / 1" : sessionPoster.layoutSize === "landscape" ? "5 / 4" : sessionPoster.layoutSize === "story" ? "9 / 16" : "4 / 5" }}><PosterArt template={item} poster={sessionPoster} instance={instance} preview /></span><strong>{item.name}</strong><small>{item.category} · version {item.version}</small></button>)}</div>
       {!templates.some((item) => item.status === "approved") && !error ? <p className="adm-poster-empty" role="status">No reviewed poster templates are available yet. Approved original layouts will appear here.</p> : null}
     </Section>
 
     <div className="adm-poster-workspace">
       <Section title="Poster details" description="Text is escaped as SVG text. Only built-in vector artwork and approved instance/theme data are used.">
         <div className="adm-poster-form">
-          <label>Instance<select value={instanceId} onChange={(event) => setInstanceId(event.target.value)}>{instances.map((item) => <option key={item.instance_id} value={item.instance_id}>{item.display_name}</option>)}</select></label>
-          <label>Game title<input value={poster.title} maxLength={90} onChange={(event) => setPoster({ ...poster, title: event.target.value })} /></label>
-          <label>Schedule / date<input value={poster.schedule} maxLength={120} onChange={(event) => setPoster({ ...poster, schedule: event.target.value })} /><small>When this poster is linked to a scheduled session, its date and time are kept in sync with that session.</small></label>
+          <label>Instance<select value={instanceId} onChange={(event) => { setInstanceId(event.target.value); setSessionId(""); setEventContext(null); }}>{instances.map((item) => <option key={item.instance_id} value={item.instance_id}>{item.display_name}</option>)}</select></label>
+          <label>Game title<input value={eventContext?.title ?? poster.title} maxLength={90} readOnly={Boolean(eventContext)} onChange={(event) => setPoster({ ...poster, title: event.target.value })} /></label>
+          <label>Game date<input value={eventContext ? sessionDateTime(eventContext.startsAt, eventContext.timeZone, { dateStyle: "full" }) : "Choose a scheduled session above"} readOnly /><small>Set the authoritative date in Scheduled sessions.</small></label>
+          <label>Game start time<input value={eventContext ? sessionDateTime(eventContext.startsAt, eventContext.timeZone, { timeStyle: "short", timeZoneName: "short" }) : "Choose a scheduled session above"} readOnly /></label>
+          <label>Timezone<input value={eventContext?.timeZone || "Select a session to view its timezone"} readOnly /></label>
+          <label className="poster-form-wide">Schedule label<input value={eventContext?.schedule ?? poster.schedule} maxLength={120} readOnly={Boolean(eventContext)} onChange={(event) => setPoster({ ...poster, schedule: event.target.value })} /><small>Linked poster date and time come from the persisted session schedule.</small></label>
           <label>Venue<input value={poster.venue || ""} maxLength={140} onChange={(event) => setPoster({ ...poster, venue: event.target.value })} placeholder="Venue or online" /></label>
           <label>Organizer name<input value={poster.organizerName || ""} maxLength={100} onChange={(event) => setPoster({ ...poster, organizerName: event.target.value })} /></label>
           <label>Contact information<input value={poster.contactInfo || ""} maxLength={120} onChange={(event) => setPoster({ ...poster, contactInfo: event.target.value })} placeholder="Phone, email, or WhatsApp" /></label>
@@ -219,13 +246,13 @@ export default function AdminPosters() {
           <label>Accent color<input type="color" value={poster.accent || template?.palette.accent || "#42c98a"} onChange={(event) => setPoster({ ...poster, accent: event.target.value })} /></label>
           <label>Export layout<select value={poster.layoutSize} onChange={(event) => setPoster({ ...poster, layoutSize: event.target.value })}><option value="square">Square · social post</option><option value="portrait">Portrait · poster</option><option value="landscape">Landscape · website</option><option value="story">Story · mobile share</option></select></label>
         </div>
-        <div className="adm-poster-actions"><Button variant="ghost" disabled={busy || posterStatus === "published" || !instance || !template} onClick={onSave}>Save draft</Button><Button variant="gold" disabled={busy || posterStatus === "published" || !instance || !template} onClick={onPublish}>Publish poster</Button><Button variant="ghost" disabled={!posterId || busy} onClick={() => duplicate(posterId)}>Duplicate</Button><Button variant="ghost" onClick={resetEditor}>New poster</Button></div>
+        <div className="adm-poster-actions"><Button variant="ghost" disabled={busy || posterStatus === "published" || !instance || !template || !sessionId || eventContext?.sessionId !== sessionId} onClick={onSave}>Save draft</Button><Button variant="gold" disabled={busy || posterStatus === "published" || !instance || !template || !sessionId || eventContext?.sessionId !== sessionId} onClick={onPublish}>Publish poster</Button><Button variant="ghost" disabled={!posterId || busy} onClick={() => duplicate(posterId)}>Duplicate</Button><Button variant="ghost" onClick={resetEditor}>New poster</Button></div>
         {posterId ? <p className="adm-sub">{posterId} · <StatusPill status={posterStatus} /></p> : null}
         <div className="adm-poster-export"><Button size="sm" variant="ghost" onClick={() => download("svg")}>Download SVG</Button><Button size="sm" variant="ghost" onClick={() => download("png")}>Download PNG</Button>{posterStatus === "published" ? <a href={`/poster/${posterId}`} target="_blank" rel="noreferrer">Open public poster</a> : <span>Publish to create a shareable link.</span>}</div>
       </Section>
       <Section title="Live preview" description="Switch the preview frame while preserving the selected export dimensions.">
         <div className="adm-poster-preview-tools"><button type="button" className={selectedSize === "desktop" ? "is-active" : ""} aria-pressed={selectedSize === "desktop"} onClick={() => setSelectedSize("desktop")}>Desktop</button><button type="button" className={selectedSize === "mobile" ? "is-active" : ""} aria-pressed={selectedSize === "mobile"} onClick={() => setSelectedSize("mobile")}>Mobile</button></div>
-        <div className={`adm-poster-preview-stage is-${selectedSize}`}>{template ? <PosterArt template={template} poster={poster} instance={instance} preview svgRef={svgRef} /> : <p className="adm-poster-empty" role="status">A poster preview will appear when a reviewed template and active instance are available.</p>}</div>
+        <div className={`adm-poster-preview-stage is-${selectedSize}`}>{template ? <PosterArt template={template} poster={sessionPoster} instance={instance} preview svgRef={svgRef} /> : <p className="adm-poster-empty" role="status">A poster preview will appear when a reviewed template and active instance are available.</p>}</div>
       </Section>
     </div>
 

@@ -40,18 +40,20 @@ export default function AdminLayout() {
   const consoleLabel = base === "/super-admin" ? "Platform control" : "Owner console";
   const nav = [
     { to: base, label: "Overview", end: true, icon: "overview" },
-    { to: `${base}/instances`, label: "Instances", icon: "instances" },
-    { to: `${base}/reports`, label: "Reports", icon: "reports" },
-    { to: `${base}/moderators`, label: "Moderators", icon: "moderators" },
-    { to: `${base}/sessions`, label: "Bookings", icon: "bookings" },
-    { to: `${base}/themes`, label: "Themes", icon: "themes" },
+    { to: `${base}/sessions`, label: "Sessions & bookings", icon: "bookings" },
     { to: `${base}/posters`, label: "Posters", icon: "posters" },
-    { to: `${base}/games`, label: "Rooms", icon: "rooms" },
+    { to: `${base}/games`, label: "Live games", icon: "rooms" },
     { to: `${base}/players`, label: "Players", icon: "players" },
-    { to: `${base}/history`, label: "History", icon: "history" },
-    { to: `${base}/settings`, label: "Settings", icon: "settings" },
-    { to: `${base}/branding`, label: "Branding", icon: "branding" },
+    { to: `${base}/instances`, label: "Instances", icon: "instances", advanced: true },
+    { to: `${base}/reports`, label: "Reports", icon: "reports", advanced: true },
+    { to: `${base}/moderators`, label: "Moderators", icon: "moderators", advanced: true },
+    { to: `${base}/themes`, label: "Themes", icon: "themes", advanced: true },
+    { to: `${base}/history`, label: "History", icon: "history", advanced: true },
+    { to: `${base}/settings`, label: "Settings", icon: "settings", advanced: true },
+    { to: `${base}/branding`, label: "Branding", icon: "branding", advanced: true },
   ].filter((item) => superAdmin && (!mfa?.required || mfa?.state === "enrolled") || item.icon === "settings");
+  const primaryNav = nav.filter((item) => !item.advanced);
+  const advancedNav = nav.filter((item) => item.advanced);
   const [signingOut, setSigningOut] = useState(false);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
 
@@ -103,7 +105,7 @@ export default function AdminLayout() {
             }
           }}
         >
-          {nav.map((item) => (
+          {primaryNav.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -114,6 +116,22 @@ export default function AdminLayout() {
               {item.label}
             </NavLink>
           ))}
+          {advancedNav.length > 0 ? (
+            <details className="adm-nav__advanced" open={advancedNav.some((item) => window.location.pathname.startsWith(item.to))}>
+              <summary>Platform tools</summary>
+              {advancedNav.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={Boolean(item.end)}
+                  onClick={() => setMobileNavigationOpen(false)}
+                >
+                  <NavIcon name={item.icon} />
+                  {item.label}
+                </NavLink>
+              ))}
+            </details>
+          ) : null}
         </nav>
 
         <div className="adm-sidebar__foot">

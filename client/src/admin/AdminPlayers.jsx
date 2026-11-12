@@ -11,7 +11,7 @@ import { Link } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import { api } from "./api.js";
 import { useAdmin } from "./useAdmin.js";
-import { formatDateTime, formatNumber, formatRelative, patternLabel } from "./format.js";
+import { awardTicketLabel, formatDateTime, formatNumber, formatRelative, patternLabel } from "./format.js";
 import { Badge, Empty, ErrorNote, Loading, Pagination, Section, Table } from "./ui.jsx";
 
 const PAGE = 25;
@@ -216,6 +216,7 @@ export default function AdminPlayers() {
                       <tr>
                         <th scope="col">Room</th>
                         <th scope="col">Round</th>
+                        <th scope="col">Ticket</th>
                         <th scope="col">Pattern</th>
                         <th scope="col">Points</th>
                         <th scope="col">When</th>
@@ -230,6 +231,7 @@ export default function AdminPlayers() {
                             </Link>
                           </td>
                           <td className="oh-num">{formatNumber(award.gameNumber)}</td>
+                          <td className="oh-num">{awardTicketLabel(award)}</td>
                           <td>{patternLabel(award.pattern)}</td>
                           <td className="oh-num">{formatNumber(award.points)}</td>
                           <td>{award.awardedAt ? formatRelative(award.awardedAt) : "this process"}</td>

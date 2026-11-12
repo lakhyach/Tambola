@@ -2114,3 +2114,31 @@ The 50-room/250-seat supervised two-hour run is **not passed**: its 7,200,000 ms
 - Browser: host creates waiting room; player joins; host starts; three server calls; player reload restores ticket/history; both roles captured at 390/430/768/1440/1920 in waiting and live states. No horizontal overflow, browser errors, HTTP errors or failed requests. Reduced motion and keyboard skip-link focus checked. Evidence `.preflight/live-runtime/current-results.json`.
 - Browser claim/results: Early Five and Full House approved and visibly awarded; host completed round at 87 calls. Engine/controller durable E2E also passed all supported awards and rejected premature, fabricated-ticket and duplicate claims. Evidence `.preflight/live-runtime/claim-results.json`.
 - No production DB, production credentials, external poster request, deploy, purchase, commit or push. The synthetic DB/container was removed. Earlier poster-focused suite details remain above; this current full test run is the milestone suite.
+
+## Scheduled session time validation audit (7 November 2026)
+
+- Focused timezone/form/service/scheduler command: **14 passed, 0 failed, 1 skipped** (the PostgreSQL-backed Regular/Bumper integration test).
+- Final serialized test suite: **804 total; 721 passed, 0 failed, 83 skipped**. The test process had `DATABASE_URL` unset; skipped tests are PostgreSQL integration and migration cases, not passes.
+- Client ESLint and Vite production build passed (210 modules).
+- Security probe: **51/51 passed**. Root and client full `npm audit`: **0 vulnerabilities** each. Secret scan and `git -c core.whitespace=cr-at-eol diff --check` passed.
+- Migration 035 was authored but not applied or PostgreSQL-validated. Docker Engine and local PostgreSQL client/service are absent. Chromium/browser QA is unavailable. Local production-policy config check is not a production config verification; production is NOT VERIFIABLE.
+- See [`docs/SCHEDULED-SESSION-TIME-AUDIT.md`](docs/SCHEDULED-SESSION-TIME-AUDIT.md) for pipeline, root cause, behaviors and operator steps.
+
+## Phase 2 session visibility and multiplayer admission verification (7 November 2026)
+
+- Isolated PostgreSQL **17.11** was run on `127.0.0.1:55439`; schema-per-test migration harness applied the local migrations through **036**. No production database was used.
+- Targeted database tests: booking holds/status/closed/cancelled listing, booked late admission, exact numbered ticket identity and grid, process reconnect, and Regular/Bumper timezone/publication idempotency all passed (**4 named tests**, plus the full DB-backed suite cases).
+- Full serialized run: **827 total, 825 passed, 0 skipped, 2 failed**. Both failures are backup/restore integration checks that invoke Docker Desktop `tambola-pg`; the Linux Docker Engine named pipe is unavailable. The previous three non-backup failures found during the first parallel run were resolved (idempotent retry after publication and auto-start state consistency); the expiration test passed serialized.
+- Isolated browser workflow: **4/4 passed** with Chromium and synthetic owner/player identities. Verified standalone room absent from session listing, draft hidden, published Regular/Bumper visible, future session visible as `not_open`, five separate player contexts booking distinct tickets from 200 generated Regular tickets, booking/player associations, and room entry. Current screenshots are listed in `docs/REGULAR-TAMBOLA-BROWSER-QA-REPORT.md`.
+- Client lint and Vite production build passed (210 modules). Security probe **51/51**. Secret scan passed (760 files, including build output). Root and client `npm audit`: **0 vulnerabilities** each. CRLF-aware `git diff --check`: passed.
+- Production configuration is **NOT VERIFIABLE**. No 250-seat stress test or room `SKGLEDXV` verification was performed. The exact reported “Room is full” wording was not returned by the isolated server; this turn reproduced and fixed the linked scheduled reservation’s separate `SESSION_UNAVAILABLE` start-state rejection. No deploy, purchase, commit, push, or production write.
+
+## Admin-issued ticket serial continuity correction (7 November 2026)
+
+- Fixed player ticket identity display: an official serial such as `TKT-0087` is shown on the ticket paper, tab, and award, while the stable local `ticket.no` remains the engine/claim/navigation key. Legacy tickets retain the existing numeric label.
+- Confirmed booking seats now see a read-only assigned-ticket serial summary and do not see the shared room ticket ceiling as a selection control.
+- Focused checks: 48/48 unit/engine/recovery-integrity tests passed; client lint passed; Vite production build passed (210 modules).
+- Isolated Playwright workflow passed 1/1. It authenticated the synthetic QA owner, generated a 200-ticket Regular catalog, booked five distinct serials using five separate browser contexts, confirmed each reservation, joined the assigned room, and verified each actual ticket title/summary against the selected serial. Mobile screenshot: `artifacts/browser-qa/player-ticket-serial-mobile.png` (390 px).
+- Current-turn defects caught and resolved during verification: existing browser selectors targeted outdated Admin form labels; the initial run used a stale prebuilt client bundle. The corrected test was run against the newly built bundle and passed.
+- Four newest `browser_qa_*` schemas from this browser run were dropped manually after confirming the Windows test runner did not invoke its shutdown cleanup. The other 27 pre-existing random QA schemas were left untouched. Task-owned PG17 cluster stopped; the unrelated `main` 5432 cluster was untouched.
+- No full regression suite was run. Durable database claim attribution is resolved through the exact game ticket relation and was unit-tested at engine/recovery mapping level; an actual DB-backed won claim/recovery was not run this turn. Multi-viewport route audit and production state remain unverified.

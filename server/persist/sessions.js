@@ -70,7 +70,7 @@ export function createSessionStore({
   const failing = (code, message) => ({ ok: false, code, error: message });
 
   /** Mint a token for a verified seat. The plaintext exists only in the answer. */
-  async function issue({ roomId, playerId, role = "player", revokePrior = true } = {}) {
+  async function issue({ roomId, playerId, role = "player", revokePrior = true, transactionClient = null } = {}) {
     if (!roomId || !playerId) throw new Error("issue() needs a room and a player");
     if (role !== "host" && role !== "player") throw new Error("issue() got an unknown role");
     const token = newToken();
@@ -81,7 +81,7 @@ export function createSessionStore({
     const absolute = Math.round(absoluteMs);
     if (absolute < idle) throw new Error("session idle window must not exceed the hard window");
 
-    await db.withTransaction(async (client) => {
+    const persist = async (client) => {
       // one live lineage per seat: anything older is retired atomically
       if (revokePrior) {
         await client.query(
@@ -101,7 +101,9 @@ export function createSessionStore({
          VALUES ($1, $2, 'session-issued', $3)`,
         [roomId, playerId, JSON.stringify({ role })]
       );
-    });
+    };
+    if (transactionClient) await persist(transactionClient);
+    else await db.withTransaction(persist);
 
     return { ok: true, sessionToken: token, sessionId, role, roomId, playerId, issuedAt };
   }
@@ -116,6 +118,8 @@ export function createSessionStore({
 
     const found = await db.query(
       `SELECT session_id, room_code, player_id, role, expires_at, absolute_expires_at,
+              expires_at <= now() AS idle_expired,
+              absolute_expires_at <= now() AS hard_expired,
               revoked_at, revoke_reason, rotated_at
          FROM sessions WHERE token_hash = $1`,
       [hash]
@@ -124,11 +128,11 @@ export function createSessionStore({
     if (!row) return failing(SESSION_CODES.UNKNOWN, "this session is not known");
     if (row.rotated_at) return failing(SESSION_CODES.ROTATED, "this session was rotated");
     if (row.revoked_at) return failing(SESSION_CODES.REVOKED, "this session was revoked");
-    if (Date.parse(row.absolute_expires_at) <= now()) {
+    if (row.hard_expired) {
       await revoke({ sessionId: row.session_id, reason: "expired" });
       return failing(SESSION_CODES.EXPIRED, "this session has expired");
     }
-    if (Date.parse(row.expires_at) <= now()) {
+    if (row.idle_expired) {
       await revoke({ sessionId: row.session_id, reason: "idle-expired" });
       return failing(SESSION_CODES.EXPIRED, "this session has expired");
     }
@@ -137,11 +141,13 @@ export function createSessionStore({
     }
 
     const touched = await db.query(
-      `UPDATE sessions SET last_used_at = now(), expires_at = now() + ($2 * interval '1 millisecond')
+      `UPDATE sessions SET last_used_at = now(), expires_at = LEAST(now() + ($2 * interval '1 millisecond'), absolute_expires_at)
         WHERE session_id = $1 AND revoked_at IS NULL
+          AND expires_at > now() AND absolute_expires_at > now()
         RETURNING expires_at`,
       [row.session_id, Math.round(idleMs)]
     );
+    if (!touched.rows.length) return failing(SESSION_CODES.EXPIRED, "this session has expired");
     return {
       ok: true,
       sessionId: row.session_id,

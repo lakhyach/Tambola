@@ -28,6 +28,31 @@ function clampOffset(value) {
   return Math.floor(n);
 }
 
+function awardTicketIdentitySql(alias = "a") {
+  return `${alias}.ticket_no, ${alias}.ticket_nos,
+    (SELECT st.serial FROM tickets t
+       LEFT JOIN session_tickets st ON st.session_id=t.inventory_session_id AND st.ticket_id=t.inventory_ticket_id
+      WHERE t.room_code=${alias}.room_code AND t.game_number=${alias}.game_number
+        AND t.player_id=${alias}.player_id AND t.ticket_no=${alias}.ticket_no LIMIT 1) AS ticket_serial,
+    ARRAY(SELECT st.serial FROM tickets t
+       JOIN session_tickets st ON st.session_id=t.inventory_session_id AND st.ticket_id=t.inventory_ticket_id
+      WHERE t.room_code=${alias}.room_code AND t.game_number=${alias}.game_number
+        AND t.player_id=${alias}.player_id
+        AND t.ticket_no = ANY(COALESCE(${alias}.ticket_nos, ARRAY[${alias}.ticket_no]))
+      ORDER BY t.ticket_no) AS ticket_serials`;
+}
+
+function mapAwardTicketIdentity(row) {
+  return {
+    ticketNo: row.ticket_no ?? null,
+    ticketNos: Array.isArray(row.ticket_nos) ? row.ticket_nos.slice() : null,
+    ...(typeof row.ticket_serial === "string" ? { ticketSerial: row.ticket_serial } : {}),
+    ...(Array.isArray(row.ticket_serials) && row.ticket_serials.length
+      ? { ticketSerials: row.ticket_serials.filter((serial) => typeof serial === "string") }
+      : {}),
+  };
+}
+
 export function createAdminQueries({ db } = {}) {
   if (!db) throw new Error("createAdminQueries needs a database handle");
 
@@ -154,7 +179,7 @@ export function createAdminQueries({ db } = {}) {
   async function recentWinners({ limit = 10 } = {}) {
     const size = clampLimit(limit, 10, 50);
     const result = await db.query(
-      `SELECT a.room_code, a.game_number, a.pattern, a.points, a.awarded_at,
+      `SELECT a.room_code, a.game_number, a.pattern, a.points, a.awarded_at, ${awardTicketIdentitySql("a")},
               a.player_id, p.display_name
          FROM awards a
          JOIN players p ON p.player_id = a.player_id
@@ -170,6 +195,7 @@ export function createAdminQueries({ db } = {}) {
       playerId: row.player_id,
       displayName: row.display_name,
       awardedAt: row.awarded_at,
+      ...mapAwardTicketIdentity(row),
     }));
   }
 
@@ -250,7 +276,10 @@ export function createAdminQueries({ db } = {}) {
         [roomId]
       ),
       db.query(
-        `SELECT ticket_id, player_id, game_number, assigned_at FROM tickets WHERE room_code = $1 ORDER BY game_number, assigned_at`,
+        `SELECT t.ticket_id, t.player_id, t.game_number, t.ticket_no, t.assigned_at, st.serial
+           FROM tickets t LEFT JOIN session_tickets st
+             ON st.session_id=t.inventory_session_id AND st.ticket_id=t.inventory_ticket_id
+          WHERE t.room_code = $1 ORDER BY t.game_number, t.assigned_at`,
         [roomId]
       ),
       db.query(
@@ -259,13 +288,17 @@ export function createAdminQueries({ db } = {}) {
         [roomId, currentGame]
       ),
       db.query(
-        `SELECT c.claim_id, c.game_number, c.player_id, c.pattern, c.status, c.reason, c.call_index, c.decided_at, p.display_name
+        `SELECT c.claim_id, c.game_number, c.player_id, c.pattern, c.status, c.reason, c.call_index, c.decided_at, p.display_name,
+                ${awardTicketIdentitySql("a")}
            FROM claims c JOIN players p ON p.player_id = c.player_id
+           LEFT JOIN awards a ON a.room_code=c.room_code AND a.game_number=c.game_number
+             AND a.player_id=c.player_id AND a.pattern=c.pattern
           WHERE c.room_code = $1 ORDER BY c.claim_id`,
         [roomId]
       ),
       db.query(
-        `SELECT a.game_number, a.player_id, a.pattern, a.points, a.call_index, a.awarded_at, p.display_name
+        `SELECT a.game_number, a.room_code, a.player_id, a.pattern, a.points, a.call_index, a.awarded_at,
+                ${awardTicketIdentitySql("a")}, p.display_name
            FROM awards a JOIN players p ON p.player_id = a.player_id
           WHERE a.room_code = $1 ORDER BY a.award_id`,
         [roomId]
@@ -300,7 +333,7 @@ export function createAdminQueries({ db } = {}) {
         lastSeenAt: m.last_seen_at,
         leftAt: m.left_at,
       })),
-      tickets: tickets.rows.map((t) => ({ ticketId: t.ticket_id, playerId: t.player_id, gameNumber: t.game_number, assignedAt: t.assigned_at })),
+      tickets: tickets.rows.map((t) => ({ ticketId: t.ticket_id, playerId: t.player_id, gameNumber: t.game_number, ticketNo: t.ticket_no, serial: t.serial || null, assignedAt: t.assigned_at })),
       claims: claims.rows.map((c) => ({
         claimId: c.claim_id,
         gameNumber: c.game_number,
@@ -311,6 +344,7 @@ export function createAdminQueries({ db } = {}) {
         reason: c.reason,
         callIndex: c.call_index,
         decidedAt: c.decided_at,
+        ...mapAwardTicketIdentity(c),
       })),
       awards: awards.rows.map((a) => ({
         gameNumber: a.game_number,
@@ -320,6 +354,7 @@ export function createAdminQueries({ db } = {}) {
         points: a.points,
         callIndex: a.call_index,
         awardedAt: a.awarded_at,
+        ...mapAwardTicketIdentity(a),
       })),
       rounds: rounds.rows.map((g) => ({
         gameNumber: g.game_number,
@@ -382,14 +417,15 @@ export function createAdminQueries({ db } = {}) {
         `SELECT room_code, role, joined_at, left_at FROM room_members WHERE player_id = $1 ORDER BY joined_at DESC`,
         [playerId]
       ),
-      db.query(`SELECT room_code, game_number, pattern, points, awarded_at FROM awards WHERE player_id = $1 ORDER BY awarded_at DESC`, [playerId]),
+      db.query(`SELECT a.room_code, a.game_number, a.pattern, a.points, a.awarded_at, ${awardTicketIdentitySql("a")}
+                  FROM awards a WHERE a.player_id = $1 ORDER BY a.awarded_at DESC`, [playerId]),
     ]);
     return {
       playerId: player.rows[0].player_id,
       displayName: player.rows[0].display_name,
       createdAt: player.rows[0].created_at,
       memberships: memberships.rows.map((m) => ({ roomId: m.room_code, role: m.role, joinedAt: m.joined_at, leftAt: m.left_at })),
-      awards: awards.rows.map((a) => ({ roomId: a.room_code, gameNumber: a.game_number, pattern: a.pattern, points: a.points, awardedAt: a.awarded_at })),
+      awards: awards.rows.map((a) => ({ roomId: a.room_code, gameNumber: a.game_number, pattern: a.pattern, points: a.points, awardedAt: a.awarded_at, ...mapAwardTicketIdentity(a) })),
     };
   }
 

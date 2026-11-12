@@ -17,6 +17,11 @@ test("instance branding accepts only curated local logos, bounded copy and hex c
   assert.equal(validateInstanceBranding({ accentBright: "#07110f" }).error, "INVALID_BRANDING");
   assert.equal(validateInstanceBranding({ tagline: "<svg onload=alert(1)>" }).error, "INVALID_BRANDING");
   assert.deepEqual(publicInstanceBranding({ logo: "https://example.invalid/x.svg", accent: "red", secret: "hidden" }), {});
+  const contacts = { hostName: "Club Host", hostPhone: "+91 98765 43210", hostWhatsapp: "+91 98765 43210", hostEmail: "host@example.com", agents: [{ name: "Agent One", phone: "+91 91234 56789" }] };
+  assert.deepEqual(validateInstanceBranding({ contacts }), { branding: { contacts } });
+  assert.deepEqual(publicInstanceBranding({ contacts, privateNotes: "not public" }), { contacts });
+  assert.equal(validateInstanceBranding({ contacts: { hostWhatsapp: "javascript:alert(1)" } }).error, "INVALID_BRANDING");
+  assert.deepEqual(publicInstanceBranding({ contacts: { hostPhone: "<script>" } }), {});
 });
 
 test("public instance directory exposes only active public instance identity", { skip: !HAS_DB }, async () => {

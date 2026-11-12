@@ -845,17 +845,25 @@
   position: fixed;
   inset: 0;
   z-index: 60;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  background: radial-gradient(120% 120% at 50% 0%, rgba(20, 16, 8, 0.72), rgba(6, 7, 10, 0.86));
-  backdrop-filter: blur(6px);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: max(12px, env(safe-area-inset-top)) 12px 12px;
+  background: transparent;
+  pointer-events: none;
   animation: oh-fade var(--oh-med) var(--oh-ease-out);
 }
 .oh-celebrate__card {
-  width: min(520px, 100%);
+  width: min(420px, 100%);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
   text-align: center;
-  padding: 28px 24px;
+  padding: 16px 20px;
+  border: 1px solid rgba(255, 211, 117, .72);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(48, 28, 55, .98), rgba(20, 12, 31, .98));
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .42), inset 0 1px rgba(255, 240, 196, .14);
+  pointer-events: auto;
   animation: oh-pop var(--oh-slow) var(--oh-ease-out);
 }
 .oh-celebrate__eyebrow {
@@ -867,7 +875,7 @@
 }
 .oh-celebrate__title {
   font-family: var(--oh-font-display);
-  font-size: 26px;
+  font-size: clamp(20px, 5vw, 24px);
   line-height: 1.2;
   color: var(--oh-gold-bright);
   margin: 0 0 8px;

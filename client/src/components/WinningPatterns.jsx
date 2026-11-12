@@ -30,6 +30,10 @@ function ordinalWord(n, language = "en") {
 // Human ticket attribution: one ticket, or the several a seat-level prize names.
 function ticketLabel(award, language = "en") {
   const identifier = (value) => typeof value === "string" && !/^\d+$/.test(value) ? value : formatBookingNumber(value, language);
+  if (Array.isArray(award.ticketSerials) && award.ticketSerials.length) {
+    return bookingCopy(language, "ticketsLabel", { numbers: award.ticketSerials.map(identifier).join(", ") });
+  }
+  if (award.ticketSerial) return bookingCopy(language, "ticketLabel", { number: identifier(award.ticketSerial) });
   if (Array.isArray(award.ticketNos) && award.ticketNos.length) {
     return bookingCopy(language, "ticketsLabel", { numbers: award.ticketNos.map(identifier).join(", ") });
   }

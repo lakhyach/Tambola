@@ -206,3 +206,22 @@ Code-level implementation and focused checks are recorded in [docs/FRONTEND-RECO
 Current-turn visual evidence is unavailable. The in-app CUA and desktop browser bridges both failed before listing browser state, so no current screenshot or interactive route review was captured. The existing screenshots above predate this scope and do not count as current-turn evidence. The genuine numbered 3D asset was not integrated because no compliant downloadable model was found; Three.js/R3F/Drei were not installed. The old wordmark remains embedded in the logo assets, which were preserved as requested.
 
 final result: blocked
+
+## Scheduled session time audit (7 November 2026)
+
+- The bad example schedule had opening 8:33 PM after closing 8:30 PM. Old UI showed one generic validation banner. Backend and migration 011 also allowed closing equal to game start. Both causes are addressed in source: inline field-level errors, strict server instant ordering and a new migration for new sessions while preserving historical rows.
+- Frontend/server timezone tests cover Asia/Calcutta and Asia/Kolkata alias parity, midnight, offset ISO compatibility, malformed dates, invalid zones, DST gaps and repeated-time selection. Focused result: 14 pass / 1 DB test skipped.
+- Full serialized suite: 721 pass / 0 fail / 83 skipped. Skip was deliberate because no DB URL was provided to tests. Security probe 51/51; client lint/build pass; root and client dependency audits report 0 advisories; secret scan and whitespace check pass.
+- No screenshot/browser result is claimed: Playwright Chromium is not installed and browser control was unavailable. PostgreSQL migration/integration checks also remain unverified because Docker and local PostgreSQL are unavailable. See [`SCHEDULED-SESSION-TIME-AUDIT.md`](docs/SCHEDULED-SESSION-TIME-AUDIT.md).
+
+## Phase 2 schedule/admission browser check (7 November 2026)
+
+- Revision-matched Chromium captures are saved under `artifacts/phase2-repro/`: full-page landing at desktop/mobile, public Regular session listing at desktop/mobile, and Admin Scheduled Sessions at desktop/mobile. The mobile public listing has no horizontal overflow; Admin form fields stack in one column at 390 px. The screens use the existing full-bleed festival atmosphere and readable session/ticket surfaces.
+- The isolated browser lifecycle test passed alongside the owner/player workflow. Visual scope here was the landing, public session list, and Admin Scheduled Sessions route; it is not a full application route or theme matrix. No new festival artwork or CSS was added in this backend/session milestone.
+- See [`REGULAR-TAMBOLA-BROWSER-QA-REPORT.md`](docs/REGULAR-TAMBOLA-BROWSER-QA-REPORT.md) for test conditions, screenshot list, exact schedule response facts and limits.
+
+## Admin-issued ticket identity visual check (7 November 2026)
+
+- Compared the booked player-room route against its actual reservation data. Before the correction, a synthetic booking for `TKT-0001` displayed `Ticket 1`, the shared room ceiling, and the generic ticket picker. This revealed that the running browser bundle had not yet been rebuilt after source edits; after rebuilding, the browser regression asserted the issued serial in both the locked assignment summary and the actual ticket paper, and asserted the count picker is absent.
+- Five synthetic bookings selected `TKT-0001` through `TKT-0005` from a generated 200-ticket official catalog, entered the room, and matched each selected serial to the corresponding ticket paper. Current screenshot: [`player-ticket-serial-mobile.png`](artifacts/browser-qa/player-ticket-serial-mobile.png), 390×844 CSS viewport. Browser result: 1/1 isolated workflow passed; source unit regressions 39/39; client lint and build passed.
+- This is route-specific evidence at a mobile viewport, with DOM assertions at the browser's desktop-sized player contexts. It does not constitute the entire requested multi-route/five-viewport visual audit. Admin inventory generation was exercised through the isolated authenticated session workflow, but its dynamic inventory table was not separately screenshot-reviewed in this run. The backend claim serial was tested in memory; live DB claim/recovery and production verification remain open.

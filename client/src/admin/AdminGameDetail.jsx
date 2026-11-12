@@ -15,6 +15,7 @@ import { INVITE_TEXT, INVITE_TITLE } from "../brand.js";
 import { useAdmin } from "./useAdmin.js";
 import {
   claimTone,
+  awardTicketLabel,
   enabledPatternIds,
   formatClock,
   formatDateTime,
@@ -516,6 +517,7 @@ export default function AdminGameDetail() {
               <thead>
                 <tr>
                   <th scope="col">Player</th>
+                  <th scope="col">Ticket</th>
                   <th scope="col">Pattern</th>
                   <th scope="col">Verdict</th>
                   <th scope="col">Reason</th>
@@ -527,6 +529,7 @@ export default function AdminGameDetail() {
                 {claims.map((claim, index) => (
                   <tr key={claim.claimId || `${claim.playerId}-${claim.pattern}-${index}`}>
                     <td>{claim.displayName || claim.playerId}</td>
+                    <td className="oh-num">{awardTicketLabel(claim)}</td>
                     <td>{patternLabel(claim.pattern)}</td>
                     <td>
                       <Badge tone={claimTone(claim.status)}>{statusLabel(claim.status)}</Badge>
@@ -549,6 +552,7 @@ export default function AdminGameDetail() {
               <thead>
                 <tr>
                   <th scope="col">Player</th>
+                  <th scope="col">Ticket</th>
                   <th scope="col">Pattern</th>
                   <th scope="col">Points</th>
                   <th scope="col">Call</th>
@@ -559,6 +563,7 @@ export default function AdminGameDetail() {
                 {awards.map((award, index) => (
                   <tr key={`${award.gameNumber}-${award.playerId}-${award.pattern}-${index}`}>
                     <td>{award.displayName || award.playerId}</td>
+                    <td className="oh-num">{awardTicketLabel(award)}</td>
                     <td>{patternLabel(award.pattern)}</td>
                     <td className="oh-num">{formatNumber(award.points)}</td>
                     <td className="oh-num">{formatNumber(award.callIndex)}</td>

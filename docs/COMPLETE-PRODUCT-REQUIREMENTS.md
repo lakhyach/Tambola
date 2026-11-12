@@ -9,6 +9,7 @@ Status: evolving product specification. It combines the current codebase, the ow
 - The server owns room membership, tickets, draw order, claims, awards, history, permissions and instance ownership. Browser state is a view, not authority.
 - Tenant means an instance boundary for room activity, moderators, history, reports, configuration and future branding. Super Admin operations are the intentional platform-wide exception.
 - The video’s ticket price and prize values are not carried into this product. Its logos, colors and artwork are not copied.
+- **Owner direction, 11 November 2026:** target feature and workflow parity with the visible MakeTambola organizer/player experience, while keeping Ninety Club's own identity and excluding player entry fees, wagering, cash prizes, deposits, withdrawals and payout handling. Parity targets include scheduled games, numbered ticket inventory and booking, live ticket visibility/search, configurable prizes, automated/manual number calling and voice, live boards, winner results, organizer controls, and event posters/theme presentation. Only behavior directly observed or confirmed by the owner is an acceptance target; hidden third-party behavior must not be guessed.
 
 ## Product areas and current status
 

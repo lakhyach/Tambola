@@ -29,10 +29,20 @@ export function sheetsOf(snap) {
   const list = Array.isArray(snap?.tickets) ? snap.tickets : [];
   const sheets = list
     .filter((t) => t && hasNumbers(t.grid))
-    .map((t, i) => ({ no: Number.isInteger(t.no) ? t.no : i + 1, grid: t.grid }));
+    .map((t, i) => ({
+      no: Number.isInteger(t.no) ? t.no : i + 1,
+      grid: t.grid,
+      ...(typeof t.serial === "string" && t.serial.trim() ? { serial: t.serial.trim() } : {}),
+    }));
   if (sheets.length) return sheets.sort((a, b) => a.no - b.no);
   if (hasNumbers(snap?.ticket)) return [{ no: 1, grid: snap.ticket }];
   return [];
+}
+
+/** Stable issued identity for display; the numeric no remains the engine/tab key. */
+export function ticketDisplayIdentity(ticket) {
+  if (typeof ticket?.serial === "string" && ticket.serial.trim()) return ticket.serial.trim();
+  return ticket?.no == null ? "" : ticket.no;
 }
 
 /**

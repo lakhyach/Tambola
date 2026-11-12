@@ -1143,6 +1143,16 @@ export function createAdminRouter({
         return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "enable at least one winning pattern" });
       }
       if (chosen.patterns) overrides.patterns = chosen.patterns;
+      if (body.patternPoints && typeof body.patternPoints === "object" && !Array.isArray(body.patternPoints)) {
+        const points = {};
+        for (const [id, value] of Object.entries(body.patternPoints)) {
+          if (!Object.hasOwn(PATTERNS, id) || !Number.isSafeInteger(value) || value < 0 || value > 100000) {
+            return res.status(400).json({ ok: false, code: "INVALID_INPUT", error: "pattern point values must be whole numbers from 0 to 100,000" });
+          }
+          points[id] = value;
+        }
+        overrides.patternPoints = points;
+      }
 
       const instanceId = typeof body.instanceId === "string" ? body.instanceId : "regular";
       if (durable) {

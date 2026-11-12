@@ -29,6 +29,7 @@
 
 import { ErrorCodes, GameState, IntegrityError } from "../game/engine.js";
 import { validateRoomDefaults } from "../instances/room-defaults.js";
+import { PATTERNS } from "../game/patterns.js";
 
 /**
  * What a client is allowed to see about the room's configuration.
@@ -46,6 +47,7 @@ const PUBLIC_CONFIG_KEYS = [
   "earlyFiveMaxCalls",
   "claimWindowCalls",
   "patterns",
+  "patternPoints",
   "multipleWinnersPerPattern",
 ];
 
@@ -110,13 +112,29 @@ export function createGameController({ store, sessions, registry: initialRegistr
 
   /** Create a room on the owner's behalf. A phantom host seat stands in for the
    *  absent browser host so lifecycle rules (which need an owner) still hold. */
-  async function createManagedRoom({ hostName = "Operator", overrides, instanceId = "regular" } = {}) {
-    const socketId = "operator:" + Math.random().toString(36).slice(2, 10);
-    const created = await createRoom({ name: hostName, socketId, overrides, instanceId });
+  async function createManagedRoom({ hostName = "Operator", overrides, instanceId = "regular", transactionClient = null } = {}) {
+    let created = null;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const socketId = "operator:" + Math.random().toString(36).slice(2, 10);
+      if (transactionClient) await transactionClient.query("SAVEPOINT managed_room_create");
+      try {
+        created = await createRoom({ name: hostName, socketId, overrides, instanceId, transactionClient, managed: Boolean(transactionClient) });
+        if (transactionClient) await transactionClient.query("RELEASE SAVEPOINT managed_room_create");
+      } catch (error) {
+        if (transactionClient) {
+          await transactionClient.query("ROLLBACK TO SAVEPOINT managed_room_create");
+          await transactionClient.query("RELEASE SAVEPOINT managed_room_create");
+        }
+        if (error?.code === "23505" && error?.constraint === "rooms_pkey") continue;
+        throw error;
+      }
+      if (created.ok || created.code !== "ROOM_CODE_COLLISION") break;
+    }
+    if (!created) return { ok: false, code: "ROOM_CODE_COLLISION", error: "room code collision retry limit reached" };
     if (!created.ok) return created;
     // the operator does not need a browser session token for the phantom host;
     // revoke it so a leaked ack could never resume a seat nobody owns
-    if (created.sessionId && sessions) {
+    if (!transactionClient && created.sessionId && sessions) {
       await sessions.revoke({ sessionId: created.sessionId, roomId: created.roomId, reason: "operator-seat" }).catch(() => {});
     }
     const room = registry.get(created.roomId);
@@ -126,6 +144,20 @@ export function createGameController({ store, sessions, registry: initialRegistr
       state: room ? room.state : created.state,
       enabledPatterns: room ? room.stateView().enabledPatterns : undefined,
     };
+  }
+
+  function publishManagedRoom({ roomId } = {}) {
+    if (!registry.get(roomId)) return { ok: false, code: "ROOM_NOT_FOUND" };
+    registry.dispatchFor(roomId).flush();
+    return { ok: true };
+  }
+
+  function discardManagedRoom({ roomId } = {}) {
+    if (!roomId) return false;
+    if (scheduler) scheduler.cancel(roomId);
+    forgetQueue(roomId);
+    registry.dispatchFor(roomId).discard();
+    return registry.close(roomId, "atomic session creation rolled back");
   }
 
   /** Remove a disruptive participant without touching their earned history. */
@@ -279,6 +311,9 @@ export function createGameController({ store, sessions, registry: initialRegistr
     "room-created",
     "join",
     "left",
+    "tickets-booked",
+    "tickets-selected",
+    "inventory-tickets-assigned",
     "host-set",
     "room-closed",
     "start",
@@ -356,7 +391,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
 
   // ------------------------------------------------------------- room lifecycle
 
-  async function createRoom({ name, socketId, overrides, instanceId = "regular", instanceSlug = null }) {
+  async function createRoom({ name, socketId, overrides, instanceId = "regular", instanceSlug = null, transactionClient = null, managed = false }) {
     if (instanceSlug !== null) {
       if (typeof instanceSlug !== "string" || !/^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/.test(instanceSlug)) {
         return { ok: false, code: "BAD_PAYLOAD", error: "instance is invalid" };
@@ -420,6 +455,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
         config: { ...publicConfig(room.config), ...(themeVersionId ? { themeVersionId } : {}) },
         instanceId,
         host: { playerId: joined.playerId, name: joined.name, connected: true },
+        transactionClient,
       });
       await store.upsertSchedule({
         roomId: room.roomId,
@@ -427,14 +463,15 @@ export function createGameController({ store, sessions, registry: initialRegistr
         autoCall: room.config.autoCall,
         intervalMs: room.config.callIntervalMs,
         nextDueAt: null,
+        transactionClient,
       });
-      const issued = await sessions.issue({ roomId: room.roomId, playerId: joined.playerId, role: "host" });
-      gate.flush();
+      const issued = managed ? null : await sessions.issue({ roomId: room.roomId, playerId: joined.playerId, role: "host", transactionClient });
+      if (!transactionClient) gate.flush();
       return {
         ok: true,
         roomId: room.roomId,
-        sessionToken: issued.sessionToken,
-        sessionId: issued.sessionId,
+        sessionToken: issued?.sessionToken,
+        sessionId: issued?.sessionId,
         playerId: joined.playerId,
         name: joined.name,
         role: "host",
@@ -444,6 +481,10 @@ export function createGameController({ store, sessions, registry: initialRegistr
     } catch (error) {
       gate.discard();
       registry.close(room.roomId, "the room could not be saved");
+      if (transactionClient) throw error;
+      if (error?.code === "23505" && error?.constraint === "rooms_pkey") {
+        return { ok: false, code: "ROOM_CODE_COLLISION", error: "the generated room code was already in use; retry room creation" };
+      }
       return persistFailure(error, room.roomId);
     }
   }
@@ -463,7 +504,9 @@ export function createGameController({ store, sessions, registry: initialRegistr
       if (status === "paused" || status === "archived") return { ok: false, code: "INSTANCE_UNAVAILABLE", error: "this game instance is not accepting new players" };
       const bookingSession = await store.bookingSessionForRoom({ roomId });
       if (bookingSession) {
-        if (bookingSession.status !== "open" || bookingSession.instance_status !== "active" || bookingSession.room_status !== "WAITING" || Number(bookingSession.game_number) !== 0) {
+        const waitingRoom = bookingSession.room_status === "WAITING" && Number(bookingSession.game_number) === 0 && new Date(bookingSession.starts_at) > new Date(now());
+        const activeRoom = ["RUNNING", "PAUSED"].includes(bookingSession.room_status) && Number(bookingSession.game_number) > 0 && bookingSession.has_running_game;
+        if (bookingSession.status !== "open" || bookingSession.instance_status !== "active" || (!waitingRoom && !activeRoom)) {
           return { ok: false, code: "SESSION_UNAVAILABLE", error: "this scheduled room is not accepting new bookings" };
         }
         if (!reservationId || !bookingToken) return { ok: false, code: "BOOKING_REQUIRED", error: "join this scheduled room with your confirmed booking reference and private code" };
@@ -544,6 +587,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
         const registered = await store.addParticipantFromBooking({
           roomId, playerId: joined.playerId, name: joined.name, connected: true,
           reservationId, bookingToken, expectedTicketIds: (booking.tickets || []).map((ticket) => ticket.inventoryTicketId),
+          tickets: room.players.get(joined.playerId)?.tickets || [],
         });
         if (!registered.ok) {
           room.dropPlayer(joined.playerId, "booking could not be assigned");
@@ -1086,6 +1130,36 @@ export function createGameController({ store, sessions, registry: initialRegistr
     });
   }
 
+  /** Apply owner-authored, session-scoped rules to a linked room before play. */
+  async function configureSessionPatterns({ roomId, winningPatterns } = {}) {
+    const room = registry.get(roomId);
+    if (!room) {
+      return { ok: false, code: "WINNING_PATTERNS_LOCKED", error: "winning rules can only change before the linked game starts" };
+    }
+    const selected = new Map((winningPatterns || []).map(({ id, points }) => [id, points]));
+    const patterns = Object.fromEntries(Object.keys(PATTERNS).map((id) => [id, selected.has(id)]));
+    const patternPoints = Object.fromEntries([...selected.entries()]);
+    return runExclusive(roomId, async () => {
+      if (room.state !== GameState.WAITING || Number(room.gameNumber) !== 0) {
+        return { ok: false, code: "WINNING_PATTERNS_LOCKED", error: "winning rules can only change before the linked game starts" };
+      }
+      const gate = registry.dispatchFor(roomId);
+      gate.suspend();
+      try {
+        // The booking service commits both the session rules and room config
+        // before this cache synchronization runs.
+        room.config.patterns = patterns;
+        room.config.patternPoints = patternPoints;
+        room.emit("game:state", room.stateView());
+        gate.flush();
+        return { ok: true };
+      } catch (error) {
+        gate.discard();
+        return { ok: false, code: "SESSION_ROOM_INVALID", error: "the room state could not be updated" };
+      }
+    });
+  }
+
   // -------------------------------------------------------------------- claims
 
   /**
@@ -1139,6 +1213,8 @@ export function createGameController({ store, sessions, registry: initialRegistr
           // makes the rule forget.
           ticketNo: prepared.prepared.ticketNo ?? null,
           ticketNos: prepared.prepared.ticketNos ?? null,
+          ticketSerial: prepared.prepared.ticketSerial ?? null,
+          ticketSerials: prepared.prepared.ticketSerials ?? null,
           exclusive: !room.config.multipleWinnersPerPattern,
         });
         if (!award.ok) {
@@ -1289,6 +1365,8 @@ export function createGameController({ store, sessions, registry: initialRegistr
     onAudit,
     createRoom,
     createManagedRoom,
+    publishManagedRoom,
+    discardManagedRoom,
     removeParticipant,
     joinRoom,
     resume,
@@ -1305,6 +1383,7 @@ export function createGameController({ store, sessions, registry: initialRegistr
     transition,
     setAutoCall,
     setPatterns,
+    configureSessionPatterns,
     claim,
     detachSocket,
     rehydrate,
